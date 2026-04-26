@@ -350,6 +350,8 @@ Important constraints:
 - Add base auth.
 - Add seed data for one AcadID admin.
 
+Current status: scaffolded, with staff login and Super Admin route protection added. PostgreSQL still needs to be started locally before migrations and seed can run.
+
 ### Sprint 2: Core Data Center
 
 - Implement Learner, Institution, User, Authority Grant, Enrolment models.

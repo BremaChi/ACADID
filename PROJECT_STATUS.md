@@ -16,6 +16,7 @@ Created:
 - Audit interface package in `packages/audit`.
 - Credential signing adapter package in `packages/crypto`.
 - Web dev helper script in `scripts/dev-web.cmd`.
+- API dev helper script in `scripts/start-api.cmd`.
 
 ## Implemented Foundation
 
@@ -23,12 +24,14 @@ Created:
 
 The API has these first modules:
 
+- Auth module for staff login, bearer token creation, `/auth/me`, and password verification.
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
 - Ingestion Door scaffold for student/register/result upload entrypoints.
 - Governance Door scaffold for batch submission, review, approval, publication, rejection, amendment, and revocation.
 - Access Door scaffold for passport, credentials, share links, grant revocation, and verification log.
 - Verification Door scaffold for token/reference/status verification.
 - Platform services for Prisma, audit writing, and credential signing.
+- Admin routes are restricted to `ACADID_SUPER_ADMIN`.
 
 ### Database
 
@@ -79,14 +82,14 @@ Web app:
 API app:
 
 - Scaffolded and buildable.
-- Not started yet because PostgreSQL is not configured.
+- Start with `scripts/start-api.cmd` after PostgreSQL is running, migrations are applied, and seed data exists.
 
 ## Next Engineering Steps
 
 1. Start PostgreSQL using Docker Compose or a local PostgreSQL install.
 2. Run the first Prisma migration.
 3. Seed the first AcadID Super Admin.
-4. Implement real auth sessions and password verification.
+4. Start the API with `scripts/start-api.cmd`.
 5. Implement institution onboarding persistence end to end.
 6. Implement Authority Grant enforcement with real MOU document metadata.
 7. Implement student register ingestion.
@@ -104,14 +107,22 @@ API app:
 
 ## GitHub Status
 
-Not pushed yet.
+Remote repository:
 
-Reason:
+- `https://github.com/BremaChi/ACADID.git`
 
-- Git is not available on PATH in the current environment.
-- No GitHub remote has been configured from this session.
-- Pushing to GitHub is an external action and should happen only after the founder confirms the target repository.
+Already pushed:
+
+- Monorepo foundation scaffold.
+- Database migration and seed workflow.
+- Web startup helper.
+
+Current local work to push next:
+
+- API authentication foundation.
+- Admin route protection.
+- API startup helper.
 
 ## Immediate Recommendation
 
-Before building more product features, set up Git/GitHub and make the first commit. This protects the foundation work before PostgreSQL migrations and deeper implementation begin.
+Install or start PostgreSQL next so the API can run against a real database, then continue into institution onboarding and Authority Grant enforcement.

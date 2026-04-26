@@ -1,6 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
+import { AuthGuard } from "../auth/guards/auth.guard.js";
+import { RolesGuard } from "../auth/guards/roles.guard.js";
+import { Roles } from "../auth/roles.decorator.js";
 import { AdminService } from "./admin.service.js";
 
+@UseGuards(AuthGuard, RolesGuard)
+@Roles(UserRole.ACADID_SUPER_ADMIN)
 @Controller("admin")
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
