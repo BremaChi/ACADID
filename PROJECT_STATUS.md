@@ -26,12 +26,14 @@ The API has these first modules:
 
 - Auth module for staff login, bearer token creation, `/auth/me`, and password verification.
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
-- Ingestion Door scaffold for student/register/result upload entrypoints.
-- Governance Door scaffold for batch submission, review, approval, publication, rejection, amendment, and revocation.
+- Ingestion Door for student register intake, learner matching/creation, AIN assignment, enrolment creation, and draft result batch creation.
+- Governance Door for batch submission, review, approval, publication, rejection, amendment, and revocation.
 - Access Door scaffold for passport, credentials, share links, grant revocation, and verification log.
 - Verification Door scaffold for token/reference/status verification.
-- Platform services for Prisma, audit writing, and credential signing.
+- Platform services for Prisma, audit writing, Authority Grant enforcement, and credential signing.
 - Admin routes are restricted to `ACADID_SUPER_ADMIN`.
+- Ingestion routes are restricted to AcadID admins and institution operating roles.
+- Governance routes are restricted to AcadID admins, Registrars, and Exam Officers.
 
 ### Database
 
@@ -91,19 +93,18 @@ API app:
 3. Seed the first AcadID Super Admin.
 4. Start the API with `scripts/start-api.cmd`.
 5. Implement institution onboarding persistence end to end.
-6. Implement Authority Grant enforcement with real MOU document metadata.
-7. Implement student register ingestion.
-8. Implement result batch ingestion.
-9. Implement the three-tier workflow:
+6. Add real MOU document upload/storage metadata to Authority Grants.
+7. Connect API auth to institution membership checks, not role checks alone.
+8. Implement the three-tier workflow:
    - Draft.
    - Submitted.
    - Reviewed.
    - Approved.
    - Published.
-10. Replace placeholder credential signing before pilot.
-11. Add real Access Grant token hashing and verification.
-12. Add audit views in the web app.
-13. Add tests for Authority Grant enforcement, gateway boundaries, and result workflow.
+9. Replace placeholder credential signing before pilot.
+10. Add real Access Grant token hashing and verification.
+11. Add audit views in the web app.
+12. Add tests for Authority Grant enforcement, gateway boundaries, and result workflow.
 
 ## GitHub Status
 
@@ -119,9 +120,9 @@ Already pushed:
 
 Current local work to push next:
 
-- API authentication foundation.
-- Admin route protection.
-- API startup helper.
+- Ingestion persistence for student register and result batches.
+- Authority Grant enforcement in ingestion and publication.
+- Role guards on ingestion and governance routes.
 
 ## Immediate Recommendation
 

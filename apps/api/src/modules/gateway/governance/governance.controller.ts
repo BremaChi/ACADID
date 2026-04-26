@@ -1,6 +1,12 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
+import { AuthGuard } from "../../auth/guards/auth.guard.js";
+import { RolesGuard } from "../../auth/guards/roles.guard.js";
+import { Roles } from "../../auth/roles.decorator.js";
 import { GovernanceService } from "./governance.service.js";
 
+@UseGuards(AuthGuard, RolesGuard)
+@Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER)
 @Controller("govern")
 export class GovernanceController {
   constructor(private readonly governanceService: GovernanceService) {}

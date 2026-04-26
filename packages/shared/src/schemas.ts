@@ -28,6 +28,12 @@ export const studentRegisterRowSchema = z.object({
   phone: z.string().optional()
 });
 
+export const ingestStudentRegisterSchema = z.object({
+  institutionId: z.string().min(1),
+  entryDate: z.string().date().optional(),
+  rows: z.array(studentRegisterRowSchema).min(1).max(500)
+});
+
 export const resultRowSchema = z.object({
   studentNumber: z.string().min(1),
   periodType: z.enum(["TERM", "SEMESTER"]),
@@ -40,7 +46,16 @@ export const resultRowSchema = z.object({
   grade: z.string().min(1)
 });
 
+export const ingestResultBatchSchema = z.object({
+  institutionId: z.string().min(1),
+  createdById: z.string().uuid(),
+  title: z.string().min(2),
+  rows: z.array(resultRowSchema).min(1).max(1000)
+});
+
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;
+export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSchema>;
+export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;

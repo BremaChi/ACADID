@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
+import { AuthorityService } from "../../platform/services/authority.service.js";
 import { CredentialSigningService } from "../../platform/services/credential-signing.service.js";
 
 type BatchTransition = "SUBMITTED" | "REVIEWED" | "APPROVED";
@@ -12,6 +13,7 @@ export class GovernanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authority: AuthorityService,
     private readonly signer: CredentialSigningService
   ) {}
 
@@ -45,12 +47,7 @@ export class GovernanceService {
       throw new BadRequestException("Result batch not found.");
     }
 
-    const activeAuthority = batch.institution.authorityGrants.some(
-      (grant: { status: string }) => grant.status === "ACTIVE"
-    );
-    if (!activeAuthority) {
-      throw new BadRequestException("Institution does not have an active Authority Grant.");
-    }
+    await this.authority.assertInstitutionCan(batch.institutionId, "publish_credentials");
 
     if (batch.status !== "APPROVED") {
       throw new BadRequestException("Only approved batches can be published.");
