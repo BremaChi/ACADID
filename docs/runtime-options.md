@@ -4,25 +4,27 @@ AcadID should keep PostgreSQL as the production database.
 
 PostgreSQL is the right long-term fit because it supports strong relational consistency, transactions, indexing, JSON fields for credential payloads, audit history, and proven scaling paths. Docker is not part of the production architecture; it is only a convenient way to run PostgreSQL locally during development.
 
-## Current Local Blocker
+## Local Development Status
 
-This Windows machine does not currently have:
+This Windows machine now runs PostgreSQL through Docker in WSL/Ubuntu.
 
-- Docker Desktop
-- `psql`
-- A local PostgreSQL Windows service
+Useful details:
 
-Because of that, local database migration and end-to-end API runtime testing cannot run yet.
+- Container name: `acadid-postgres`
+- Database URL from Windows: `postgresql://acadid:acadid@127.0.0.1:5432/acadid`
+- The default WSL user may not have Docker socket permission, so the helper script runs Docker through `wsl -u root`.
+- A small WSL keepalive process helps Docker port forwarding remain available while Windows commands talk to PostgreSQL.
 
 ## Safe Options
 
-### Option 1: Docker Desktop For Local Development
+### Option 1: WSL Docker For Local Development
 
-Install Docker Desktop, then run:
+Run:
 
 ```bash
-docker compose up -d
-npm run db:migrate
+scripts/start-db-wsl.cmd
+$env:DATABASE_URL="postgresql://acadid:acadid@127.0.0.1:5432/acadid"
+npm run db:deploy
 npm run db:seed
 scripts/start-api.cmd
 ```
@@ -34,7 +36,8 @@ This does not reduce production performance. It only gives developers a repeatab
 Install PostgreSQL directly on Windows, create the `acadid` database/user, then run:
 
 ```bash
-npm run db:migrate
+$env:DATABASE_URL="postgresql://acadid:acadid@127.0.0.1:5432/acadid"
+npm run db:deploy
 npm run db:seed
 scripts/start-api.cmd
 ```

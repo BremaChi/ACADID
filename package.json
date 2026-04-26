@@ -12,6 +12,7 @@
     "typecheck": "turbo typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
     "db:generate": "npm --workspace @acadid/database run generate",
+    "db:deploy": "npm --workspace @acadid/database exec -- prisma migrate deploy",
     "db:migrate": "npm --workspace @acadid/database run migrate",
     "db:seed": "npm --workspace @acadid/database run seed",
     "db:studio": "npm --workspace @acadid/database run studio",

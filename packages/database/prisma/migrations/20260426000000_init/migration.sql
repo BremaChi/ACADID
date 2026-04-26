@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "LearnerIdentityStatus" AS ENUM ('VERIFIED', 'UNVERIFIED', 'PENDING_REVIEW');
 
 -- CreateEnum

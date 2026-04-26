@@ -17,6 +17,7 @@ Created:
 - Credential signing adapter package in `packages/crypto`.
 - Web dev helper script in `scripts/dev-web.cmd`.
 - API dev helper script in `scripts/start-api.cmd`.
+- WSL Docker PostgreSQL helper script in `scripts/start-db-wsl.cmd`.
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
 
@@ -77,11 +78,23 @@ Completed successfully:
 - `npm run build`
 - `npm test`
 - Local dashboard health check on `http://localhost:3000/`
+- PostgreSQL running in WSL Docker as `acadid-postgres`.
+- Initial Prisma migration applied to PostgreSQL.
+- Seeded AcadID Super Admin: `founder@acadid.local`.
+- API health check passes at `http://localhost:4000/api/health`.
+- Founder admin login succeeds against the live database.
+- End-to-end pilot flow verified:
+  - Created pilot institution `AINi-00001`.
+  - Created active Authority Grant.
+  - Ingested learner and assigned `AIN-NG-2026-0000001`.
+  - Created, approved, and published a result batch.
+  - Verified issued credential with cryptographic status `VALID`.
 
 Known validation note:
 
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
-- Docker Desktop, `psql`, and a local PostgreSQL service are not installed on this machine yet, so database migration and API runtime testing are still blocked locally.
+- Docker is available through WSL. The default WSL user did not have Docker socket permission, so Docker commands were run through `wsl -u root`.
+- WSL needed a keepalive process while testing from Windows so Docker port forwarding stayed available.
 
 ## Local Runtime
 
@@ -91,27 +104,16 @@ Web app:
 
 API app:
 
-- Scaffolded and buildable.
-- Start with `scripts/start-api.cmd` after PostgreSQL is running, migrations are applied, and seed data exists.
+- Running at `http://localhost:4000` after PostgreSQL is running, migrations are applied, and seed data exists.
 
 ## Next Engineering Steps
 
-1. Start PostgreSQL using Docker Compose or a local PostgreSQL install.
-2. Run the first Prisma migration.
-3. Seed the first AcadID Super Admin.
-4. Start the API with `scripts/start-api.cmd`.
-5. Implement institution onboarding persistence end to end.
-6. Add real MOU document upload/storage metadata to Authority Grants.
-7. Implement the three-tier workflow:
-   - Draft.
-   - Submitted.
-   - Reviewed.
-   - Approved.
-   - Published.
-8. Configure stable production signing keys with `npm run crypto:keygen`.
-9. Add verifier identity capture and IP hashing to verification events.
-10. Add audit views in the web app.
-11. Expand tests from crypto/authority unit coverage into database-backed workflow tests once PostgreSQL is available.
+1. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+2. Add real MOU document upload/storage metadata to Authority Grants.
+3. Add verifier identity capture and IP hashing to verification events.
+4. Add audit views in the web app.
+5. Add registrar/institution staff user creation and membership management.
+6. Configure stable production signing keys with `npm run crypto:keygen`.
 
 ## GitHub Status
 
@@ -127,13 +129,13 @@ Already pushed:
 
 Current local work to push next:
 
-- Student passport and credential access endpoints.
-- Hashed Access Grant share-link creation and revocation.
-- Public share-token verification with expiry, revocation, view-limit, and credential-status checks.
+- PostgreSQL WSL startup helper.
+- API startup fix for compiled monorepo output.
+- Runtime docs/status updates for live database verification.
 
 ## Immediate Recommendation
 
-Install or start PostgreSQL next so the API can run against a real database, then continue into institution onboarding and Authority Grant enforcement.
+Add database-backed automated tests now that PostgreSQL is available locally.
 
 Best production-safe database path:
 
