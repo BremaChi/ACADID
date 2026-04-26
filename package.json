@@ -13,7 +13,8 @@
     "db:generate": "npm --workspace @acadid/database run generate",
     "db:migrate": "npm --workspace @acadid/database run migrate",
     "db:seed": "npm --workspace @acadid/database run seed",
-    "db:studio": "npm --workspace @acadid/database run studio"
+    "db:studio": "npm --workspace @acadid/database run studio",
+    "crypto:keygen": "node scripts/generate-credential-keypair.mjs"
   },
   "workspaces": [
     "apps/*",

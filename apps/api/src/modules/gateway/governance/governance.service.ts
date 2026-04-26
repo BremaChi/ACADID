@@ -53,6 +53,40 @@ export class GovernanceService {
       throw new BadRequestException("Only approved batches can be published.");
     }
 
+    const issuedAt = new Date();
+    const signedCredentials = await Promise.all(
+      batch.academicRecords.map(async (record) => {
+        const credentialRef = randomUUID();
+        const vcPayload = {
+          "@context": ["https://www.w3.org/ns/credentials/v2"],
+          id: `urn:uuid:${credentialRef}`,
+          type: ["VerifiableCredential", "AcadIDAcademicRecordCredential"],
+          issuer: batch.institution.institutionId,
+          validFrom: issuedAt.toISOString(),
+          credentialSubject: {
+            learnerId: record.enrolment.learnerId,
+            academicRecordId: record.uuid,
+            periodLabel: record.periodLabel,
+            subjectCode: record.subjectCode,
+            subjectName: record.subjectName,
+            totalScore: Number(record.totalScore),
+            grade: record.grade
+          }
+        };
+        const signed = await this.signer.sign(vcPayload);
+
+        return {
+          credentialRef,
+          record,
+          vcPayload: {
+            ...(signed.payload as Record<string, unknown>),
+            proof: signed.proof
+          },
+          signature: signed.signature
+        };
+      })
+    );
+
     const published = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedBatch = await tx.resultBatch.update({
         where: { uuid: batchId },
@@ -70,34 +104,17 @@ export class GovernanceService {
         }
       });
 
-      for (const record of batch.academicRecords) {
-        const vcPayload = {
-          "@context": ["https://www.w3.org/ns/credentials/v2"],
-          type: ["VerifiableCredential", "AcadIDAcademicRecordCredential"],
-          issuer: batch.institution.institutionId,
-          validFrom: new Date().toISOString(),
-          credentialSubject: {
-            learnerId: record.enrolment.learnerId,
-            academicRecordId: record.uuid,
-            periodLabel: record.periodLabel,
-            subjectCode: record.subjectCode,
-            subjectName: record.subjectName,
-            totalScore: record.totalScore,
-            grade: record.grade
-          }
-        };
-        const signed = await this.signer.sign(vcPayload);
-
+      for (const signedCredential of signedCredentials) {
         await tx.credential.create({
           data: {
-            credentialRef: randomUUID(),
-            learnerId: record.enrolment.learnerId,
+            credentialRef: signedCredential.credentialRef,
+            learnerId: signedCredential.record.enrolment.learnerId,
             institutionId: batch.institutionId,
-            academicRecordId: record.uuid,
+            academicRecordId: signedCredential.record.uuid,
             type: "RESULT_SLIP",
-            scope: { academicRecordId: record.uuid } as Prisma.InputJsonValue,
-            vcPayload: signed.payload as Prisma.InputJsonValue,
-            signature: signed.signature
+            scope: { academicRecordId: signedCredential.record.uuid } as Prisma.InputJsonValue,
+            vcPayload: signedCredential.vcPayload as unknown as Prisma.InputJsonValue,
+            signature: signedCredential.signature
           }
         });
       }

@@ -2,10 +2,14 @@ import { Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../platform/services/prisma.service.js";
+import { CredentialSigningService } from "../../platform/services/credential-signing.service.js";
 
 @Injectable()
 export class VerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly signer: CredentialSigningService
+  ) {}
 
   async verifyToken(token: string) {
     const accessGrant = await this.prisma.accessGrant.findUnique({
@@ -69,6 +73,8 @@ export class VerificationService {
         issuedAt: true,
         revokedAt: true,
         revocationReason: true,
+        signature: true,
+        vcPayload: true,
         institution: {
           select: {
             institutionId: true,
@@ -89,8 +95,14 @@ export class VerificationService {
       };
     }
 
+    const cryptographicStatus =
+      credential.signature && (await this.signer.verify(this.unsignedPayload(credential.vcPayload), credential.signature))
+        ? "VALID"
+        : "INVALID";
+
     return {
       outcome: "CONFIRMED",
+      cryptographicStatus,
       credential
     };
   }
@@ -177,5 +189,14 @@ export class VerificationService {
 
   private hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private unsignedPayload(payload: Prisma.JsonValue): unknown {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return payload;
+    }
+
+    const { proof: _proof, ...unsigned } = payload as Record<string, unknown>;
+    return unsigned;
   }
 }

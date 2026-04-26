@@ -34,6 +34,8 @@ The API has these first modules:
 - Admin routes are restricted to `ACADID_SUPER_ADMIN`.
 - Ingestion routes are restricted to AcadID admins and institution operating roles.
 - Governance routes are restricted to AcadID admins, Registrars, and Exam Officers.
+- Credential publication now uses Ed25519 JOSE/JWS signatures and embeds a proof in the VC payload.
+- Credential signing is prepared outside the publish transaction so database writes remain fast under load.
 
 ### Database
 
@@ -101,7 +103,7 @@ API app:
    - Reviewed.
    - Approved.
    - Published.
-9. Replace placeholder credential signing before pilot.
+9. Configure stable production signing keys with `npm run crypto:keygen`.
 10. Add verifier identity capture and IP hashing to verification events.
 11. Add audit views in the web app.
 12. Add tests for Authority Grant enforcement, gateway boundaries, result workflow, and Access Grant verification.

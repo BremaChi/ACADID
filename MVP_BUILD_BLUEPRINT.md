@@ -350,7 +350,7 @@ Important constraints:
 - Add base auth.
 - Add seed data for one AcadID admin.
 
-Current status: scaffolded, with staff login, Super Admin route protection, Authority Grant enforcement, student register ingestion, result batch creation, learner passport access, and share-link verification added. PostgreSQL still needs to be started locally before migrations and seed can run.
+Current status: scaffolded, with staff login, Super Admin route protection, Authority Grant enforcement, student register ingestion, result batch creation, learner passport access, share-link verification, and Ed25519 JOSE/JWS credential signing added. PostgreSQL still needs to be started locally before migrations and seed can run.
 
 ### Sprint 2: Core Data Center
 
