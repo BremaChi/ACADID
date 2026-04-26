@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { formatAin, ingestResultBatchSchema, ingestStudentRegisterSchema } from "@acadid/shared";
+import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
@@ -13,13 +14,13 @@ export class IngestionService {
     private readonly audit: AuditService
   ) {}
 
-  async ingestStudents(body: unknown) {
+  async ingestStudents(auth: AuthTokenPayload, body: unknown) {
     const parsed = ingestStudentRegisterSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
     }
 
-    const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_students");
+    const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_students", auth);
     const entryDate = new Date(parsed.data.entryDate ?? new Date().toISOString().slice(0, 10));
     const entryYear = entryDate.getUTCFullYear();
 
@@ -97,6 +98,8 @@ export class IngestionService {
     });
 
     await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
       action: "ingest.students",
       targetType: "Institution",
       targetId: authority.institutionUuid,
@@ -118,13 +121,17 @@ export class IngestionService {
     };
   }
 
-  async ingestResults(body: unknown) {
+  async ingestResults(auth: AuthTokenPayload, body: unknown) {
     const parsed = ingestResultBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
     }
 
-    const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results");
+    const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results", auth);
+    if (parsed.data.createdById !== auth.sub) {
+      throw new BadRequestException("Result batch creator must match the authenticated user.");
+    }
+
     const studentNumbers = [...new Set(parsed.data.rows.map((row) => row.studentNumber))];
     const enrolments = await this.prisma.enrolment.findMany({
       where: {
@@ -209,16 +216,25 @@ export class IngestionService {
     };
   }
 
-  listBatches() {
+  async listBatches(auth: AuthTokenPayload) {
+    const institutionIds = await this.authority.institutionIdsForActor(auth);
     return this.prisma.resultBatch.findMany({
+      where: institutionIds ? { institutionId: { in: institutionIds } } : undefined,
       orderBy: { createdAt: "desc" }
     });
   }
 
-  readBatch(id: string) {
-    return this.prisma.resultBatch.findUnique({
+  async readBatch(auth: AuthTokenPayload, id: string) {
+    const batch = await this.prisma.resultBatch.findUnique({
       where: { uuid: id },
       include: { academicRecords: true }
     });
+
+    if (!batch) {
+      throw new BadRequestException("Result batch not found.");
+    }
+
+    await this.authority.assertActorCanOperateInstitution(auth, batch.institutionId);
+    return batch;
   }
 }

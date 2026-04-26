@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { UserRole, type Prisma } from "@prisma/client";
+import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "./prisma.service.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,7 +9,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 export class AuthorityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async assertInstitutionCan(institutionRef: string, permission: string) {
+  async assertInstitutionCan(institutionRef: string, permission: string, actor?: AuthTokenPayload) {
     const institution = await this.prisma.institution.findFirst({
       where: this.institutionWhere(institutionRef),
       include: {
@@ -25,6 +26,10 @@ export class AuthorityService {
 
     if (institution.status !== "ACTIVE") {
       throw new BadRequestException("Institution is suspended.");
+    }
+
+    if (actor) {
+      await this.assertActorCanOperateInstitution(actor, institution.uuid);
     }
 
     const now = new Date();
@@ -44,6 +49,41 @@ export class AuthorityService {
       institutionId: institution.institutionId,
       authorityGrantId: activeGrant.uuid
     };
+  }
+
+  async assertActorCanOperateInstitution(actor: AuthTokenPayload, institutionId: string): Promise<void> {
+    if (actor.role === UserRole.ACADID_SUPER_ADMIN) {
+      return;
+    }
+
+    const membership = await this.prisma.institutionUser.findFirst({
+      where: {
+        userId: actor.sub,
+        institutionId,
+        role: actor.role
+      },
+      select: { uuid: true }
+    });
+
+    if (!membership) {
+      throw new ForbiddenException("User is not assigned to this institution.");
+    }
+  }
+
+  async institutionIdsForActor(actor: AuthTokenPayload): Promise<string[] | undefined> {
+    if (actor.role === UserRole.ACADID_SUPER_ADMIN) {
+      return undefined;
+    }
+
+    const memberships = await this.prisma.institutionUser.findMany({
+      where: {
+        userId: actor.sub,
+        role: actor.role
+      },
+      select: { institutionId: true }
+    });
+
+    return memberships.map((membership) => membership.institutionId);
   }
 
   private institutionWhere(institutionRef: string): Prisma.InstitutionWhereInput {

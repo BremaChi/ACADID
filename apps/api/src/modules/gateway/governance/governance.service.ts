@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
@@ -17,13 +18,26 @@ export class GovernanceService {
     private readonly signer: CredentialSigningService
   ) {}
 
-  async transitionBatch(batchId: string, status: BatchTransition) {
+  async transitionBatch(auth: AuthTokenPayload, batchId: string, status: BatchTransition) {
+    const existingBatch = await this.prisma.resultBatch.findUnique({
+      where: { uuid: batchId },
+      select: { institutionId: true }
+    });
+
+    if (!existingBatch) {
+      throw new BadRequestException("Result batch not found.");
+    }
+
+    await this.authority.assertActorCanOperateInstitution(auth, existingBatch.institutionId);
+
     const batch = await this.prisma.resultBatch.update({
       where: { uuid: batchId },
       data: this.transitionData(status)
     });
 
     await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
       action: `result_batch.${status.toLowerCase()}`,
       targetType: "ResultBatch",
       targetId: batchId,
@@ -34,7 +48,7 @@ export class GovernanceService {
     return batch;
   }
 
-  async publishBatch(batchId: string) {
+  async publishBatch(auth: AuthTokenPayload, batchId: string) {
     const batch = await this.prisma.resultBatch.findUnique({
       where: { uuid: batchId },
       include: {
@@ -47,7 +61,7 @@ export class GovernanceService {
       throw new BadRequestException("Result batch not found.");
     }
 
-    await this.authority.assertInstitutionCan(batch.institutionId, "publish_credentials");
+    await this.authority.assertInstitutionCan(batch.institutionId, "publish_credentials", auth);
 
     if (batch.status !== "APPROVED") {
       throw new BadRequestException("Only approved batches can be published.");
@@ -123,6 +137,8 @@ export class GovernanceService {
     });
 
     await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
       action: "result_batch.publish",
       targetType: "ResultBatch",
       targetId: batchId,
@@ -133,7 +149,18 @@ export class GovernanceService {
     return published;
   }
 
-  async rejectBatch(batchId: string, reason: string) {
+  async rejectBatch(auth: AuthTokenPayload, batchId: string, reason: string) {
+    const existingBatch = await this.prisma.resultBatch.findUnique({
+      where: { uuid: batchId },
+      select: { institutionId: true }
+    });
+
+    if (!existingBatch) {
+      throw new BadRequestException("Result batch not found.");
+    }
+
+    await this.authority.assertActorCanOperateInstitution(auth, existingBatch.institutionId);
+
     const batch = await this.prisma.resultBatch.update({
       where: { uuid: batchId },
       data: {
@@ -143,6 +170,8 @@ export class GovernanceService {
     });
 
     await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
       action: "result_batch.reject",
       targetType: "ResultBatch",
       targetId: batchId,

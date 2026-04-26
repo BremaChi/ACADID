@@ -34,6 +34,7 @@ The API has these first modules:
 - Admin routes are restricted to `ACADID_SUPER_ADMIN`.
 - Ingestion routes are restricted to AcadID admins and institution operating roles.
 - Governance routes are restricted to AcadID admins, Registrars, and Exam Officers.
+- Institution staff routes now enforce institution membership, so staff cannot operate on another institution by changing an ID.
 - Credential publication now uses Ed25519 JOSE/JWS signatures and embeds a proof in the VC payload.
 - Credential signing is prepared outside the publish transaction so database writes remain fast under load.
 
@@ -96,17 +97,16 @@ API app:
 4. Start the API with `scripts/start-api.cmd`.
 5. Implement institution onboarding persistence end to end.
 6. Add real MOU document upload/storage metadata to Authority Grants.
-7. Connect API auth to institution membership checks, not role checks alone.
-8. Implement the three-tier workflow:
+7. Implement the three-tier workflow:
    - Draft.
    - Submitted.
    - Reviewed.
    - Approved.
    - Published.
-9. Configure stable production signing keys with `npm run crypto:keygen`.
-10. Add verifier identity capture and IP hashing to verification events.
-11. Add audit views in the web app.
-12. Add tests for Authority Grant enforcement, gateway boundaries, result workflow, and Access Grant verification.
+8. Configure stable production signing keys with `npm run crypto:keygen`.
+9. Add verifier identity capture and IP hashing to verification events.
+10. Add audit views in the web app.
+11. Add tests for Authority Grant enforcement, gateway boundaries, result workflow, and Access Grant verification.
 
 ## GitHub Status
 
