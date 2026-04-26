@@ -17,6 +17,8 @@ Created:
 - Credential signing adapter package in `packages/crypto`.
 - Web dev helper script in `scripts/dev-web.cmd`.
 - API dev helper script in `scripts/start-api.cmd`.
+- GitHub Actions CI workflow in `.github/workflows/ci.yml`.
+- Runtime setup guidance in `docs/runtime-options.md`.
 
 ## Implemented Foundation
 
@@ -74,6 +76,7 @@ Completed successfully:
 - `npm run typecheck`
 - `npm run build`
 - `npm test`
+- Local dashboard health check on `http://localhost:3000/`
 
 Known validation note:
 
@@ -131,3 +134,9 @@ Current local work to push next:
 ## Immediate Recommendation
 
 Install or start PostgreSQL next so the API can run against a real database, then continue into institution onboarding and Authority Grant enforcement.
+
+Best production-safe database path:
+
+- Use Docker Desktop only for local development.
+- Use managed PostgreSQL for pilot/production when hosting is selected.
+- Keep PostgreSQL as the system of record for speed, integrity, and future scale.

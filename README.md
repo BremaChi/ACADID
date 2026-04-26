@@ -42,3 +42,9 @@ The updated technical architecture packet is in:
 ## First Build Bias
 
 Build the data center, gateway, auth, audit, Authority Grant workflow, Internal Admin Panel, and Institution Upload Portal before expanding to student mobile, employer verification, exam body APIs, and live score APIs.
+
+## Runtime Notes
+
+PostgreSQL remains the production database choice. Local Docker is only a development convenience, not a production requirement.
+
+See `docs/runtime-options.md` for the available local and production database setup options.
