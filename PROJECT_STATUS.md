@@ -73,10 +73,12 @@ Completed successfully:
 - `npm run db:generate`
 - `npm run typecheck`
 - `npm run build`
+- `npm test`
 
 Known validation note:
 
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
+- Docker Desktop, `psql`, and a local PostgreSQL service are not installed on this machine yet, so database migration and API runtime testing are still blocked locally.
 
 ## Local Runtime
 
@@ -106,7 +108,7 @@ API app:
 8. Configure stable production signing keys with `npm run crypto:keygen`.
 9. Add verifier identity capture and IP hashing to verification events.
 10. Add audit views in the web app.
-11. Add tests for Authority Grant enforcement, gateway boundaries, result workflow, and Access Grant verification.
+11. Expand tests from crypto/authority unit coverage into database-backed workflow tests once PostgreSQL is available.
 
 ## GitHub Status
 

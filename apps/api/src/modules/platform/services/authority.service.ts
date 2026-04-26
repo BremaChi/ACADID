@@ -37,7 +37,7 @@ export class AuthorityService {
       (grant) =>
         grant.effectiveFrom <= now &&
         (!grant.expiresAt || grant.expiresAt > now) &&
-        this.permissionAllows(grant.permissions, permission)
+        permissionAllows(grant.permissions, permission)
     );
 
     if (!activeGrant) {
@@ -95,17 +95,18 @@ export class AuthorityService {
     return { OR: refs };
   }
 
-  private permissionAllows(permissions: Prisma.JsonValue, permission: string): boolean {
-    if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
-      return false;
-    }
+}
 
-    const record = permissions as Record<string, unknown>;
-    if (record.all === true || record[permission] === true) {
-      return true;
-    }
-
-    const allowed = record.allowed ?? record.permissions;
-    return Array.isArray(allowed) && allowed.includes(permission);
+export function permissionAllows(permissions: Prisma.JsonValue, permission: string): boolean {
+  if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
+    return false;
   }
+
+  const record = permissions as Record<string, unknown>;
+  if (record.all === true || record[permission] === true) {
+    return true;
+  }
+
+  const allowed = record.allowed ?? record.permissions;
+  return Array.isArray(allowed) && allowed.includes(permission);
 }
