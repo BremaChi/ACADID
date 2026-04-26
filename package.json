@@ -1,0 +1,29 @@
+{
+  "name": "acadid",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AcadID permanent academic identity infrastructure",
+  "packageManager": "npm@11.6.2",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "db:generate": "npm --workspace @acadid/database run generate",
+    "db:migrate": "npm --workspace @acadid/database run migrate"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "prettier": "^3.3.3",
+    "turbo": "^2.0.11",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
