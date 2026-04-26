@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: acadid-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: acadid
+      POSTGRES_PASSWORD: acadid
+      POSTGRES_DB: acadid
+    ports:
+      - "5432:5432"
+    volumes:
+      - acadid-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acadid -d acadid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  acadid-postgres-data:

@@ -83,10 +83,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Configure PostgreSQL.
+1. Start PostgreSQL using Docker Compose or a local PostgreSQL install.
 2. Run the first Prisma migration.
 3. Seed the first AcadID Super Admin.
-4. Implement real auth sessions and password hashing.
+4. Implement real auth sessions and password verification.
 5. Implement institution onboarding persistence end to end.
 6. Implement Authority Grant enforcement with real MOU document metadata.
 7. Implement student register ingestion.
