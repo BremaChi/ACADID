@@ -20,6 +20,7 @@ export class AuthService {
         email: true,
         fullName: true,
         role: true,
+        learnerId: true,
         passwordHash: true,
         mfaEnabled: true
       }
@@ -33,7 +34,8 @@ export class AuthService {
       sub: user.uuid,
       email: user.email,
       role: user.role,
-      fullName: user.fullName
+      fullName: user.fullName,
+      learnerId: user.learnerId ?? undefined
     });
 
     return {
@@ -44,6 +46,7 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        learnerId: user.learnerId,
         mfaEnabled: user.mfaEnabled
       }
     };

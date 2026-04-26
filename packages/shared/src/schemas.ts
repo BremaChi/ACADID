@@ -53,9 +53,23 @@ export const ingestResultBatchSchema = z.object({
   rows: z.array(resultRowSchema).min(1).max(1000)
 });
 
+export const createAccessGrantSchema = z.object({
+  credentialRef: z.string().min(1),
+  scope: z.enum(["FULL", "GPA", "SEMESTER", "SUBJECT"]).default("FULL"),
+  recipientLabel: z.string().min(2),
+  expiresAt: z.string().datetime().optional(),
+  maxViews: z.number().int().positive().max(100).optional()
+});
+
+export const revokeAccessGrantSchema = z.object({
+  accessGrantId: z.string().uuid()
+});
+
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;
 export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSchema>;
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
+export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
+export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;

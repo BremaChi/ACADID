@@ -5,6 +5,7 @@ export interface AuthTokenPayload {
   email: string;
   fullName: string;
   role: UserRole;
+  learnerId?: string;
   iat: number;
   exp: number;
 }

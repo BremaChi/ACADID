@@ -1,32 +1,215 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { createHash, randomBytes } from "node:crypto";
+import { createAccessGrantSchema, revokeAccessGrantSchema } from "@acadid/shared";
+import type { AuthTokenPayload } from "../../auth/types.js";
+import { AuditService } from "../../platform/services/audit.service.js";
+import { PrismaService } from "../../platform/services/prisma.service.js";
 
 @Injectable()
 export class AccessService {
-  passport() {
-    return { next: "Return authenticated learner passport." };
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService
+  ) {}
+
+  async passport(auth: AuthTokenPayload) {
+    const learnerId = this.requireLearner(auth);
+    const learner = await this.prisma.learner.findUnique({
+      where: { uuid: learnerId },
+      select: {
+        ain: true,
+        fullName: true,
+        dateOfBirth: true,
+        identityStatus: true,
+        enrolments: {
+          select: {
+            studentNumber: true,
+            level: true,
+            programme: true,
+            status: true,
+            institution: {
+              select: {
+                institutionId: true,
+                officialName: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!learner) {
+      throw new BadRequestException("Learner passport not found.");
+    }
+
+    return learner;
   }
 
-  credentials() {
-    return { next: "Return authenticated learner credentials." };
+  async credentials(auth: AuthTokenPayload) {
+    const learnerId = this.requireLearner(auth);
+    return this.prisma.credential.findMany({
+      where: { learnerId },
+      orderBy: { issuedAt: "desc" },
+      select: {
+        credentialRef: true,
+        type: true,
+        status: true,
+        issuedAt: true,
+        revokedAt: true,
+        revocationReason: true,
+        institution: {
+          select: {
+            institutionId: true,
+            officialName: true
+          }
+        }
+      }
+    });
   }
 
-  createShareLink(body: unknown) {
+  async createShareLink(auth: AuthTokenPayload, body: unknown) {
+    const learnerId = this.requireLearner(auth);
+    const parsed = createAccessGrantSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const credential = await this.prisma.credential.findFirst({
+      where: {
+        credentialRef: parsed.data.credentialRef,
+        learnerId
+      }
+    });
+
+    if (!credential) {
+      throw new BadRequestException("Credential not found for learner.");
+    }
+
+    if (credential.status !== "ACTIVE") {
+      throw new BadRequestException("Only active credentials can be shared.");
+    }
+
+    const token = randomBytes(32).toString("base64url");
+    const grant = await this.prisma.accessGrant.create({
+      data: {
+        learnerId,
+        credentialId: credential.uuid,
+        tokenHash: this.hashToken(token),
+        scope: parsed.data.scope,
+        recipientLabel: parsed.data.recipientLabel,
+        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : undefined,
+        maxViews: parsed.data.maxViews
+      },
+      select: {
+        uuid: true,
+        scope: true,
+        recipientLabel: true,
+        expiresAt: true,
+        maxViews: true
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "access_grant.create",
+      targetType: "AccessGrant",
+      targetId: grant.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        credentialRef: parsed.data.credentialRef,
+        scope: grant.scope,
+        recipientLabel: grant.recipientLabel
+      }
+    });
+
     return {
       accepted: true,
-      next: "Create scoped, expiring Access Grant and return one-time visible token.",
-      received: body
+      accessGrantId: grant.uuid,
+      token,
+      verifyUrl: `/verify/${token}`,
+      scope: grant.scope,
+      recipientLabel: grant.recipientLabel,
+      expiresAt: grant.expiresAt,
+      maxViews: grant.maxViews
     };
   }
 
-  revokeGrant(body: unknown) {
-    return {
-      accepted: true,
-      next: "Set revokedAt on Access Grant.",
-      received: body
-    };
+  async revokeGrant(auth: AuthTokenPayload, body: unknown) {
+    const learnerId = this.requireLearner(auth);
+    const parsed = revokeAccessGrantSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const grant = await this.prisma.accessGrant.update({
+      where: { uuid: parsed.data.accessGrantId },
+      data: { revokedAt: new Date() },
+      select: {
+        uuid: true,
+        learnerId: true,
+        revokedAt: true
+      }
+    });
+
+    if (grant.learnerId !== learnerId) {
+      throw new BadRequestException("Access Grant does not belong to learner.");
+    }
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "access_grant.revoke",
+      targetType: "AccessGrant",
+      targetId: grant.uuid,
+      outcome: "SUCCESS"
+    });
+
+    return { accepted: true, accessGrantId: grant.uuid, revokedAt: grant.revokedAt };
   }
 
-  verificationLog() {
-    return { next: "Return learner-visible Verification Events." };
+  async verificationLog(auth: AuthTokenPayload) {
+    const learnerId = this.requireLearner(auth);
+    return this.prisma.verificationEvent.findMany({
+      where: {
+        credential: {
+          learnerId
+        }
+      },
+      orderBy: { verifiedAt: "desc" },
+      take: 100,
+      select: {
+        uuid: true,
+        verifierType: true,
+        verifierName: true,
+        outcome: true,
+        verifiedAt: true,
+        scopeViewed: true,
+        credential: {
+          select: {
+            credentialRef: true,
+            type: true,
+            institution: {
+              select: {
+                institutionId: true,
+                officialName: true
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  private requireLearner(auth: AuthTokenPayload): string {
+    if (!auth.learnerId) {
+      throw new BadRequestException("Authenticated account is not linked to a learner passport.");
+    }
+
+    return auth.learnerId;
+  }
+
+  private hashToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
   }
 }

@@ -28,8 +28,8 @@ The API has these first modules:
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
 - Ingestion Door for student register intake, learner matching/creation, AIN assignment, enrolment creation, and draft result batch creation.
 - Governance Door for batch submission, review, approval, publication, rejection, amendment, and revocation.
-- Access Door scaffold for passport, credentials, share links, grant revocation, and verification log.
-- Verification Door scaffold for token/reference/status verification.
+- Access Door for learner passport, credential list, hashed share-link creation, grant revocation, and learner verification log.
+- Verification Door for share-token, credential-reference, and credential-status checks.
 - Platform services for Prisma, audit writing, Authority Grant enforcement, and credential signing.
 - Admin routes are restricted to `ACADID_SUPER_ADMIN`.
 - Ingestion routes are restricted to AcadID admins and institution operating roles.
@@ -102,9 +102,9 @@ API app:
    - Approved.
    - Published.
 9. Replace placeholder credential signing before pilot.
-10. Add real Access Grant token hashing and verification.
+10. Add verifier identity capture and IP hashing to verification events.
 11. Add audit views in the web app.
-12. Add tests for Authority Grant enforcement, gateway boundaries, and result workflow.
+12. Add tests for Authority Grant enforcement, gateway boundaries, result workflow, and Access Grant verification.
 
 ## GitHub Status
 
@@ -120,9 +120,9 @@ Already pushed:
 
 Current local work to push next:
 
-- Ingestion persistence for student register and result batches.
-- Authority Grant enforcement in ingestion and publication.
-- Role guards on ingestion and governance routes.
+- Student passport and credential access endpoints.
+- Hashed Access Grant share-link creation and revocation.
+- Public share-token verification with expiry, revocation, view-limit, and credential-status checks.
 
 ## Immediate Recommendation
 
