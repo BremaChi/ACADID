@@ -17,7 +17,7 @@ Created:
 - Credential signing adapter package in `packages/crypto`.
 - Web dev helper script in `scripts/dev-web.cmd`.
 - API dev helper script in `scripts/start-api.cmd`.
-- WSL Docker PostgreSQL helper script in `scripts/start-db-wsl.cmd`.
+- Optional WSL Docker PostgreSQL fallback helper script in `scripts/start-db-wsl.cmd`.
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
 
@@ -78,11 +78,12 @@ Completed successfully:
 - `npm run build`
 - `npm test`
 - Local dashboard health check on `http://localhost:3000/`
-- PostgreSQL running in WSL Docker as `acadid-postgres`.
-- Initial Prisma migration applied to PostgreSQL.
+- Supabase PostgreSQL configured through root `.env` using `DATABASE_URL` and `DIRECT_URL`.
+- Initial Prisma migration deployed to Supabase with `npm run db:deploy`.
 - Seeded AcadID Super Admin: `founder@acadid.local`.
 - API health check passes at `http://localhost:4000/api/health`.
 - Founder admin login succeeds against the live database.
+- `npm run smoke:api`
 - End-to-end pilot flow verified:
   - Created pilot institution `AINi-00001`.
   - Created active Authority Grant.
@@ -93,8 +94,7 @@ Completed successfully:
 Known validation note:
 
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
-- Docker is available through WSL. The default WSL user did not have Docker socket permission, so Docker commands were run through `wsl -u root`.
-- WSL needed a keepalive process while testing from Windows so Docker port forwarding stayed available.
+- Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 
 ## Local Runtime
 
@@ -104,7 +104,7 @@ Web app:
 
 API app:
 
-- Running at `http://localhost:4000` after PostgreSQL is running, migrations are applied, and seed data exists.
+- Running at `http://localhost:4000` after Supabase settings are present in root `.env`, migrations are applied, and seed data exists.
 
 ## Next Engineering Steps
 
@@ -126,19 +126,17 @@ Already pushed:
 - Monorepo foundation scaffold.
 - Database migration and seed workflow.
 - Web startup helper.
-
-Current local work to push next:
-
-- PostgreSQL WSL startup helper.
-- API startup fix for compiled monorepo output.
-- Runtime docs/status updates for live database verification.
+- Supabase PostgreSQL migration workflow.
+- Prisma root `.env` helper.
+- Supabase API smoke test.
+- Runtime docs/status updates for active Supabase development.
 
 ## Immediate Recommendation
 
-Add database-backed automated tests now that PostgreSQL is available locally.
+Add database-backed automated tests now that Supabase PostgreSQL is the active development database.
 
 Best production-safe database path:
 
-- Use Docker Desktop only for local development.
-- Use managed PostgreSQL for pilot/production when hosting is selected.
+- Use Supabase PostgreSQL as the active cloud database during development/pilot.
+- Keep Docker PostgreSQL only as optional local fallback.
 - Keep PostgreSQL as the system of record for speed, integrity, and future scale.

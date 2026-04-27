@@ -11,17 +11,22 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "typecheck": "turbo typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
-    "db:generate": "npm --workspace @acadid/database run generate",
-    "db:deploy": "npm --workspace @acadid/database exec -- prisma migrate deploy",
-    "db:migrate": "npm --workspace @acadid/database run migrate",
-    "db:seed": "npm --workspace @acadid/database run seed",
-    "db:studio": "npm --workspace @acadid/database run studio",
+    "db:generate": "node scripts/prisma-with-root-env.mjs generate",
+    "db:deploy": "node scripts/db-deploy.mjs",
+    "db:push": "node scripts/prisma-with-root-env.mjs db push",
+    "db:migrate": "node scripts/prisma-with-root-env.mjs migrate dev",
+    "db:seed": "node scripts/prisma-with-root-env.mjs db seed",
+    "db:studio": "node scripts/prisma-with-root-env.mjs studio",
+    "smoke:api": "node scripts/smoke-api-supabase.mjs",
     "crypto:keygen": "node scripts/generate-credential-keypair.mjs"
   },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
+  "prisma": {
+    "seed": "node packages/database/prisma/seed.mjs"
+  },
   "devDependencies": {
     "@types/node": "^20.12.12",
     "prettier": "^3.3.3",
@@ -30,5 +35,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
   }
 }

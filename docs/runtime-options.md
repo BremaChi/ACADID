@@ -1,55 +1,51 @@
 # AcadID Runtime Options
 
-AcadID should keep PostgreSQL as the production database.
+AcadID now uses Supabase PostgreSQL as the active development database.
 
-PostgreSQL is the right long-term fit because it supports strong relational consistency, transactions, indexing, JSON fields for credential payloads, audit history, and proven scaling paths. Docker is not part of the production architecture; it is only a convenient way to run PostgreSQL locally during development.
+The backend API architecture stays the same: NestJS and Prisma connect directly to PostgreSQL. Do not rewrite the app to use the Supabase frontend SDK for core AcadID data flows.
 
-## Local Development Status
+## Active Database
 
-This Windows machine now runs PostgreSQL through Docker in WSL/Ubuntu.
-
-Useful details:
-
-- Container name: `acadid-postgres`
-- Database URL from Windows: `postgresql://acadid:acadid@127.0.0.1:5432/acadid`
-- The default WSL user may not have Docker socket permission, so the helper script runs Docker through `wsl -u root`.
-- A small WSL keepalive process helps Docker port forwarding remain available while Windows commands talk to PostgreSQL.
-
-## Safe Options
-
-### Option 1: WSL Docker For Local Development
-
-Run:
+Use the root `.env` file:
 
 ```bash
-scripts/start-db-wsl.cmd
-$env:DATABASE_URL="postgresql://acadid:acadid@127.0.0.1:5432/acadid"
+DATABASE_URL=...
+DIRECT_URL=...
+```
+
+- `DATABASE_URL` is the runtime connection used by the API and Prisma Client.
+- `DIRECT_URL` is the direct database connection used by Prisma migrations.
+- If the Supabase direct host is unavailable from a local network, use the Supabase session-pooler migration URL on port `5432` with `sslmode=require` until a direct IPv4 route is available.
+- Never commit `.env` or paste database passwords into documentation, logs, or GitHub.
+
+## Normal Development Flow
+
+From the repo root:
+
+```bash
+npm run db:generate
 npm run db:deploy
 npm run db:seed
 scripts/start-api.cmd
+scripts/start-web.cmd
+npm run smoke:api
 ```
 
-This does not reduce production performance. It only gives developers a repeatable local PostgreSQL instance.
-
-### Option 2: Local PostgreSQL On Windows
-
-Install PostgreSQL directly on Windows, create the `acadid` database/user, then run:
+Then verify:
 
 ```bash
-$env:DATABASE_URL="postgresql://acadid:acadid@127.0.0.1:5432/acadid"
-npm run db:deploy
-npm run db:seed
-scripts/start-api.cmd
+http://localhost:4000/api/health
+http://localhost:3000
 ```
 
-This is fine for one machine, but Docker is usually easier for repeatability.
+`npm run db:deploy` first tries Prisma's normal migration engine. If the local machine cannot reach Supabase through the migration connection, it falls back to the Prisma Client migration runner so the checked-in SQL migration is still applied safely.
 
-### Option 3: Managed PostgreSQL For Pilot/Production
+## Optional Local Fallback
 
-Use a managed PostgreSQL provider such as AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL, Neon, Supabase, or Render Postgres.
+`docker-compose.yml` and `scripts/start-db-wsl.cmd` remain available only as a local fallback. They are not required for normal development now that Supabase is the active database.
 
-For AcadID pilot and production, managed PostgreSQL is the recommended route because it gives backups, monitoring, upgrades, encryption, high availability options, and future read replicas without weakening performance.
+Use the Docker fallback only when Supabase is unavailable or when testing a completely isolated local database.
 
 ## Production Direction
 
-For the pilot, use managed PostgreSQL in a region that satisfies AcadID's Nigeria data residency commitment and partner contracts. Keep local Docker only for development.
+For pilot and production, keep PostgreSQL as the system of record. Supabase can serve the early cloud PostgreSQL role while AcadID validates pilot workflows. Before production launch, confirm region, backup, encryption, connection pooling, audit, and data residency commitments match AcadID's Nigeria-focused contracts.

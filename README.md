@@ -45,6 +45,15 @@ Build the data center, gateway, auth, audit, Authority Grant workflow, Internal 
 
 ## Runtime Notes
 
-PostgreSQL remains the production database choice. Local Docker is only a development convenience, not a production requirement.
+PostgreSQL remains the production database choice. Supabase PostgreSQL is now the active development database, connected through the backend API with `DATABASE_URL` and `DIRECT_URL` in the root `.env`.
+
+Docker PostgreSQL is optional local fallback only, not part of the normal development workflow.
 
 See `docs/runtime-options.md` for the available local and production database setup options.
+
+Useful commands:
+
+- `npm run db:generate`
+- `npm run db:deploy`
+- `npm run db:seed`
+- `npm run smoke:api`
