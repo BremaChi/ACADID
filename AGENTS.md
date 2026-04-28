@@ -1,19 +1,15 @@
-# AcadID UI/UX Rules
+# ACAD.ID UI/UX Rules
 
 Build clean, human, production-quality UI. Avoid AI-generated-looking layouts.
 
-Design style:
-- Mobile-first
-- Soft neutral background
-- White cards
-- Rounded corners
-- Light shadow
-- Clear spacing
-- No huge empty hero banners
-- No dark scary background
-- No random gradients
-- Use calm blue/teal accents only
-- Every page must have clear title, subtitle, action button, and empty state
+Design system:
+- Follow the ACAD.ID styling system strictly.
+- Core colors only: `#0B1F3A`, `#2F6BFF`, `#FFFFFF`, `#F5F7FA`, `#1A1A1A`, `#6B7280`, `#E5E7EB`, and the defined status colors.
+- Use blue only for actions, links, and focus states.
+- No teal, random colors, gradients, heavy shadows, or complex animations.
+- Font stack is `'Inter', sans-serif`.
+- Buttons use 8px radius; cards use 12px radius.
+- Every page must have clear title, subtitle, action button, and empty state.
 
 Layout rules:
 - Sidebar should be collapsible
@@ -22,6 +18,7 @@ Layout rules:
 - Use consistent spacing: 16px / 24px / 32px
 - Buttons must look professional, not colorful everywhere
 - Tables must be clean with search, filters, and status badges
+- Max page width should be 1200px and centered.
 
 Before finishing any UI task, review:
 1. Does it look like a real SaaS product?

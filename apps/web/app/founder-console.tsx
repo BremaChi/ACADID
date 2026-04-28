@@ -100,6 +100,7 @@ export function FounderConsole() {
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
   const [totpEnableCode, setTotpEnableCode] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -137,13 +138,24 @@ export function FounderConsole() {
 
   const metrics = useMemo(
     () => [
-      { label: "Institutions", value: institutions.length.toString(), helper: "Live from API" },
-      { label: "API Keys", value: activeKeys.length.toString(), helper: "Active keys" },
-      { label: "Database", value: "Live", helper: "Supabase PostgreSQL" },
-      { label: "Gateway", value: "Scoped", helper: "/auth/token enabled" }
+      { label: "Institutions", value: institutions.length.toString(), helper: "Total connected", icon: "building" },
+      { label: "API Keys", value: activeKeys.length.toString(), helper: "Active keys", icon: "key" },
+      { label: "Database", value: "Live", helper: "Supabase PostgreSQL", icon: "database" },
+      { label: "Gateway", value: "Scoped", helper: "Auth/Token enabled", icon: "shield" }
     ],
     [activeKeys.length, institutions.length]
   );
+  const recentInstitutions = institutions.slice(0, 5);
+  const revokedKeys = globalApiKeys.filter((key) => key.status === "REVOKED").length;
+  const expiredKeys = globalApiKeys.filter((key) => key.status === "EXPIRED").length;
+  const inactiveKeys = globalApiKeys.filter((key) => !["ACTIVE", "REVOKED", "EXPIRED"].includes(key.status)).length;
+  const founderInitials = founderName
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("acadid_founder_token");
@@ -345,41 +357,41 @@ export function FounderConsole() {
 
   if (!token) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8 text-ink">
-        <section className="mx-auto max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-lagoon">AcadID</p>
+      <main className="min-h-screen bg-bgMain px-4 py-8 text-textPrimary">
+        <section className="mx-auto max-w-md rounded-lg border border-borderLight bg-white p-6 shadow-sm">
+          <BrandMark />
           <h1 className="mt-2 text-2xl font-semibold">Founder Console</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Sign in to manage institutions, Authority Grants, and API keys.</p>
+          <p className="mt-2 text-sm leading-6 text-textSecondary">Sign in to manage institutions, Authority Grants, and API keys.</p>
           <form className="mt-6 space-y-4" onSubmit={handleLogin}>
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Email</span>
+              <span className="text-sm font-medium text-textPrimary">Email</span>
               <input
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                className="mt-1 h-11 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Password</span>
+              <span className="text-sm font-medium text-textPrimary">Password</span>
               <input
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                className="mt-1 h-11 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Authenticator code</span>
+              <span className="text-sm font-medium text-textPrimary">Authenticator code</span>
               <input
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                className="mt-1 h-11 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                 value={totpCode}
                 onChange={(event) => setTotpCode(event.target.value)}
                 inputMode="numeric"
                 placeholder="Required after TOTP is enabled"
               />
             </label>
-            <button className="h-11 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading}>
+            <button className="h-11 w-full rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
@@ -390,21 +402,33 @@ export function FounderConsole() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-ink">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6 lg:py-6">
-        <aside className="rounded-lg border border-slate-200 bg-white shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-48px)] lg:w-64">
-          <div className="flex items-center justify-between border-b border-slate-200 p-4">
-            <div>
-              <p className="text-sm font-semibold text-lagoon">AcadID</p>
-              <p className="text-xs text-slate-500">Founder Console</p>
-            </div>
+    <main className="min-h-screen bg-bgMain text-textPrimary">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6 lg:py-6">
+        <aside
+          className={`rounded-lg border border-borderLight bg-white shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-48px)] ${
+            sidebarCollapsed ? "lg:w-20" : "lg:w-64"
+          }`}
+        >
+          <div className={`flex items-center justify-between border-b border-borderLight p-5 ${sidebarCollapsed ? "lg:justify-center lg:p-4" : ""}`}>
+            <BrandMark compact={sidebarCollapsed} />
+            <button
+              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={`hidden h-8 w-8 items-center justify-center rounded-md border border-borderLight text-primary hover:border-accent hover:text-accent lg:flex ${
+                sidebarCollapsed ? "lg:absolute lg:right-2 lg:top-4" : ""
+              }`}
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              type="button"
+            >
+              <SidebarToggleIcon collapsed={sidebarCollapsed} />
+            </button>
             <details className="lg:hidden">
-              <summary className="cursor-pointer rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+              <summary className="cursor-pointer rounded-md border border-borderLight px-3 py-2 text-sm font-medium text-textPrimary">
                 Menu
               </summary>
-              <nav className="absolute left-4 right-4 z-10 mt-3 rounded-lg border border-slate-200 bg-white p-2 shadow-md">
+              <nav className="absolute left-4 right-4 z-10 mt-3 rounded-lg border border-borderLight bg-white p-2 shadow-sm">
                 {navItems.map((item) => (
-                  <a key={item} className="block rounded-md px-3 py-2 text-sm text-slate-700" href={`#${slug(item)}`}>
+                  <a key={item} className="block rounded-md px-3 py-2 text-sm text-textPrimary" href={`#${slug(item)}`}>
                     {item}
                   </a>
                 ))}
@@ -415,74 +439,136 @@ export function FounderConsole() {
             {navItems.map((item) => (
               <a
                 key={item}
-                className={`mb-1 block rounded-md px-3 py-2 text-sm font-medium ${
-                  item === "Overview" ? "bg-mist text-lagoon" : "text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`mb-1 flex items-center rounded-md px-3 py-3 text-sm font-medium ${
+                  item === "Overview" ? "bg-soft text-accent" : "text-primary hover:bg-soft"
+                } ${sidebarCollapsed ? "justify-center" : "gap-3"}`}
                 href={`#${slug(item)}`}
+                title={sidebarCollapsed ? item : undefined}
               >
-                {item}
+                <SideIcon label={item} active={item === "Overview"} />
+                {sidebarCollapsed ? null : item}
               </a>
             ))}
           </nav>
-          <div className="hidden border-t border-slate-200 p-4 lg:block">
-            <p className="text-xs font-semibold uppercase text-slate-500">Signed in</p>
-            <p className="mt-2 text-sm font-medium text-slate-700">{founderName}</p>
-            <button className="mt-3 h-9 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-600" onClick={logout}>
-              Log out
+          <div className={`hidden border-t border-borderLight lg:block ${sidebarCollapsed ? "space-y-3 p-3" : "space-y-4 p-4"}`}>
+            <div className={`rounded-lg border border-borderLight bg-white shadow-sm ${sidebarCollapsed ? "p-2" : "p-4"}`}>
+              <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"}`}>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-white">
+                  <SideIcon label="Security" active />
+                </div>
+                {sidebarCollapsed ? null : (
+                  <div>
+                    <p className="text-sm font-medium text-primary">Founder Console</p>
+                    <p className="text-xs text-textSecondary">Super Admin</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            {sidebarCollapsed ? null : (
+              <div className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-primary">Quick Actions</p>
+                <div className="mt-3 space-y-2">
+                  <QuickActionButton label="Add Institution" target="institutions" />
+                  <QuickActionButton label="Generate API Key" target="api-keys" />
+                  <QuickActionButton label="View Reports" target="reports" />
+                </div>
+              </div>
+            )}
+            <button
+              className={`flex h-10 items-center rounded-md px-3 text-sm font-medium text-primary hover:bg-soft ${sidebarCollapsed ? "w-full justify-center" : "gap-3"}`}
+              onClick={logout}
+              title={sidebarCollapsed ? "Logout" : undefined}
+            >
+              <SideIcon label="Logout" />
+              {sidebarCollapsed ? null : "Logout"}
             </button>
           </div>
         </aside>
 
-        <section className="flex-1 space-y-4">
-          <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-ink">Founder Console</h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Live Phase 0 control plane for institution onboarding and API access.
-                </p>
-              </div>
+        <section className="flex-1 space-y-5">
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full lg:max-w-md">
+              <span className="pointer-events-none absolute left-4 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border-2 border-accent" />
+              <input
+                className="h-12 w-full rounded-lg border border-borderLight bg-white pl-10 pr-4 text-sm text-textPrimary outline-none shadow-sm focus:border-accent"
+                placeholder="Search institutions, keys..."
+                value={apiKeySearch}
+                onChange={(event) => setApiKeySearch(event.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-borderLight bg-white text-primary shadow-sm hover:border-accent hover:text-accent" aria-label="Notifications" type="button">
+                <BellIcon />
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold text-white">
+                  3
+                </span>
+              </button>
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white">{founderInitials || "FA"}</div>
               <button
-                className="h-10 rounded-md bg-lagoon px-4 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"
-                onClick={() => document.getElementById("api-keys")?.scrollIntoView({ behavior: "smooth" })}
+                className="h-11 rounded-md bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-primary disabled:bg-borderLight disabled:text-disabled"
+                onClick={() => document.getElementById("institutions")?.scrollIntoView({ behavior: "smooth" })}
               >
-                Generate API Key
+                Add Institution
               </button>
             </div>
-            {notice ? <NoticeMessage notice={notice} /> : null}
           </header>
 
-          <section id="overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {metrics.map((metric) => (
-              <article key={metric.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-medium text-slate-500">{metric.label}</p>
-                <p className="mt-2 text-2xl font-semibold text-ink">{metric.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{metric.helper}</p>
-              </article>
-            ))}
+          {notice ? <NoticeMessage notice={notice} /> : null}
+
+          <section id="overview" className="space-y-5">
+            <div>
+              <h1 className="text-[24px] font-semibold leading-tight text-primary">Welcome back, Founder Admin</h1>
+              <p className="mt-2 text-sm leading-6 text-textSecondary">Here is what is happening with your ACAD.ID infrastructure.</p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {metrics.map((metric) => (
+                <article key={metric.label} className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <IconTile name={metric.icon} />
+                    <div>
+                      <p className="text-sm font-medium text-textSecondary">{metric.label}</p>
+                      <p className="mt-1 text-[28px] font-semibold leading-none text-primary">{metric.value}</p>
+                      <p className="mt-2 text-xs text-textSecondary">{metric.helper}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <section className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+              <OverviewChart institutionCount={institutions.length} />
+              <RecentInstitutions institutions={recentInstitutions} />
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-[1fr_0.9fr_0.8fr]">
+              <ApiUsageDonut active={activeKeys.length} revoked={revokedKeys} expired={expiredKeys} inactive={inactiveKeys} />
+              <ApiRequestBars />
+              <SystemHealth />
+            </section>
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
-            <article id="institutions" className="rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <article id="institutions" className="rounded-lg border border-borderLight bg-white shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-borderLight p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-ink">Institution Management</h2>
-                  <p className="mt-1 text-sm text-slate-600">Create institutions and select one for authority/key actions.</p>
+                  <h2 className="text-lg font-semibold text-textPrimary">Institution Management</h2>
+                  <p className="mt-1 text-sm text-textSecondary">Create institutions and select one for authority/key actions.</p>
                 </div>
-                <button className="h-10 rounded-md border border-lagoon px-4 text-sm font-semibold text-lagoon hover:bg-mist" onClick={() => void refreshData()}>
+                <button className="h-10 rounded-md border border-accent px-4 text-sm font-medium text-accent hover:bg-soft disabled:border-borderLight disabled:text-disabled" onClick={() => void refreshData()}>
                   Refresh
                 </button>
               </div>
 
-              <form className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-[1fr_150px_120px_120px_auto]" onSubmit={handleCreateInstitution}>
+              <form className="grid gap-3 border-b border-borderLight p-4 md:grid-cols-[1fr_150px_120px_120px_auto]" onSubmit={handleCreateInstitution}>
                 <input
-                  className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                  className="h-10 rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                   placeholder="Institution official name"
                   value={institutionForm.officialName}
                   onChange={(event) => setInstitutionForm({ ...institutionForm, officialName: event.target.value })}
                 />
                 <select
-                  className="h-10 rounded-md border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-lagoon"
+                  className="h-10 rounded-md border border-borderLight px-3 text-sm text-textPrimary outline-none focus:border-accent"
                   value={institutionForm.type}
                   onChange={(event) => setInstitutionForm({ ...institutionForm, type: event.target.value })}
                 >
@@ -492,13 +578,13 @@ export function FounderConsole() {
                   <option value="EXAM_BODY">Exam body</option>
                 </select>
                 <input
-                  className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                  className="h-10 rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                   placeholder="State"
                   value={institutionForm.state}
                   onChange={(event) => setInstitutionForm({ ...institutionForm, state: event.target.value })}
                 />
                 <select
-                  className="h-10 rounded-md border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-lagoon"
+                  className="h-10 rounded-md border border-borderLight px-3 text-sm text-textPrimary outline-none focus:border-accent"
                   value={institutionForm.tier}
                   onChange={(event) => setInstitutionForm({ ...institutionForm, tier: event.target.value })}
                 >
@@ -506,14 +592,14 @@ export function FounderConsole() {
                   <option value="ACTIVE">Active</option>
                   <option value="VERIFIED">Verified</option>
                 </select>
-                <button className="h-10 rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading}>
+                <button className="h-10 rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" disabled={loading}>
                   Create
                 </button>
               </form>
 
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <thead className="bg-soft text-xs uppercase text-textSecondary">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Institution</th>
                       <th className="px-4 py-3 font-semibold">State</th>
@@ -526,19 +612,19 @@ export function FounderConsole() {
                     {institutions.map((institution) => (
                       <tr
                         key={institution.uuid}
-                        className={`cursor-pointer border-t border-slate-100 ${institution.uuid === selectedInstitutionId ? "bg-mist" : "hover:bg-slate-50"}`}
+                        className={`cursor-pointer border-t border-borderLight ${institution.uuid === selectedInstitutionId ? "bg-soft" : "hover:bg-soft"}`}
                         onClick={() => setSelectedInstitutionId(institution.uuid)}
                       >
                         <td className="px-4 py-3">
-                          <p className="font-medium text-ink">{institution.officialName}</p>
-                          <p className="text-xs text-slate-500">{institution.institutionId}</p>
+                          <p className="font-medium text-textPrimary">{institution.officialName}</p>
+                          <p className="text-xs text-textSecondary">{institution.institutionId}</p>
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{institution.state}</td>
-                        <td className="px-4 py-3 text-slate-700">{titleCase(institution.tier)}</td>
+                        <td className="px-4 py-3 text-textPrimary">{institution.state}</td>
+                        <td className="px-4 py-3 text-textPrimary">{titleCase(institution.tier)}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={institution.status} />
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{apiKeys[institution.uuid]?.length ?? 0}</td>
+                        <td className="px-4 py-3 text-textPrimary">{apiKeys[institution.uuid]?.length ?? 0}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -548,11 +634,11 @@ export function FounderConsole() {
             </article>
 
             <aside id="api-keys" className="space-y-4">
-              <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-ink">Selected Institution</h2>
+              <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-textPrimary">Selected Institution</h2>
                 {selectedInstitution ? (
-                  <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-700">
-                    <p className="font-medium text-ink">{selectedInstitution.officialName}</p>
+                  <div className="mt-3 rounded-md bg-soft p-3 text-sm text-textPrimary">
+                    <p className="font-medium text-textPrimary">{selectedInstitution.officialName}</p>
                     <p className="mt-1">{selectedInstitution.institutionId}</p>
                   </div>
                 ) : (
@@ -560,45 +646,45 @@ export function FounderConsole() {
                 )}
               </article>
 
-              <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-ink">Authority Grant</h2>
+              <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-textPrimary">Authority Grant</h2>
                 <form className="mt-4 space-y-3" onSubmit={handleCreateAuthorityGrant}>
                   <input
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                     placeholder="Signed by name"
                     value={authorityForm.signedByName}
                     onChange={(event) => setAuthorityForm({ ...authorityForm, signedByName: event.target.value })}
                   />
                   <input
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                     placeholder="Signed by title"
                     value={authorityForm.signedByTitle}
                     onChange={(event) => setAuthorityForm({ ...authorityForm, signedByTitle: event.target.value })}
                   />
                   <input
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                     type="date"
                     value={authorityForm.effectiveFrom}
                     onChange={(event) => setAuthorityForm({ ...authorityForm, effectiveFrom: event.target.value })}
                   />
-                  <button className="h-10 w-full rounded-md border border-lagoon px-4 text-sm font-semibold text-lagoon hover:bg-mist" disabled={loading || !selectedInstitutionId}>
+                  <button className="h-10 w-full rounded-md border border-accent px-4 text-sm font-medium text-accent hover:bg-soft disabled:border-borderLight disabled:text-disabled" disabled={loading || !selectedInstitutionId}>
                     Activate Authority
                   </button>
                 </form>
               </article>
 
-              <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-ink">API Key Generation</h2>
+              <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-textPrimary">API Key Generation</h2>
                 <form className="mt-4 space-y-3" onSubmit={handleCreateApiKey}>
                   <input
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                     placeholder="Key label"
                     value={keyForm.label}
                     onChange={(event) => setKeyForm({ ...keyForm, label: event.target.value })}
                   />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <select
-                      className="h-10 rounded-md border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-lagoon"
+                      className="h-10 rounded-md border border-borderLight px-3 text-sm text-textPrimary outline-none focus:border-accent"
                       value={keyForm.environment}
                       onChange={(event) => setKeyForm({ ...keyForm, environment: event.target.value as "SANDBOX" | "PRODUCTION" })}
                     >
@@ -606,7 +692,7 @@ export function FounderConsole() {
                       <option value="PRODUCTION">Production</option>
                     </select>
                     <input
-                      className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                      className="h-10 rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                       type="number"
                       min={1}
                       max={10000}
@@ -614,15 +700,15 @@ export function FounderConsole() {
                       onChange={(event) => setKeyForm({ ...keyForm, rateLimitPerMinute: Number(event.target.value) })}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
+                  <div className="grid grid-cols-2 gap-2 text-sm text-textPrimary">
                     {scopeOptions.map((scope) => (
-                      <label key={scope} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                      <label key={scope} className="flex items-center gap-2 rounded-md border border-borderLight bg-soft px-3 py-2">
                         <input checked={keyForm.scopes.includes(scope)} onChange={() => toggleScope(scope)} type="checkbox" />
                         <span className="break-all">{scope}</span>
                       </label>
                     ))}
                   </div>
-                  <button className="h-10 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading || !selectedInstitutionId}>
+                  <button className="h-10 w-full rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" disabled={loading || !selectedInstitutionId}>
                     Generate API Key
                   </button>
                 </form>
@@ -630,25 +716,25 @@ export function FounderConsole() {
             </aside>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
+          <section className="rounded-lg border border-borderLight bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-borderLight p-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-ink">Global API Key Management</h2>
-                <p className="mt-1 text-sm text-slate-600">Search, review, and revoke API keys across every institution.</p>
+                <h2 className="text-lg font-semibold text-textPrimary">Global API Key Management</h2>
+                <p className="mt-1 text-sm text-textSecondary">Search, review, and revoke API keys across every institution.</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input
-                  className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon sm:w-72"
+                  className="h-10 rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent sm:w-72"
                   placeholder="Search keys or institutions"
                   value={apiKeySearch}
                   onChange={(event) => setApiKeySearch(event.target.value)}
                 />
-                <div className="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+                <div className="flex rounded-md border border-borderLight bg-soft p-1">
                   {["ALL", "ACTIVE", "REVOKED"].map((status) => (
                     <button
                       key={status}
                       className={`h-8 rounded px-3 text-xs font-semibold ${
-                        apiKeyStatusFilter === status ? "bg-white text-lagoon shadow-sm" : "text-slate-600"
+                        apiKeyStatusFilter === status ? "bg-white text-accent shadow-sm" : "text-textSecondary"
                       }`}
                       onClick={() => setApiKeyStatusFilter(status)}
                       type="button"
@@ -661,7 +747,7 @@ export function FounderConsole() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <thead className="bg-soft text-xs uppercase text-textSecondary">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Key</th>
                     <th className="px-4 py-3 font-semibold">Institution</th>
@@ -674,24 +760,24 @@ export function FounderConsole() {
                 </thead>
                 <tbody>
                   {filteredGlobalApiKeys.map((apiKey) => (
-                    <tr key={apiKey.uuid} className="border-t border-slate-100">
+                    <tr key={apiKey.uuid} className="border-t border-borderLight">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-ink">{apiKey.label}</p>
-                        <p className="font-mono text-xs text-slate-500">{apiKey.clientId}</p>
+                        <p className="font-medium text-textPrimary">{apiKey.label}</p>
+                        <p className="font-mono text-xs text-textSecondary">{apiKey.clientId}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-700">{apiKey.institutionName}</p>
-                        <p className="text-xs text-slate-500">{apiKey.institutionDisplayId}</p>
+                        <p className="font-medium text-textPrimary">{apiKey.institutionName}</p>
+                        <p className="text-xs text-textSecondary">{apiKey.institutionDisplayId}</p>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{titleCase(apiKey.environment)}</td>
-                      <td className="px-4 py-3 text-slate-700">{apiKey.rateLimitPerMinute}/min</td>
-                      <td className="px-4 py-3 text-slate-700">{apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never"}</td>
+                      <td className="px-4 py-3 text-textPrimary">{titleCase(apiKey.environment)}</td>
+                      <td className="px-4 py-3 text-textPrimary">{apiKey.rateLimitPerMinute}/min</td>
+                      <td className="px-4 py-3 text-textPrimary">{apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never"}</td>
                       <td className="px-4 py-3">
                         <StatusBadge status={apiKey.status} />
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          className="h-9 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 disabled:opacity-50"
+                          className="h-9 rounded-md border border-borderLight px-3 text-sm font-medium text-textPrimary disabled:bg-borderLight disabled:text-disabled"
                           disabled={apiKey.status !== "ACTIVE" || loading}
                           onClick={() => void revokeApiKey(apiKey.uuid)}
                         >
@@ -707,14 +793,14 @@ export function FounderConsole() {
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
-            <article className="rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 p-4">
-                <h2 className="text-lg font-semibold text-ink">API Keys</h2>
-                <p className="mt-1 text-sm text-slate-600">Secrets are never shown after creation.</p>
+            <article className="rounded-lg border border-borderLight bg-white shadow-sm">
+              <div className="border-b border-borderLight p-4">
+                <h2 className="text-lg font-semibold text-textPrimary">API Keys</h2>
+                <p className="mt-1 text-sm text-textSecondary">Secrets are never shown after creation.</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <thead className="bg-soft text-xs uppercase text-textSecondary">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Key</th>
                       <th className="px-4 py-3 font-semibold">Environment</th>
@@ -725,19 +811,19 @@ export function FounderConsole() {
                   </thead>
                   <tbody>
                     {selectedKeys.map((apiKey) => (
-                      <tr key={apiKey.uuid} className="border-t border-slate-100">
+                      <tr key={apiKey.uuid} className="border-t border-borderLight">
                         <td className="px-4 py-3">
-                          <p className="font-medium text-ink">{apiKey.label}</p>
-                          <p className="font-mono text-xs text-slate-500">{apiKey.clientId}</p>
+                          <p className="font-medium text-textPrimary">{apiKey.label}</p>
+                          <p className="font-mono text-xs text-textSecondary">{apiKey.clientId}</p>
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{titleCase(apiKey.environment)}</td>
-                        <td className="px-4 py-3 text-slate-700">{apiKey.scopes.join(", ")}</td>
+                        <td className="px-4 py-3 text-textPrimary">{titleCase(apiKey.environment)}</td>
+                        <td className="px-4 py-3 text-textPrimary">{apiKey.scopes.join(", ")}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={apiKey.status} />
                         </td>
                         <td className="px-4 py-3">
                           <button
-                            className="h-9 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 disabled:opacity-50"
+                            className="h-9 rounded-md border border-borderLight px-3 text-sm font-medium text-textPrimary disabled:bg-borderLight disabled:text-disabled"
                             disabled={apiKey.status !== "ACTIVE" || loading}
                             onClick={() => void revokeApiKey(apiKey.uuid)}
                           >
@@ -752,34 +838,34 @@ export function FounderConsole() {
               </div>
             </article>
 
-            <article id="disputes" className="rounded-lg border border-dashed border-slate-300 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-ink">Dispute Queue</h2>
-              <p className="mt-1 text-sm text-slate-600">No open disputes.</p>
+            <article id="disputes" className="rounded-lg border border-dashed border-borderLight bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-semibold text-textPrimary">Dispute Queue</h2>
+              <p className="mt-1 text-sm text-textSecondary">No open disputes.</p>
               <EmptyState text="Learner and institution disputes will appear here." />
             </article>
           </section>
 
-          <section id="security" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section id="security" className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-ink">Founder Security</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
+                <h2 className="text-lg font-semibold text-textPrimary">Founder Security</h2>
+                <p className="mt-1 text-sm leading-6 text-textSecondary">
                   Add a time-based authenticator code to founder login before pilot use.
                 </p>
               </div>
-              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${mfaEnabled ? "bg-mist text-lagoon" : "bg-slate-100 text-slate-600"}`}>
+              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${mfaEnabled ? "bg-success/10 text-success" : "bg-soft text-textSecondary"}`}>
                 {mfaEnabled ? "TOTP enabled" : "TOTP not enabled"}
               </span>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-medium text-ink">Authenticator setup</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
+              <div className="rounded-md border border-borderLight bg-soft p-4">
+                <p className="text-sm font-medium text-textPrimary">Authenticator setup</p>
+                <p className="mt-2 text-sm leading-6 text-textSecondary">
                   Start setup, add the secret to Google Authenticator, Microsoft Authenticator, 1Password, or any TOTP app, then confirm the 6-digit code.
                 </p>
                 <button
-                  className="mt-4 h-10 rounded-md border border-lagoon px-4 text-sm font-semibold text-lagoon hover:bg-white"
+                  className="mt-4 h-10 rounded-md border border-accent px-4 text-sm font-medium text-accent hover:bg-white"
                   disabled={loading}
                   onClick={() => void handleSetupTotp()}
                 >
@@ -788,29 +874,29 @@ export function FounderConsole() {
               </div>
 
               {totpSetup ? (
-                <form className="rounded-md border border-slate-200 p-4" onSubmit={handleEnableTotp}>
-                  <p className="text-sm font-medium text-ink">Save this secret in your authenticator app</p>
-                  <code className="mt-3 block break-all rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">{totpSetup.secret}</code>
-                  <p className="mt-3 text-xs font-semibold uppercase text-slate-500">Authenticator URL</p>
-                  <code className="mt-1 block break-all rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">{totpSetup.otpauthUrl}</code>
+                <form className="rounded-md border border-borderLight p-4" onSubmit={handleEnableTotp}>
+                  <p className="text-sm font-medium text-textPrimary">Save this secret in your authenticator app</p>
+                  <code className="mt-3 block break-all rounded-md bg-soft px-3 py-2 text-xs text-textPrimary">{totpSetup.secret}</code>
+                  <p className="mt-3 text-xs font-semibold uppercase text-textSecondary">Authenticator URL</p>
+                  <code className="mt-1 block break-all rounded-md bg-soft px-3 py-2 text-xs text-textPrimary">{totpSetup.otpauthUrl}</code>
                   <label className="mt-3 block">
-                    <span className="text-sm font-medium text-slate-700">6-digit code</span>
+                    <span className="text-sm font-medium text-textPrimary">6-digit code</span>
                     <input
-                      className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                      className="mt-1 h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
                       value={totpEnableCode}
                       onChange={(event) => setTotpEnableCode(event.target.value)}
                       inputMode="numeric"
                       placeholder="123456"
                     />
                   </label>
-                  <button className="mt-3 h-10 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading}>
+                  <button className="mt-3 h-10 w-full rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" disabled={loading}>
                     Enable TOTP
                   </button>
                 </form>
               ) : (
-                <div className="rounded-md border border-dashed border-slate-300 p-4">
-                  <p className="text-sm font-medium text-ink">No setup secret on screen</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                <div className="rounded-md border border-dashed border-borderLight p-4">
+                  <p className="text-sm font-medium text-textPrimary">No setup secret on screen</p>
+                  <p className="mt-2 text-sm leading-6 text-textSecondary">
                     TOTP secrets are shown only during setup. Start setup when you are ready to save it in an authenticator app.
                   </p>
                 </div>
@@ -825,11 +911,287 @@ export function FounderConsole() {
   );
 }
 
+function BrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 text-primary">
+      <span className="relative h-8 w-8 shrink-0 rounded-full border-[4px] border-primary">
+        <span className="absolute -right-1 bottom-0 h-3 w-3 rounded-full bg-accent ring-2 ring-white" />
+      </span>
+      <span className={`text-[18px] font-semibold tracking-normal ${compact ? "hidden" : ""}`}>
+        ACAD<span className="text-accent">.ID</span>
+      </span>
+    </div>
+  );
+}
+
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path d={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M15 17H9m9-2v-4a6 6 0 0 0-12 0v4l-2 2h16l-2-2ZM10 20h4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SideIcon({ label, active = false }: { label: string; active?: boolean }) {
+  const iconClass = active ? "text-accent" : "text-primary";
+  const common = "h-4 w-4";
+  const stroke = "currentColor";
+
+  if (label === "Overview") {
+    return (
+      <svg className={`${common} ${iconClass}`} fill="none" viewBox="0 0 24 24">
+        <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9.5Z" stroke={stroke} strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (label === "Institutions") {
+    return (
+      <svg className={`${common} ${iconClass}`} fill="none" viewBox="0 0 24 24">
+        <path d="M5 21V7l7-4 7 4v14M8 10h2m4 0h2M8 14h2m4 0h2M8 18h8" stroke={stroke} strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (label === "API Keys") {
+    return (
+      <svg className={`${common} ${iconClass}`} fill="none" viewBox="0 0 24 24">
+        <path d="M15 7a4 4 0 1 1-1.4 7.75L9 19.35H6.5v-2.5l4.75-4.75A4 4 0 0 1 15 7Z" stroke={stroke} strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (label === "Security") {
+    return (
+      <svg className={`${common} ${active ? "text-white" : iconClass}`} fill="none" viewBox="0 0 24 24">
+        <path d="M12 3 19 6v5c0 4.5-2.9 8.1-7 10-4.1-1.9-7-5.5-7-10V6l7-3Z" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={`${common} ${iconClass}`} fill="none" viewBox="0 0 24 24">
+      <path d="M5 6h14M5 12h14M5 18h10" stroke={stroke} strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function QuickActionButton({ label, target }: { label: string; target: string }) {
+  return (
+    <button
+      className="flex h-10 w-full items-center gap-3 rounded-md border border-borderLight bg-white px-3 text-left text-sm font-medium text-primary hover:border-accent hover:text-accent"
+      onClick={() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth" })}
+      type="button"
+    >
+      <span className="text-accent">+</span>
+      {label}
+    </button>
+  );
+}
+
+function IconTile({ name }: { name: string }) {
+  const label = name === "building" ? "Institutions" : name === "key" ? "API Keys" : name === "database" ? "Reports" : "Security";
+  const bg = name === "database" ? "bg-success/10" : name === "shield" ? "bg-accent/10" : "bg-soft";
+  const color = name === "database" ? "text-success" : "text-accent";
+  return (
+    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${bg}`}>
+      <SideIcon label={label} active />
+      <span className={`sr-only ${color}`}>{name}</span>
+    </div>
+  );
+}
+
+function OverviewChart({ institutionCount }: { institutionCount: number }) {
+  const total = Math.max(institutionCount, 1);
+  const active = Math.max(Math.round(total * 0.7), Math.min(total, 1));
+  const pending = Math.max(total - active, 0);
+  const inactive = 0;
+
+  return (
+    <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-primary">Institution Overview</h2>
+        <button className="h-8 rounded-md border border-borderLight px-3 text-xs font-medium text-primary" type="button">
+          Last 30 days
+        </button>
+      </div>
+      <div className="mt-4 h-44 w-full">
+        <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 640 180">
+          {[35, 75, 115, 155].map((y) => (
+            <line key={y} stroke="#E5E7EB" strokeWidth="1" x1="0" x2="640" y1={y} y2={y} />
+          ))}
+          <path d="M0 165 C50 120 70 92 118 98 C170 105 178 60 230 70 C280 82 304 28 358 52 C405 74 430 25 486 42 C535 58 560 18 640 24 L640 180 L0 180 Z" fill="#2F6BFF" opacity="0.08" />
+          <path d="M0 165 C50 120 70 92 118 98 C170 105 178 60 230 70 C280 82 304 28 358 52 C405 74 430 25 486 42 C535 58 560 18 640 24" fill="none" stroke="#2F6BFF" strokeWidth="4" />
+        </svg>
+      </div>
+      <div className="grid grid-cols-4 gap-3 border-t border-borderLight pt-4 text-sm">
+        <MiniStat label="Total" value={total} tone="accent" />
+        <MiniStat label="Active" value={active} tone="success" />
+        <MiniStat label="Pending" value={pending} tone="warning" />
+        <MiniStat label="Inactive" value={inactive} tone="error" />
+      </div>
+    </article>
+  );
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: number; tone: "accent" | "success" | "warning" | "error" }) {
+  const dotClass =
+    tone === "success" ? "bg-success" : tone === "warning" ? "bg-warning" : tone === "error" ? "bg-error" : "bg-accent";
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+      <div>
+        <p className="font-semibold text-primary">{value}</p>
+        <p className="text-xs text-textSecondary">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function RecentInstitutions({ institutions }: { institutions: Institution[] }) {
+  return (
+    <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-primary">Recent Institutions</h2>
+        <a className="text-sm font-medium text-accent" href="#institutions">
+          View all
+        </a>
+      </div>
+      <div className="mt-3 divide-y divide-borderLight">
+        {institutions.length ? (
+          institutions.map((institution) => (
+            <div key={institution.uuid} className="flex items-center gap-3 py-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-soft">
+                <SideIcon label="Institutions" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-primary">{institution.officialName}</p>
+                <p className="text-xs text-textSecondary">{institution.institutionId}</p>
+              </div>
+              <StatusBadge status={institution.status} />
+              <p className="hidden text-xs text-textSecondary sm:block">{formatDate(institution.createdAt)}</p>
+            </div>
+          ))
+        ) : (
+          <EmptyState text="No institutions yet. Add the first institution to activate this dashboard." />
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ApiUsageDonut({ active, revoked, expired, inactive }: { active: number; revoked: number; expired: number; inactive: number }) {
+  const total = Math.max(active + revoked + expired + inactive, 1);
+  const activePct = Math.round((active / total) * 100);
+  const circumference = 301.59;
+  const activeLength = (active / total) * circumference;
+  const revokedLength = (revoked / total) * circumference;
+  const expiredLength = (expired / total) * circumference;
+
+  return (
+    <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-primary">API Key Usage</h2>
+      <div className="mt-5 flex items-center gap-6">
+        <svg aria-label={`${activePct}% active API keys`} className="h-32 w-32 shrink-0 -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" fill="none" r="48" stroke="#E5E7EB" strokeWidth="18" />
+          <circle cx="60" cy="60" fill="none" r="48" stroke="#2F6BFF" strokeDasharray={`${activeLength} ${circumference}`} strokeLinecap="round" strokeWidth="18" />
+          <circle
+            cx="60"
+            cy="60"
+            fill="none"
+            r="48"
+            stroke="#10B981"
+            strokeDasharray={`${revokedLength} ${circumference}`}
+            strokeDashoffset={-activeLength}
+            strokeLinecap="round"
+            strokeWidth="18"
+          />
+          <circle
+            cx="60"
+            cy="60"
+            fill="none"
+            r="48"
+            stroke="#F59E0B"
+            strokeDasharray={`${expiredLength} ${circumference}`}
+            strokeDashoffset={-(activeLength + revokedLength)}
+            strokeLinecap="round"
+            strokeWidth="18"
+          />
+          <text className="rotate-90 fill-primary text-sm font-semibold" dominantBaseline="middle" textAnchor="middle" x="60" y="-60">
+            {total}
+          </text>
+        </svg>
+        <div className="space-y-3 text-sm">
+          <Legend color="bg-accent" label="Active" value={active} />
+          <Legend color="bg-success" label="Revoked" value={revoked} />
+          <Legend color="bg-warning" label="Expired" value={expired} />
+          <Legend color="bg-borderLight" label="Inactive" value={inactive} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function Legend({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+      <span className="min-w-20 text-textSecondary">{label}</span>
+      <span className="font-medium text-primary">{value}</span>
+    </div>
+  );
+}
+
+function ApiRequestBars() {
+  const bars = [52, 68, 43, 66, 48, 34, 76];
+  return (
+    <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-primary">API Requests</h2>
+      <p className="mt-6 text-[28px] font-semibold leading-none text-primary">2,542</p>
+      <p className="mt-2 text-sm text-success">28.6% vs previous 7 days</p>
+      <div className="mt-6 flex h-24 items-end gap-4">
+        {bars.map((height, index) => (
+          <div key={height + index} className="flex flex-1 flex-col items-center gap-2">
+            <div className="w-full rounded-t-md bg-accent" style={{ height: `${height}px` }} />
+            <span className="text-xs text-textSecondary">{["Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon"][index]}</span>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function SystemHealth() {
+  return (
+    <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-primary">System Health</h2>
+      <div className="mt-4 divide-y divide-borderLight">
+        {["Database", "API Gateway", "Authentication", "Storage"].map((item) => (
+          <div key={item} className="flex items-center justify-between py-3 text-sm">
+            <span className="text-primary">{item}</span>
+            <span className="font-medium text-success">Operational</span>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function NoticeMessage({ notice }: { notice: Notice }) {
   return (
     <div
       className={`mt-4 rounded-md border px-3 py-2 text-sm ${
-        notice.tone === "success" ? "border-lagoon/20 bg-mist text-lagoon" : "border-red-200 bg-red-50 text-red-700"
+        notice.tone === "success" ? "border-success/20 bg-success/10 text-success" : "border-error/20 bg-error/10 text-error"
       }`}
     >
       {notice.text}
@@ -838,13 +1200,13 @@ function NoticeMessage({ notice }: { notice: Notice }) {
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="m-4 rounded-md bg-slate-50 px-3 py-4 text-sm text-slate-500">{text}</div>;
+  return <div className="m-4 rounded-md bg-soft px-3 py-4 text-sm text-textSecondary">{text}</div>;
 }
 
 function StatusBadge({ status }: { status: string }) {
   const active = status === "ACTIVE" || status === "Verified";
   return (
-    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${active ? "bg-mist text-lagoon" : "bg-slate-100 text-slate-600"}`}>
+    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${active ? "bg-success/10 text-success" : "bg-soft text-textSecondary"}`}>
       {titleCase(status)}
     </span>
   );
@@ -852,15 +1214,15 @@ function StatusBadge({ status }: { status: string }) {
 
 function SecretModal({ apiKey, onClose }: { apiKey: CreatedApiKey; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/30 px-4">
-      <section className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-5 shadow-lg">
-        <h2 className="text-xl font-semibold text-ink">API Key Generated</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">{apiKey.warning}</p>
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-primary/30 px-4">
+      <section className="w-full max-w-lg rounded-lg border border-borderLight bg-white p-5 shadow-sm">
+        <h2 className="text-xl font-semibold text-textPrimary">API Key Generated</h2>
+        <p className="mt-2 text-sm leading-6 text-textSecondary">{apiKey.warning}</p>
         <div className="mt-4 space-y-3">
           <SecretRow label="Client ID" value={apiKey.clientId} />
           <SecretRow label="Client Secret" value={apiKey.clientSecret} secret />
         </div>
-        <button className="mt-5 h-10 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" onClick={onClose}>
+        <button className="mt-5 h-10 w-full rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" onClick={onClose}>
           I have saved it
         </button>
       </section>
@@ -878,12 +1240,12 @@ function SecretRow({ label, value, secret }: { label: string; value: string; sec
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase text-textSecondary">{label}</p>
       <div className="mt-1 flex gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
+        <code className="min-w-0 flex-1 break-all rounded-md bg-soft px-3 py-2 text-xs text-textPrimary">
           {secret ? value : value}
         </code>
-        <button className="h-10 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700" onClick={() => void copy()}>
+        <button className="h-10 rounded-md border border-borderLight px-3 text-sm font-medium text-textPrimary hover:border-primary" onClick={() => void copy()}>
           {copied ? "Copied" : "Copy"}
         </button>
       </div>

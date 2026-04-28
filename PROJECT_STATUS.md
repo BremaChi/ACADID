@@ -86,6 +86,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live global API key management with search, status filters, institution context, last-used display, and revocation action.
 - Gateway status panel.
 - Dispute empty state.
+- ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 
 ## Validation Completed
 
@@ -104,6 +105,7 @@ Completed successfully:
 - Founder admin login succeeds against the live database.
 - `npm run smoke:api`
 - Founder Console returns 200 at `http://localhost:3000`.
+- Founder Console ACAD.ID UI refresh typechecks, builds, and renders without the stale Next.js cache error after clearing `apps/web/.next`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
