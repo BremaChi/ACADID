@@ -68,6 +68,7 @@ Engineer 2 is unblocked only when these are working in sandbox:
 - `GET /access/passport` returns the student's full record.
 - `GET /verify/:token` returns verification outcome.
 - Founder Console can generate a new API key.
+- Founder Console can enable authenticator-code security for the founder account.
 - A test institution can be onboarded from creation through published credential.
 
 ## Current Implementation Checkpoint
@@ -86,14 +87,15 @@ Already built and verified:
 - Scoped API-key tokens can perform institution ingestion and governance for their assigned institution.
 - Basic per-key rate limiting is enforced from token metadata.
 - Founder Console now connects to the live API for login, institution creation/listing, Authority Grant creation, API key generation, one-time secret display, key listing, and key revocation.
+- Founder TOTP setup and login enforcement are implemented, with encrypted TOTP secret storage.
 - `npm run smoke:api` verifies the live Supabase-backed API flow.
 - Web app runs at `http://localhost:3000`.
 - API runs at `http://localhost:4000`.
 
 Important gaps against v3:
 
-- Add global API key management, webhook management, dispute queue, BI, and founder security pages.
-- Add TOTP for founder login.
+- Expand global API key management, webhook management, dispute queue, BI, and founder security pages.
+- Add production-grade founder MFA recovery policy and admin break-glass controls.
 - Add keystore table and stable institution signing-key management.
 - Add append-only audit hardening and published-record immutability enforcement at database level.
 - Add AIN sequence table and manual-review path for medium-confidence identity matches.
@@ -103,8 +105,8 @@ Important gaps against v3:
 
 Next engineering move:
 
-1. Add founder TOTP setup and enforcement.
-2. Add global API key management across all institutions.
-3. Add webhook registration and delivery log models.
-4. Add database-backed automated workflow tests.
-5. Add production signing-key management.
+1. Add global API key management across all institutions.
+2. Add webhook registration and delivery log models.
+3. Add database-backed automated workflow tests.
+4. Add production signing-key management.
+5. Add production-grade founder MFA recovery policy.

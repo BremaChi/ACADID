@@ -54,6 +54,8 @@ PostgreSQL remains the production database choice. Supabase PostgreSQL is now th
 
 Docker PostgreSQL is optional local fallback only, not part of the normal development workflow.
 
+For local Supabase development, use a Supabase PostgreSQL route that supports Prisma interactive transactions for `DATABASE_URL`; the direct database host is the safest default on this machine. Keep `DIRECT_URL` as the migration connection. The recommended dev parameters are `connection_limit=2` and `pool_timeout=30` so the API and local smoke test can run together without exhausting Supabase's small development connection pool.
+
 See `docs/runtime-options.md` for the available local and production database setup options.
 
 Useful commands:
@@ -63,10 +65,18 @@ Useful commands:
 - `npm run db:seed`
 - `npm run smoke:api`
 
+Founder sign-in:
+
+- Open `http://localhost:3000`.
+- Use the seeded founder email `founder@acadid.local`.
+- Use `SEED_SUPER_ADMIN_PASSWORD` from your local `.env`; the default example value is `ChangeMe123!`.
+- Leave the authenticator-code field empty until TOTP is enabled from the Founder Security panel.
+
 Current v3 checkpoint:
 
 - Founder can create an institution and Authority Grant.
 - Founder can generate a scoped API key.
 - Founder Console connects to the live API for institution/key workflows.
+- Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.
 - External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
 - Scoped API clients can ingest and govern records through the gateway without direct database access.

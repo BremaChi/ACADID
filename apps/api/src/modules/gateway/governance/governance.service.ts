@@ -102,40 +102,43 @@ export class GovernanceService {
       })
     );
 
-    const published = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const updatedBatch = await tx.resultBatch.update({
-        where: { uuid: batchId },
-        data: {
-          status: "PUBLISHED",
-          publishedAt: new Date()
-        }
-      });
-
-      await tx.academicRecord.updateMany({
-        where: { resultBatchId: batchId },
-        data: {
-          status: "PUBLISHED",
-          publishedAt: new Date()
-        }
-      });
-
-      for (const signedCredential of signedCredentials) {
-        await tx.credential.create({
+    const published = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const updatedBatch = await tx.resultBatch.update({
+          where: { uuid: batchId },
           data: {
-            credentialRef: signedCredential.credentialRef,
-            learnerId: signedCredential.record.enrolment.learnerId,
-            institutionId: batch.institutionId,
-            academicRecordId: signedCredential.record.uuid,
-            type: "RESULT_SLIP",
-            scope: { academicRecordId: signedCredential.record.uuid } as Prisma.InputJsonValue,
-            vcPayload: signedCredential.vcPayload as unknown as Prisma.InputJsonValue,
-            signature: signedCredential.signature
+            status: "PUBLISHED",
+            publishedAt: new Date()
           }
         });
-      }
 
-      return updatedBatch;
-    });
+        await tx.academicRecord.updateMany({
+          where: { resultBatchId: batchId },
+          data: {
+            status: "PUBLISHED",
+            publishedAt: new Date()
+          }
+        });
+
+        for (const signedCredential of signedCredentials) {
+          await tx.credential.create({
+            data: {
+              credentialRef: signedCredential.credentialRef,
+              learnerId: signedCredential.record.enrolment.learnerId,
+              institutionId: batch.institutionId,
+              academicRecordId: signedCredential.record.uuid,
+              type: "RESULT_SLIP",
+              scope: { academicRecordId: signedCredential.record.uuid } as Prisma.InputJsonValue,
+              vcPayload: signedCredential.vcPayload as unknown as Prisma.InputJsonValue,
+              signature: signedCredential.signature
+            }
+          });
+        }
+
+        return updatedBatch;
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
 
     await this.audit.write({
       actorId: auth.kind === "API_KEY" ? undefined : auth.sub,

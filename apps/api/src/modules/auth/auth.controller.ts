@@ -8,12 +8,12 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post("login")
-  login(@Body() body: { email: string; password: string }) {
+  login(@Body() body: { email: string; password: string; totpCode?: string }) {
     if (!body?.email || !body.password) {
       throw new BadRequestException("Email and password are required.");
     }
 
-    return this.authService.login(body.email, body.password);
+    return this.authService.login(body.email, body.password, body.totpCode);
   }
 
   @Post("token")
@@ -26,12 +26,20 @@ export class AuthController {
     return { ok: true };
   }
 
-  @Post("mfa/verify")
-  verifyMfa() {
-    return {
-      ok: true,
-      next: "MFA challenge verification will be enforced before pilot launch."
-    };
+  @UseGuards(AuthGuard)
+  @Post("mfa/setup")
+  setupMfa(@Req() request: AuthenticatedRequest) {
+    return this.authService.setupTotp(request.auth);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post("mfa/enable")
+  enableMfa(@Req() request: AuthenticatedRequest, @Body() body: { code?: string }) {
+    if (!body?.code) {
+      throw new BadRequestException("TOTP code is required.");
+    }
+
+    return this.authService.enableTotp(request.auth, body.code);
   }
 
   @UseGuards(AuthGuard)

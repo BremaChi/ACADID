@@ -15,6 +15,7 @@ DIRECT_URL=...
 
 - `DATABASE_URL` is the runtime connection used by the API and Prisma Client.
 - `DIRECT_URL` is the direct database connection used by Prisma migrations.
+- For local Supabase development, `DATABASE_URL` should use a PostgreSQL route that supports Prisma interactive transactions. The direct database host is the safest default on this machine; a session pooler is acceptable only if it is reachable and preserves stable sessions. Do not use transaction pooling for the API runtime because ingestion, governance, and credential issuance need interactive transactions.
 - If the Supabase direct host is unavailable from a local network, use the Supabase session-pooler migration URL on port `5432` with `sslmode=require` until a direct IPv4 route is available.
 - Never commit `.env` or paste database passwords into documentation, logs, or GitHub.
 

@@ -24,78 +24,81 @@ export class IngestionService {
     const entryDate = new Date(parsed.data.entryDate ?? new Date().toISOString().slice(0, 10));
     const entryYear = entryDate.getUTCFullYear();
 
-    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      let learnerSequence = await tx.learner.count();
-      let createdLearners = 0;
-      let linkedLearners = 0;
-      let createdEnrolments = 0;
-      let existingEnrolments = 0;
-      const rows = [];
+    const result = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        let learnerSequence = await tx.learner.count();
+        let createdLearners = 0;
+        let linkedLearners = 0;
+        let createdEnrolments = 0;
+        let existingEnrolments = 0;
+        const rows = [];
 
-      for (const row of parsed.data.rows) {
-        const existingEnrolment = await tx.enrolment.findFirst({
-          where: {
-            institutionId: authority.institutionUuid,
-            studentNumber: row.studentNumber,
-            status: "ACTIVE"
-          },
-          include: { learner: true }
-        });
-
-        if (existingEnrolment) {
-          existingEnrolments += 1;
-          rows.push({
-            studentNumber: row.studentNumber,
-            ain: existingEnrolment.learner.ain,
-            status: "already_enrolled"
+        for (const row of parsed.data.rows) {
+          const existingEnrolment = await tx.enrolment.findFirst({
+            where: {
+              institutionId: authority.institutionUuid,
+              studentNumber: row.studentNumber,
+              status: "ACTIVE"
+            },
+            include: { learner: true }
           });
-          continue;
-        }
 
-        const dateOfBirth = new Date(row.dateOfBirth);
-        let learner = await tx.learner.findFirst({
-          where: {
-            fullName: row.fullName,
-            dateOfBirth
+          if (existingEnrolment) {
+            existingEnrolments += 1;
+            rows.push({
+              studentNumber: row.studentNumber,
+              ain: existingEnrolment.learner.ain,
+              status: "already_enrolled"
+            });
+            continue;
           }
-        });
 
-        if (!learner) {
-          learnerSequence += 1;
-          learner = await tx.learner.create({
-            data: {
-              ain: formatAin("NG", entryYear, learnerSequence),
+          const dateOfBirth = new Date(row.dateOfBirth);
+          let learner = await tx.learner.findFirst({
+            where: {
               fullName: row.fullName,
-              dateOfBirth,
-              phone: row.phone,
-              identityStatus: "UNVERIFIED"
+              dateOfBirth
             }
           });
-          createdLearners += 1;
-        } else {
-          linkedLearners += 1;
+
+          if (!learner) {
+            learnerSequence += 1;
+            learner = await tx.learner.create({
+              data: {
+                ain: formatAin("NG", entryYear, learnerSequence),
+                fullName: row.fullName,
+                dateOfBirth,
+                phone: row.phone,
+                identityStatus: "UNVERIFIED"
+              }
+            });
+            createdLearners += 1;
+          } else {
+            linkedLearners += 1;
+          }
+
+          await tx.enrolment.create({
+            data: {
+              learnerId: learner.uuid,
+              institutionId: authority.institutionUuid,
+              studentNumber: row.studentNumber,
+              level: row.level,
+              programme: row.programme,
+              entryDate
+            }
+          });
+          createdEnrolments += 1;
+          rows.push({
+            studentNumber: row.studentNumber,
+            ain: learner.ain,
+            status: "enrolled"
+          });
         }
 
-        await tx.enrolment.create({
-          data: {
-            learnerId: learner.uuid,
-            institutionId: authority.institutionUuid,
-            studentNumber: row.studentNumber,
-            level: row.level,
-            programme: row.programme,
-            entryDate
-          }
-        });
-        createdEnrolments += 1;
-        rows.push({
-          studentNumber: row.studentNumber,
-          ain: learner.ain,
-          status: "enrolled"
-        });
-      }
-
-      return { createdLearners, linkedLearners, createdEnrolments, existingEnrolments, rows };
-    });
+        return { createdLearners, linkedLearners, createdEnrolments, existingEnrolments, rows };
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
 
     await this.audit.write({
       actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
@@ -152,40 +155,43 @@ export class IngestionService {
       });
     }
 
-    const batch = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const resultBatch = await tx.resultBatch.create({
-        data: {
-          institutionId: authority.institutionUuid,
-          title: parsed.data.title,
-          createdById
-        }
-      });
-
-      await tx.academicRecord.createMany({
-        data: parsed.data.rows.map((row) => {
-          const enrolment = enrolmentByStudentNumber.get(row.studentNumber);
-          if (!enrolment) {
-            throw new BadRequestException("Result row references an unknown enrolment.");
+    const batch = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const resultBatch = await tx.resultBatch.create({
+          data: {
+            institutionId: authority.institutionUuid,
+            title: parsed.data.title,
+            createdById
           }
+        });
 
-          return {
-            enrolmentId: enrolment.uuid,
-            resultBatchId: resultBatch.uuid,
-            periodType: row.periodType,
-            periodLabel: row.periodLabel,
-            subjectCode: row.subjectCode,
-            subjectName: row.subjectName,
-            caScore: row.caScore,
-            examScore: row.examScore,
-            totalScore: row.totalScore,
-            grade: row.grade,
-            status: "DRAFT"
-          };
-        })
-      });
+        await tx.academicRecord.createMany({
+          data: parsed.data.rows.map((row) => {
+            const enrolment = enrolmentByStudentNumber.get(row.studentNumber);
+            if (!enrolment) {
+              throw new BadRequestException("Result row references an unknown enrolment.");
+            }
 
-      return resultBatch;
-    });
+            return {
+              enrolmentId: enrolment.uuid,
+              resultBatchId: resultBatch.uuid,
+              periodType: row.periodType,
+              periodLabel: row.periodLabel,
+              subjectCode: row.subjectCode,
+              subjectName: row.subjectName,
+              caScore: row.caScore,
+              examScore: row.examScore,
+              totalScore: row.totalScore,
+              grade: row.grade,
+              status: "DRAFT"
+            };
+          })
+        });
+
+        return resultBatch;
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
 
     await this.audit.write({
       action: "ingest.results",

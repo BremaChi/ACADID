@@ -26,6 +26,7 @@ Created:
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
 - Architecture v3 memory note in `docs/architecture-brief-v3-memory.md`.
+- Founder authenticator-code security for the Founder Console.
 
 ## Implemented Foundation
 
@@ -33,7 +34,7 @@ Created:
 
 The API has these first modules:
 
-- Auth module for staff login, bearer token creation, `/auth/me`, and password verification.
+- Auth module for staff login, bearer token creation, `/auth/me`, password verification, and founder TOTP setup/enforcement.
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
 - Founder API key workflow for one-time `client_secret` generation, safe key listing, revocation, and `POST /auth/token`.
 - Ingestion Door for student register intake, learner matching/creation, AIN assignment, enrolment creation, and draft result batch creation.
@@ -49,6 +50,7 @@ The API has these first modules:
 - API key rate limiting is enforced from token metadata.
 - Credential publication now uses Ed25519 JOSE/JWS signatures and embeds a proof in the VC payload.
 - Credential signing is prepared outside the publish transaction so database writes remain fast under load.
+- Founder TOTP secrets are encrypted at rest, setup is guarded by an authenticated session, and login requires an authenticator code after TOTP is enabled.
 
 ### Database
 
@@ -75,6 +77,7 @@ The Prisma schema includes the core AcadID model:
 The web app currently provides an operations dashboard for the first foundation workflow:
 
 - Live Founder Console login.
+- Live Founder Console authenticator-code field and security setup panel.
 - Live institution list and creation form.
 - Live Authority Grant creation form.
 - Live API key generation with one-time secret modal.
@@ -99,6 +102,8 @@ Completed successfully:
 - Founder admin login succeeds against the live database.
 - `npm run smoke:api`
 - Founder Console returns 200 at `http://localhost:3000`.
+- Founder TOTP migration deployed to Supabase.
+- Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
   - Created pilot institution `AINi-00001`.
   - Created active Authority Grant.
@@ -125,13 +130,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add founder TOTP setup and enforcement.
-2. Add global API key management view across all institutions.
-3. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-4. Add real MOU document upload/storage metadata to Authority Grants.
-5. Add verifier identity capture and IP hashing to verification events.
-6. Add webhook registration and delivery log models.
-7. Configure stable production signing keys with `npm run crypto:keygen`.
+1. Add global API key management view across all institutions.
+2. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+3. Add real MOU document upload/storage metadata to Authority Grants.
+4. Add verifier identity capture and IP hashing to verification events.
+5. Add webhook registration and delivery log models.
+6. Configure stable production signing keys with `npm run crypto:keygen`.
+7. Add production-grade account recovery rules for founder MFA loss.
 
 ## GitHub Status
 

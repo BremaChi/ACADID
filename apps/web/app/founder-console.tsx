@@ -42,7 +42,14 @@ type LoginResponse = {
     email: string;
     fullName: string;
     role: string;
+    mfaEnabled: boolean;
   };
+};
+
+type TotpSetup = {
+  secret: string;
+  otpauthUrl: string;
+  mfaEnabled: boolean;
 };
 
 type Notice = {
@@ -71,14 +78,18 @@ async function apiRequest<T>(path: string, token: string | null, init: RequestIn
 export function FounderConsole() {
   const [token, setToken] = useState<string | null>(null);
   const [founderName, setFounderName] = useState("Founder");
+  const [mfaEnabled, setMfaEnabled] = useState(false);
   const [email, setEmail] = useState("founder@acadid.local");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, ApiKey[]>>({});
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
+  const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
+  const [totpEnableCode, setTotpEnableCode] = useState("");
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -116,9 +127,11 @@ export function FounderConsole() {
   useEffect(() => {
     const savedToken = window.localStorage.getItem("acadid_founder_token");
     const savedName = window.localStorage.getItem("acadid_founder_name");
+    const savedMfa = window.localStorage.getItem("acadid_founder_mfa");
     if (savedToken) {
       setToken(savedToken);
       setFounderName(savedName ?? "Founder");
+      setMfaEnabled(savedMfa === "true");
       void refreshData(savedToken);
     }
   }, []);
@@ -153,13 +166,16 @@ export function FounderConsole() {
     try {
       const login = await apiRequest<LoginResponse>("/auth/login", null, {
         method: "POST",
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, ...(totpCode ? { totpCode } : {}) })
       });
       setToken(login.accessToken);
       setFounderName(login.user.fullName);
+      setMfaEnabled(login.user.mfaEnabled);
       window.localStorage.setItem("acadid_founder_token", login.accessToken);
       window.localStorage.setItem("acadid_founder_name", login.user.fullName);
+      window.localStorage.setItem("acadid_founder_mfa", String(login.user.mfaEnabled));
       setPassword("");
+      setTotpCode("");
       setNotice({ tone: "success", text: "Founder login confirmed." });
       await refreshData(login.accessToken);
     } catch (error) {
@@ -172,11 +188,50 @@ export function FounderConsole() {
   function logout() {
     window.localStorage.removeItem("acadid_founder_token");
     window.localStorage.removeItem("acadid_founder_name");
+    window.localStorage.removeItem("acadid_founder_mfa");
     setToken(null);
     setInstitutions([]);
     setApiKeys({});
     setSelectedInstitutionId("");
     setNotice(null);
+    setTotpSetup(null);
+    setMfaEnabled(false);
+  }
+
+  async function handleSetupTotp() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const setup = await apiRequest<TotpSetup>("/auth/mfa/setup", token, { method: "POST" });
+      setTotpSetup(setup);
+      setTotpEnableCode("");
+      setNotice({ tone: "success", text: "Authenticator setup started. Enter the code from your app to enable it." });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not start TOTP setup." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleEnableTotp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest("/auth/mfa/enable", token, {
+        method: "POST",
+        body: JSON.stringify({ code: totpEnableCode })
+      });
+      setMfaEnabled(true);
+      window.localStorage.setItem("acadid_founder_mfa", "true");
+      setTotpSetup(null);
+      setTotpEnableCode("");
+      setNotice({ tone: "success", text: "Founder TOTP is now enabled. Future logins require the 6-digit code." });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not enable TOTP." });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCreateInstitution(event: FormEvent<HTMLFormElement>) {
@@ -286,6 +341,16 @@ export function FounderConsole() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">Authenticator code</span>
+              <input
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                value={totpCode}
+                onChange={(event) => setTotpCode(event.target.value)}
+                inputMode="numeric"
+                placeholder="Required after TOTP is enabled"
               />
             </label>
             <button className="h-11 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading}>
@@ -590,6 +655,65 @@ export function FounderConsole() {
               <p className="mt-1 text-sm text-slate-600">No open disputes.</p>
               <EmptyState text="Learner and institution disputes will appear here." />
             </article>
+          </section>
+
+          <section id="security" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-ink">Founder Security</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Add a time-based authenticator code to founder login before pilot use.
+                </p>
+              </div>
+              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${mfaEnabled ? "bg-mist text-lagoon" : "bg-slate-100 text-slate-600"}`}>
+                {mfaEnabled ? "TOTP enabled" : "TOTP not enabled"}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-medium text-ink">Authenticator setup</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Start setup, add the secret to Google Authenticator, Microsoft Authenticator, 1Password, or any TOTP app, then confirm the 6-digit code.
+                </p>
+                <button
+                  className="mt-4 h-10 rounded-md border border-lagoon px-4 text-sm font-semibold text-lagoon hover:bg-white"
+                  disabled={loading}
+                  onClick={() => void handleSetupTotp()}
+                >
+                  {mfaEnabled ? "Reset TOTP setup" : "Start TOTP setup"}
+                </button>
+              </div>
+
+              {totpSetup ? (
+                <form className="rounded-md border border-slate-200 p-4" onSubmit={handleEnableTotp}>
+                  <p className="text-sm font-medium text-ink">Save this secret in your authenticator app</p>
+                  <code className="mt-3 block break-all rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">{totpSetup.secret}</code>
+                  <p className="mt-3 text-xs font-semibold uppercase text-slate-500">Authenticator URL</p>
+                  <code className="mt-1 block break-all rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">{totpSetup.otpauthUrl}</code>
+                  <label className="mt-3 block">
+                    <span className="text-sm font-medium text-slate-700">6-digit code</span>
+                    <input
+                      className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon"
+                      value={totpEnableCode}
+                      onChange={(event) => setTotpEnableCode(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="123456"
+                    />
+                  </label>
+                  <button className="mt-3 h-10 w-full rounded-md bg-lagoon px-4 text-sm font-semibold text-white hover:bg-teal-800" disabled={loading}>
+                    Enable TOTP
+                  </button>
+                </form>
+              ) : (
+                <div className="rounded-md border border-dashed border-slate-300 p-4">
+                  <p className="text-sm font-medium text-ink">No setup secret on screen</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    TOTP secrets are shown only during setup. Start setup when you are ready to save it in an authenticator app.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
         </section>
       </div>
