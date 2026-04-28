@@ -98,14 +98,15 @@ export class IngestionService {
     });
 
     await this.audit.write({
-      actorId: auth.sub,
-      actorRole: auth.role,
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
       action: "ingest.students",
       targetType: "Institution",
       targetId: authority.institutionUuid,
       institutionId: authority.institutionUuid,
       outcome: "SUCCESS",
       metadata: {
+        apiKeyId: auth.apiKeyId,
         authorityGrantId: authority.authorityGrantId,
         createdLearners: result.createdLearners,
         linkedLearners: result.linkedLearners,
@@ -128,9 +129,10 @@ export class IngestionService {
     }
 
     const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results", auth);
-    if (parsed.data.createdById !== auth.sub) {
+    if (auth.kind !== "API_KEY" && parsed.data.createdById !== auth.sub) {
       throw new BadRequestException("Result batch creator must match the authenticated user.");
     }
+    const createdById = parsed.data.createdById ?? auth.sub;
 
     const studentNumbers = [...new Set(parsed.data.rows.map((row) => row.studentNumber))];
     const enrolments = await this.prisma.enrolment.findMany({
@@ -155,7 +157,7 @@ export class IngestionService {
         data: {
           institutionId: authority.institutionUuid,
           title: parsed.data.title,
-          createdById: parsed.data.createdById
+          createdById
         }
       });
 
@@ -189,10 +191,12 @@ export class IngestionService {
       action: "ingest.results",
       targetType: "ResultBatch",
       targetId: batch.uuid,
-      actorId: parsed.data.createdById,
+      actorId: auth.kind === "API_KEY" ? undefined : createdById,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
       institutionId: authority.institutionUuid,
       outcome: "SUCCESS",
       metadata: {
+        apiKeyId: auth.apiKeyId,
         authorityGrantId: authority.authorityGrantId,
         rowCount: parsed.data.rows.length
       }

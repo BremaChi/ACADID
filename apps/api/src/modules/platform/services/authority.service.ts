@@ -56,6 +56,14 @@ export class AuthorityService {
       return;
     }
 
+    if (actor.kind === "API_KEY") {
+      if (actor.institutionUuid === institutionId) {
+        return;
+      }
+
+      throw new ForbiddenException("API key is not assigned to this institution.");
+    }
+
     const membership = await this.prisma.institutionUser.findFirst({
       where: {
         userId: actor.sub,
@@ -73,6 +81,10 @@ export class AuthorityService {
   async institutionIdsForActor(actor: AuthTokenPayload): Promise<string[] | undefined> {
     if (actor.role === UserRole.ACADID_SUPER_ADMIN) {
       return undefined;
+    }
+
+    if (actor.kind === "API_KEY") {
+      return actor.institutionUuid ? [actor.institutionUuid] : [];
     }
 
     const memberships = await this.prisma.institutionUser.findMany({

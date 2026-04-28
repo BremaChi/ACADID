@@ -36,13 +36,14 @@ export class GovernanceService {
     });
 
     await this.audit.write({
-      actorId: auth.sub,
-      actorRole: auth.role,
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
       action: `result_batch.${status.toLowerCase()}`,
       targetType: "ResultBatch",
       targetId: batchId,
       institutionId: batch.institutionId,
-      outcome: "SUCCESS"
+      outcome: "SUCCESS",
+      metadata: { apiKeyId: auth.apiKeyId }
     });
 
     return batch;
@@ -137,13 +138,14 @@ export class GovernanceService {
     });
 
     await this.audit.write({
-      actorId: auth.sub,
-      actorRole: auth.role,
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
       action: "result_batch.publish",
       targetType: "ResultBatch",
       targetId: batchId,
       institutionId: batch.institutionId,
-      outcome: "SUCCESS"
+      outcome: "SUCCESS",
+      metadata: { apiKeyId: auth.apiKeyId }
     });
 
     return published;
@@ -170,14 +172,15 @@ export class GovernanceService {
     });
 
     await this.audit.write({
-      actorId: auth.sub,
-      actorRole: auth.role,
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
       action: "result_batch.reject",
       targetType: "ResultBatch",
       targetId: batchId,
       institutionId: batch.institutionId,
       outcome: "SUCCESS",
-      reason
+      reason,
+      metadata: { apiKeyId: auth.apiKeyId }
     });
 
     return batch;

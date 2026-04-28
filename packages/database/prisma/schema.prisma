@@ -101,6 +101,17 @@ enum UserRole {
   VERIFIER
 }
 
+enum ApiKeyEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 model Learner {
   uuid           String                @id @default(uuid()) @db.Uuid
   ain            String                @unique
@@ -143,6 +154,7 @@ model Institution {
   users           InstitutionUser[]
   resultBatches   ResultBatch[]
   auditEvents     AuditEvent[]
+  apiKeys         ApiKey[]
 }
 
 model User {
@@ -191,6 +203,30 @@ model AuthorityGrant {
   institution Institution @relation(fields: [institutionId], references: [uuid])
 
   @@index([institutionId, status])
+}
+
+model ApiKey {
+  uuid               String            @id @default(uuid()) @db.Uuid
+  institutionId      String            @db.Uuid
+  clientId           String            @unique
+  clientSecretHash   String
+  label              String
+  scopes             String[]
+  environment        ApiKeyEnvironment @default(SANDBOX)
+  status             ApiKeyStatus      @default(ACTIVE)
+  rateLimitPerMinute Int               @default(100)
+  expiresAt          DateTime?
+  lastUsedAt         DateTime?
+  revokedAt          DateTime?
+  revokedReason      String?
+  createdById        String?           @db.Uuid
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  institution Institution @relation(fields: [institutionId], references: [uuid])
+
+  @@index([institutionId, status])
+  @@index([clientId, status])
 }
 
 model Enrolment {

@@ -48,7 +48,7 @@ export const resultRowSchema = z.object({
 
 export const ingestResultBatchSchema = z.object({
   institutionId: z.string().min(1),
-  createdById: z.string().uuid(),
+  createdById: z.string().uuid().optional(),
   title: z.string().min(2),
   rows: z.array(resultRowSchema).min(1).max(1000)
 });

@@ -2,12 +2,15 @@ import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/comm
 import { UserRole } from "@prisma/client";
 import { AuthGuard } from "../../auth/guards/auth.guard.js";
 import { RolesGuard } from "../../auth/guards/roles.guard.js";
+import { ScopesGuard } from "../../auth/guards/scopes.guard.js";
 import { Roles } from "../../auth/roles.decorator.js";
+import { Scopes } from "../../auth/scopes.decorator.js";
 import type { AuthenticatedRequest } from "../../auth/types.js";
 import { IngestionService } from "./ingestion.service.js";
 
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard, RolesGuard, ScopesGuard)
 @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER, UserRole.DATA_ENTRY_OFFICER)
+@Scopes("ingest:write")
 @Controller("ingest")
 export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) {}

@@ -16,6 +16,11 @@ export class AuthController {
     return this.authService.login(body.email, body.password);
   }
 
+  @Post("token")
+  token(@Body() body: { client_id?: string; clientId?: string; client_secret?: string; clientSecret?: string }) {
+    return this.authService.issueApiToken(body);
+  }
+
   @Post("logout")
   logout() {
     return { ok: true };

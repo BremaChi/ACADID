@@ -4,6 +4,11 @@
 
 AcadID has moved from concept documents into a working TypeScript monorepo foundation.
 
+Latest architecture source:
+
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
+- Persistent project memory: `docs/architecture-brief-v3-memory.md`
+
 Created:
 
 - Architecture review packet in `architecture-review/`.
@@ -20,6 +25,7 @@ Created:
 - Optional WSL Docker PostgreSQL fallback helper script in `scripts/start-db-wsl.cmd`.
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
+- Architecture v3 memory note in `docs/architecture-brief-v3-memory.md`.
 
 ## Implemented Foundation
 
@@ -29,6 +35,7 @@ The API has these first modules:
 
 - Auth module for staff login, bearer token creation, `/auth/me`, and password verification.
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
+- Founder API key workflow for one-time `client_secret` generation, safe key listing, revocation, and `POST /auth/token`.
 - Ingestion Door for student register intake, learner matching/creation, AIN assignment, enrolment creation, and draft result batch creation.
 - Governance Door for batch submission, review, approval, publication, rejection, amendment, and revocation.
 - Access Door for learner passport, credential list, hashed share-link creation, grant revocation, and learner verification log.
@@ -38,6 +45,8 @@ The API has these first modules:
 - Ingestion routes are restricted to AcadID admins and institution operating roles.
 - Governance routes are restricted to AcadID admins, Registrars, and Exam Officers.
 - Institution staff routes now enforce institution membership, so staff cannot operate on another institution by changing an ID.
+- API clients now receive scoped bearer tokens and are limited to their assigned institution.
+- API key rate limiting is enforced from token metadata.
 - Credential publication now uses Ed25519 JOSE/JWS signatures and embeds a proof in the VC payload.
 - Credential signing is prepared outside the publish transaction so database writes remain fast under load.
 
@@ -59,14 +68,17 @@ The Prisma schema includes the core AcadID model:
 - ImportFile.
 - MouDocument.
 - AuditEvent.
+- ApiKey.
 
 ### Web
 
 The web app currently provides an operations dashboard for the first foundation workflow:
 
-- Phase 0 + Phase 1 build target.
-- Gateway doors.
-- Institution-to-published-credential workflow.
+- Founder Console shell.
+- Institution management view.
+- API key generation panel.
+- Gateway status panel.
+- Dispute empty state.
 
 ## Validation Completed
 
@@ -87,6 +99,8 @@ Completed successfully:
 - End-to-end pilot flow verified:
   - Created pilot institution `AINi-00001`.
   - Created active Authority Grant.
+  - Generated a sandbox API key with `ingest:write`, `govern:write`, and `verify:read` scopes.
+  - Exchanged `client_id` and one-time `client_secret` through `POST /auth/token`.
   - Ingested learner and assigned `AIN-NG-2026-0000001`.
   - Created, approved, and published a result batch.
   - Verified issued credential with cryptographic status `VALID`.
@@ -108,12 +122,14 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-2. Add real MOU document upload/storage metadata to Authority Grants.
-3. Add verifier identity capture and IP hashing to verification events.
-4. Add audit views in the web app.
-5. Add registrar/institution staff user creation and membership management.
-6. Configure stable production signing keys with `npm run crypto:keygen`.
+1. Add API key model, hashed `client_secret` storage, and one-time secret display workflow.
+2. Implement `POST /auth/token` for institution/external product clients with scoped JWTs.
+3. Add scope enforcement and per-key rate limiting to all gateway endpoints.
+4. Build Founder Console institution management and API key generation UI.
+5. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+6. Add real MOU document upload/storage metadata to Authority Grants.
+7. Add verifier identity capture and IP hashing to verification events.
+8. Configure stable production signing keys with `npm run crypto:keygen`.
 
 ## GitHub Status
 

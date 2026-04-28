@@ -90,10 +90,30 @@ async function main() {
     })
   });
 
+  const apiKey = await request(`/admin/institutions/${institution.uuid}/api-keys`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      label: `Institution Portal Sandbox ${runId}`,
+      scopes: ["ingest:write", "govern:write", "verify:read"],
+      environment: "SANDBOX",
+      rateLimitPerMinute: 500
+    })
+  });
+
+  const apiClientLogin = await request("/auth/token", {
+    method: "POST",
+    body: JSON.stringify({
+      client_id: apiKey.clientId,
+      client_secret: apiKey.clientSecret
+    })
+  });
+  const institutionToken = apiClientLogin.accessToken;
+
   const studentNumber = `SUP-${runId}`;
   const students = await request("/ingest/students", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({
       institutionId: institution.institutionId,
       entryDate: "2026-01-10",
@@ -112,10 +132,9 @@ async function main() {
 
   const results = await request("/ingest/results", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({
       institutionId: institution.institutionId,
-      createdById: login.user.uuid,
       title: `Supabase Smoke Results ${runId}`,
       rows: [
         {
@@ -135,22 +154,22 @@ async function main() {
 
   await request("/govern/submit-batch", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({ batchId: results.batchId })
   });
   await request("/govern/review-batch", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({ batchId: results.batchId })
   });
   await request("/govern/approve-batch", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({ batchId: results.batchId })
   });
   const published = await request("/govern/publish", {
     method: "POST",
-    token,
+    token: institutionToken,
     body: JSON.stringify({ batchId: results.batchId })
   });
 
@@ -188,6 +207,7 @@ async function main() {
         health: health.status,
         founderLogin: login.user.email,
         institution: institution.institutionId,
+        apiClient: apiClientLogin.apiClient.clientId,
         learnerRows: students.rows.length,
         batchStatus: published.status,
         credentialStatus: credential.status,

@@ -1,11 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 const envPath = resolve(".env");
-const migrationName = "20260426000000_init";
-const migrationPath = resolve("packages/database/prisma/migrations", migrationName, "migration.sql");
+const migrationsPath = resolve("packages/database/prisma/migrations");
 const expectedTables = [
   "Learner",
   "Institution",
@@ -100,7 +99,7 @@ async function ensureMigrationTable(prisma) {
   `);
 }
 
-async function markMigrationApplied(prisma, checksum, appliedStepsCount) {
+async function markMigrationApplied(prisma, migrationName, checksum, appliedStepsCount) {
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO "_prisma_migrations" (
@@ -130,77 +129,87 @@ async function main() {
     throw new Error("DATABASE_URL is missing from root .env");
   }
 
-  const migrationSql = readFileSync(migrationPath, "utf8");
-  const checksum = createHash("sha256").update(migrationSql).digest("hex");
-  const statements = splitSqlStatements(migrationSql);
   const prisma = new PrismaClient();
 
   try {
     await ensureMigrationTable(prisma);
 
-    const existingMigration = await prisma.$queryRawUnsafe(
-      `SELECT "migration_name" FROM "_prisma_migrations" WHERE "migration_name" = $1 AND "rolled_back_at" IS NULL LIMIT 1`,
-      migrationName
-    );
-    if (existingMigration.length > 0) {
-      console.log(`Migration ${migrationName} is already marked as applied.`);
-      return;
-    }
+    const migrationNames = readdirSync(migrationsPath)
+      .filter((name) => statSync(resolve(migrationsPath, name)).isDirectory())
+      .sort();
 
-    const existingTables = await prisma.$queryRawUnsafe(
-      `
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name = ANY($1::text[])
-      `,
-      expectedTables
-    );
+    for (const migrationName of migrationNames) {
+      const migrationPath = resolve(migrationsPath, migrationName, "migration.sql");
+      const migrationSql = readFileSync(migrationPath, "utf8");
+      const checksum = createHash("sha256").update(migrationSql).digest("hex");
+      const statements = splitSqlStatements(migrationSql);
 
-    if (existingTables.length > 0) {
-      if (existingTables.length === expectedTables.length) {
-        await markMigrationApplied(prisma, checksum, statements.length);
-        console.log(`Existing AcadID schema detected; marked ${migrationName} as applied.`);
-        return;
+      const existingMigration = await prisma.$queryRawUnsafe(
+        `SELECT "migration_name" FROM "_prisma_migrations" WHERE "migration_name" = $1 AND "rolled_back_at" IS NULL LIMIT 1`,
+        migrationName
+      );
+      if (existingMigration.length > 0) {
+        console.log(`Migration ${migrationName} is already marked as applied.`);
+        continue;
       }
 
-      const names = existingTables.map((table) => table.table_name).join(", ");
-      throw new Error(`Partial AcadID schema detected (${names}). Review Supabase before applying migrations.`);
-    }
-
-    await prisma.$transaction(
-      async (tx) => {
-        for (const statement of statements) {
-          await tx.$executeRawUnsafe(statement);
-        }
-
-        await tx.$executeRawUnsafe(
+      if (migrationName.endsWith("_init")) {
+        const existingTables = await prisma.$queryRawUnsafe(
           `
-            INSERT INTO "_prisma_migrations" (
-              "id",
-              "checksum",
-              "finished_at",
-              "migration_name",
-              "logs",
-              "rolled_back_at",
-              "started_at",
-              "applied_steps_count"
-            )
-            VALUES ($1, $2, now(), $3, NULL, NULL, now(), $4)
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = ANY($1::text[])
           `,
-          randomUUID(),
-          checksum,
-          migrationName,
-          statements.length
+          expectedTables
         );
-      },
-      {
-        maxWait: 20000,
-        timeout: 120000
-      }
-    );
 
-    console.log(`Applied ${migrationName} to Supabase PostgreSQL.`);
+        if (existingTables.length > 0) {
+          if (existingTables.length === expectedTables.length) {
+            await markMigrationApplied(prisma, migrationName, checksum, statements.length);
+            console.log(`Existing AcadID schema detected; marked ${migrationName} as applied.`);
+            continue;
+          }
+
+          const names = existingTables.map((table) => table.table_name).join(", ");
+          throw new Error(`Partial AcadID schema detected (${names}). Review Supabase before applying migrations.`);
+        }
+      }
+
+      await prisma.$transaction(
+        async (tx) => {
+          for (const statement of statements) {
+            await tx.$executeRawUnsafe(statement);
+          }
+
+          await tx.$executeRawUnsafe(
+            `
+              INSERT INTO "_prisma_migrations" (
+                "id",
+                "checksum",
+                "finished_at",
+                "migration_name",
+                "logs",
+                "rolled_back_at",
+                "started_at",
+                "applied_steps_count"
+              )
+              VALUES ($1, $2, now(), $3, NULL, NULL, now(), $4)
+            `,
+            randomUUID(),
+            checksum,
+            migrationName,
+            statements.length
+          );
+        },
+        {
+          maxWait: 20000,
+          timeout: 120000
+        }
+      );
+
+      console.log(`Applied ${migrationName} to Supabase PostgreSQL.`);
+    }
   } finally {
     await prisma.$disconnect();
   }

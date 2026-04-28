@@ -3,21 +3,29 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import type { AuthTokenPayload } from "./types.js";
 
 const defaultTokenTtlSeconds = 60 * 60 * 8;
+const productionApiTokenTtlSeconds = 60 * 60;
+const sandboxApiTokenTtlSeconds = 60 * 60 * 24;
 
 @Injectable()
 export class TokenService {
-  sign(payload: Omit<AuthTokenPayload, "iat" | "exp">): string {
+  sign(payload: Omit<AuthTokenPayload, "iat" | "exp">, ttlSeconds = defaultTokenTtlSeconds): string {
     const now = Math.floor(Date.now() / 1000);
     const tokenPayload: AuthTokenPayload = {
       ...payload,
       iat: now,
-      exp: now + defaultTokenTtlSeconds
+      exp: now + ttlSeconds
     };
 
     const encodedHeader = this.encode({ alg: "HS256", typ: "JWT" });
     const encodedPayload = this.encode(tokenPayload);
     const signature = this.signature(`${encodedHeader}.${encodedPayload}`);
     return `${encodedHeader}.${encodedPayload}.${signature}`;
+  }
+
+  signApiClient(payload: Omit<AuthTokenPayload, "iat" | "exp">): string {
+    const ttlSeconds =
+      payload.environment === "PRODUCTION" ? productionApiTokenTtlSeconds : sandboxApiTokenTtlSeconds;
+    return this.sign(payload, ttlSeconds);
   }
 
   verify(token: string): AuthTokenPayload {

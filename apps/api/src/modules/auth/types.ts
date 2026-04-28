@@ -5,7 +5,14 @@ export interface AuthTokenPayload {
   email: string;
   fullName: string;
   role: UserRole;
+  kind?: "USER" | "API_KEY";
   learnerId?: string;
+  institutionId?: string;
+  institutionUuid?: string;
+  apiKeyId?: string;
+  scopes?: string[];
+  environment?: "SANDBOX" | "PRODUCTION";
+  rateLimitPerMinute?: number;
   iat: number;
   exp: number;
 }

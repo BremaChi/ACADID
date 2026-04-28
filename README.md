@@ -6,10 +6,15 @@ AcadID is a permanent academic identity infrastructure for Nigeria. It gives eve
 
 The current authoritative source is:
 
-- `C:\Users\HP\Downloads\Acadid Architecture Brief Cleaned.docx`
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
+
+Current implementation memory from the v3 brief:
+
+- `docs/architecture-brief-v3-memory.md`
 
 Earlier note:
 
+- `C:\Users\HP\Downloads\Acadid Architecture Brief Cleaned.docx` remains useful historical context.
 - `D:\ACADID\AcadID_Architecture_Brief.html` exists but reads as all zero bytes in this environment.
 - `D:\ACADID\AcadID_Authority_Partnership_Brief-1.docx` remains useful for partnership and registrar-facing positioning.
 
@@ -57,3 +62,10 @@ Useful commands:
 - `npm run db:deploy`
 - `npm run db:seed`
 - `npm run smoke:api`
+
+Current v3 checkpoint:
+
+- Founder can create an institution and Authority Grant.
+- Founder can generate a scoped API key.
+- External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
+- Scoped API clients can ingest and govern records through the gateway without direct database access.
