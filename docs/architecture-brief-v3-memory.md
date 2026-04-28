@@ -85,13 +85,13 @@ Already built and verified:
 - API key generation, one-time `client_secret` display, safe key listing, revocation endpoint, and `POST /auth/token` are implemented.
 - Scoped API-key tokens can perform institution ingestion and governance for their assigned institution.
 - Basic per-key rate limiting is enforced from token metadata.
+- Founder Console now connects to the live API for login, institution creation/listing, Authority Grant creation, API key generation, one-time secret display, key listing, and key revocation.
 - `npm run smoke:api` verifies the live Supabase-backed API flow.
 - Web app runs at `http://localhost:3000`.
 - API runs at `http://localhost:4000`.
 
 Important gaps against v3:
 
-- Connect the Founder Console UI to live API data and form submission.
 - Add global API key management, webhook management, dispute queue, BI, and founder security pages.
 - Add TOTP for founder login.
 - Add keystore table and stable institution signing-key management.
@@ -103,8 +103,8 @@ Important gaps against v3:
 
 Next engineering move:
 
-1. Connect the Founder Console UI to the live API.
-2. Add founder session handling and protected console routes.
-3. Add API key creation form submission and one-time secret modal.
-4. Add global API key management and revocation UI.
-5. Add TOTP founder login.
+1. Add founder TOTP setup and enforcement.
+2. Add global API key management across all institutions.
+3. Add webhook registration and delivery log models.
+4. Add database-backed automated workflow tests.
+5. Add production signing-key management.

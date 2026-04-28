@@ -74,9 +74,11 @@ The Prisma schema includes the core AcadID model:
 
 The web app currently provides an operations dashboard for the first foundation workflow:
 
-- Founder Console shell.
-- Institution management view.
-- API key generation panel.
+- Live Founder Console login.
+- Live institution list and creation form.
+- Live Authority Grant creation form.
+- Live API key generation with one-time secret modal.
+- Live selected-institution API key list and revocation action.
 - Gateway status panel.
 - Dispute empty state.
 
@@ -96,6 +98,7 @@ Completed successfully:
 - API health check passes at `http://localhost:4000/api/health`.
 - Founder admin login succeeds against the live database.
 - `npm run smoke:api`
+- Founder Console returns 200 at `http://localhost:3000`.
 - End-to-end pilot flow verified:
   - Created pilot institution `AINi-00001`.
   - Created active Authority Grant.
@@ -122,14 +125,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add API key model, hashed `client_secret` storage, and one-time secret display workflow.
-2. Implement `POST /auth/token` for institution/external product clients with scoped JWTs.
-3. Add scope enforcement and per-key rate limiting to all gateway endpoints.
-4. Build Founder Console institution management and API key generation UI.
-5. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-6. Add real MOU document upload/storage metadata to Authority Grants.
-7. Add verifier identity capture and IP hashing to verification events.
-8. Configure stable production signing keys with `npm run crypto:keygen`.
+1. Add founder TOTP setup and enforcement.
+2. Add global API key management view across all institutions.
+3. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+4. Add real MOU document upload/storage metadata to Authority Grants.
+5. Add verifier identity capture and IP hashing to verification events.
+6. Add webhook registration and delivery log models.
+7. Configure stable production signing keys with `npm run crypto:keygen`.
 
 ## GitHub Status
 
