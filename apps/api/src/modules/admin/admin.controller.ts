@@ -37,6 +37,11 @@ export class AdminController {
     return this.adminService.createApiKey(request.auth, id, body);
   }
 
+  @Get("api-keys")
+  listGlobalApiKeys() {
+    return this.adminService.listGlobalApiKeys();
+  }
+
   @Get("institutions/:id/api-keys")
   listApiKeys(@Param("id") id: string) {
     return this.adminService.listApiKeys(id);

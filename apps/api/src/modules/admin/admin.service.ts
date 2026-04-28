@@ -167,6 +167,31 @@ export class AdminService {
     });
   }
 
+  async listGlobalApiKeys() {
+    const keys = await this.prisma.apiKey.findMany({
+      select: {
+        ...this.safeApiKeySelect(),
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true,
+            status: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return keys.map((key) => ({
+      ...key,
+      institutionUuid: key.institution.uuid,
+      institutionDisplayId: key.institution.institutionId,
+      institutionName: key.institution.officialName,
+      institutionStatus: key.institution.status
+    }));
+  }
+
   async revokeApiKey(auth: AuthTokenPayload, id: string, reason?: string) {
     const apiKey = await this.prisma.apiKey.update({
       where: { uuid: id },

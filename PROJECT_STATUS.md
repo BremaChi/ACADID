@@ -37,6 +37,7 @@ The API has these first modules:
 - Auth module for staff login, bearer token creation, `/auth/me`, password verification, and founder TOTP setup/enforcement.
 - Admin module for institution creation, institution status updates, and Authority Grant creation.
 - Founder API key workflow for one-time `client_secret` generation, safe key listing, revocation, and `POST /auth/token`.
+- Global founder API key listing for all institutions with institution context and no secret material.
 - Ingestion Door for student register intake, learner matching/creation, AIN assignment, enrolment creation, and draft result batch creation.
 - Governance Door for batch submission, review, approval, publication, rejection, amendment, and revocation.
 - Access Door for learner passport, credential list, hashed share-link creation, grant revocation, and learner verification log.
@@ -82,6 +83,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Authority Grant creation form.
 - Live API key generation with one-time secret modal.
 - Live selected-institution API key list and revocation action.
+- Live global API key management with search, status filters, institution context, last-used display, and revocation action.
 - Gateway status panel.
 - Dispute empty state.
 
@@ -130,13 +132,12 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add global API key management view across all institutions.
-2. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-3. Add real MOU document upload/storage metadata to Authority Grants.
-4. Add verifier identity capture and IP hashing to verification events.
-5. Add webhook registration and delivery log models.
-6. Configure stable production signing keys with `npm run crypto:keygen`.
-7. Add production-grade account recovery rules for founder MFA loss.
+1. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+2. Add real MOU document upload/storage metadata to Authority Grants.
+3. Add verifier identity capture and IP hashing to verification events.
+4. Add webhook registration and delivery log models.
+5. Configure stable production signing keys with `npm run crypto:keygen`.
+6. Add production-grade account recovery rules for founder MFA loss.
 
 ## GitHub Status
 

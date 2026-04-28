@@ -77,6 +77,7 @@ Current v3 checkpoint:
 - Founder can create an institution and Authority Grant.
 - Founder can generate a scoped API key.
 - Founder Console connects to the live API for institution/key workflows.
+- Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.
 - External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
 - Scoped API clients can ingest and govern records through the gateway without direct database access.

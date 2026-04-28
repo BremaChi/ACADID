@@ -31,6 +31,13 @@ type ApiKey = {
   createdAt: string;
 };
 
+type GlobalApiKey = ApiKey & {
+  institutionUuid: string;
+  institutionDisplayId: string;
+  institutionName: string;
+  institutionStatus: string;
+};
+
 type CreatedApiKey = ApiKey & {
   clientSecret: string;
   warning: string;
@@ -84,6 +91,9 @@ export function FounderConsole() {
   const [totpCode, setTotpCode] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, ApiKey[]>>({});
+  const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
+  const [apiKeySearch, setApiKeySearch] = useState("");
+  const [apiKeyStatusFilter, setApiKeyStatusFilter] = useState("ALL");
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,9 +120,20 @@ export function FounderConsole() {
 
   const selectedInstitution = institutions.find((institution) => institution.uuid === selectedInstitutionId);
   const selectedKeys = selectedInstitutionId ? apiKeys[selectedInstitutionId] ?? [] : [];
-  const activeKeys = Object.values(apiKeys)
-    .flat()
-    .filter((key) => key.status === "ACTIVE");
+  const activeKeys = globalApiKeys.filter((key) => key.status === "ACTIVE");
+  const filteredGlobalApiKeys = useMemo(() => {
+    const term = apiKeySearch.trim().toLowerCase();
+    return globalApiKeys.filter((key) => {
+      const statusMatches = apiKeyStatusFilter === "ALL" || key.status === apiKeyStatusFilter;
+      const termMatches =
+        !term ||
+        key.label.toLowerCase().includes(term) ||
+        key.clientId.toLowerCase().includes(term) ||
+        key.institutionName.toLowerCase().includes(term) ||
+        key.institutionDisplayId.toLowerCase().includes(term);
+      return statusMatches && termMatches;
+    });
+  }, [apiKeySearch, apiKeyStatusFilter, globalApiKeys]);
 
   const metrics = useMemo(
     () => [
@@ -142,15 +163,17 @@ export function FounderConsole() {
     }
     setLoading(true);
     try {
-      const nextInstitutions = await apiRequest<Institution[]>("/admin/institutions", activeToken);
-      const nextKeyEntries = await Promise.all(
-        nextInstitutions.map(async (institution) => {
-          const keys = await apiRequest<ApiKey[]>(`/admin/institutions/${institution.uuid}/api-keys`, activeToken);
-          return [institution.uuid, keys] as const;
-        })
-      );
+      const [nextInstitutions, nextGlobalKeys] = await Promise.all([
+        apiRequest<Institution[]>("/admin/institutions", activeToken),
+        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken)
+      ]);
+      const nextKeyEntries = nextGlobalKeys.reduce<Record<string, ApiKey[]>>((groups, key) => {
+        groups[key.institutionUuid] = [...(groups[key.institutionUuid] ?? []), key];
+        return groups;
+      }, {});
       setInstitutions(nextInstitutions);
-      setApiKeys(Object.fromEntries(nextKeyEntries));
+      setGlobalApiKeys(nextGlobalKeys);
+      setApiKeys(nextKeyEntries);
       setSelectedInstitutionId((current) => current || nextInstitutions[0]?.uuid || "");
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not load console data." });
@@ -192,6 +215,9 @@ export function FounderConsole() {
     setToken(null);
     setInstitutions([]);
     setApiKeys({});
+    setGlobalApiKeys([]);
+    setApiKeySearch("");
+    setApiKeyStatusFilter("ALL");
     setSelectedInstitutionId("");
     setNotice(null);
     setTotpSetup(null);
@@ -604,6 +630,82 @@ export function FounderConsole() {
             </aside>
           </section>
 
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-ink">Global API Key Management</h2>
+                <p className="mt-1 text-sm text-slate-600">Search, review, and revoke API keys across every institution.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-lagoon sm:w-72"
+                  placeholder="Search keys or institutions"
+                  value={apiKeySearch}
+                  onChange={(event) => setApiKeySearch(event.target.value)}
+                />
+                <div className="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+                  {["ALL", "ACTIVE", "REVOKED"].map((status) => (
+                    <button
+                      key={status}
+                      className={`h-8 rounded px-3 text-xs font-semibold ${
+                        apiKeyStatusFilter === status ? "bg-white text-lagoon shadow-sm" : "text-slate-600"
+                      }`}
+                      onClick={() => setApiKeyStatusFilter(status)}
+                      type="button"
+                    >
+                      {titleCase(status)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Key</th>
+                    <th className="px-4 py-3 font-semibold">Institution</th>
+                    <th className="px-4 py-3 font-semibold">Environment</th>
+                    <th className="px-4 py-3 font-semibold">Rate</th>
+                    <th className="px-4 py-3 font-semibold">Last Used</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGlobalApiKeys.map((apiKey) => (
+                    <tr key={apiKey.uuid} className="border-t border-slate-100">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-ink">{apiKey.label}</p>
+                        <p className="font-mono text-xs text-slate-500">{apiKey.clientId}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-slate-700">{apiKey.institutionName}</p>
+                        <p className="text-xs text-slate-500">{apiKey.institutionDisplayId}</p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{titleCase(apiKey.environment)}</td>
+                      <td className="px-4 py-3 text-slate-700">{apiKey.rateLimitPerMinute}/min</td>
+                      <td className="px-4 py-3 text-slate-700">{apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never"}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={apiKey.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="h-9 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 disabled:opacity-50"
+                          disabled={apiKey.status !== "ACTIVE" || loading}
+                          onClick={() => void revokeApiKey(apiKey.uuid)}
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filteredGlobalApiKeys.length === 0 ? <EmptyState text="No API keys match the current search or filter." /> : null}
+            </div>
+          </section>
+
           <section className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
             <article className="rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 p-4">
@@ -799,4 +901,8 @@ function titleCase(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }

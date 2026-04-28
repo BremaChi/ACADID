@@ -88,13 +88,14 @@ Already built and verified:
 - Basic per-key rate limiting is enforced from token metadata.
 - Founder Console now connects to the live API for login, institution creation/listing, Authority Grant creation, API key generation, one-time secret display, key listing, and key revocation.
 - Founder TOTP setup and login enforcement are implemented, with encrypted TOTP secret storage.
+- Global API key management is implemented with institution context, search/filter UI, and safe listings that never expose secret hashes.
 - `npm run smoke:api` verifies the live Supabase-backed API flow.
 - Web app runs at `http://localhost:3000`.
 - API runs at `http://localhost:4000`.
 
 Important gaps against v3:
 
-- Expand global API key management, webhook management, dispute queue, BI, and founder security pages.
+- Expand webhook management, dispute queue, BI, and founder security pages.
 - Add production-grade founder MFA recovery policy and admin break-glass controls.
 - Add keystore table and stable institution signing-key management.
 - Add append-only audit hardening and published-record immutability enforcement at database level.
@@ -105,8 +106,7 @@ Important gaps against v3:
 
 Next engineering move:
 
-1. Add global API key management across all institutions.
-2. Add webhook registration and delivery log models.
-3. Add database-backed automated workflow tests.
-4. Add production signing-key management.
-5. Add production-grade founder MFA recovery policy.
+1. Add webhook registration and delivery log models.
+2. Add database-backed automated workflow tests.
+3. Add production signing-key management.
+4. Add production-grade founder MFA recovery policy.
