@@ -38,6 +38,13 @@ enum InstitutionApplicationStatus {
   REJECTED
 }
 
+enum DeveloperAccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
 enum AuthorityGrantStatus {
   ACTIVE
   SUSPENDED
@@ -167,6 +174,7 @@ model Institution {
   auditEvents     AuditEvent[]
   apiKeys         ApiKey[]
   applications    InstitutionApplication[]
+  developerAccessRequests DeveloperAccessRequest[]
 }
 
 model InstitutionApplication {
@@ -192,6 +200,31 @@ model InstitutionApplication {
 
   @@index([status, createdAt])
   @@index([contactEmail])
+}
+
+model DeveloperAccessRequest {
+  uuid            String                       @id @default(uuid()) @db.Uuid
+  institutionId   String                       @db.Uuid
+  requestedById   String?                      @db.Uuid
+  developerName   String
+  developerEmail  String
+  developerPhone  String?
+  reason          String
+  requestedScopes String[]
+  status          DeveloperAccessRequestStatus @default(PENDING)
+  reviewFeedback  String?
+  reviewedById    String?                      @db.Uuid
+  reviewedAt      DateTime?
+  approvedAt      DateTime?
+  suspendedAt     DateTime?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  institution Institution @relation(fields: [institutionId], references: [uuid])
+
+  @@index([institutionId, status])
+  @@index([status, createdAt])
+  @@index([developerEmail])
 }
 
 model User {

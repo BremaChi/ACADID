@@ -43,6 +43,21 @@ export const createInstitutionApplicationSchema = z.object({
   mouAccepted: z.literal(true)
 });
 
+export const developerAccessRequestScopes = ["ingest:write", "govern:write", "verify:read", "webhook:manage"] as const;
+
+export const createDeveloperAccessRequestSchema = z.object({
+  institutionId: z.string().uuid(),
+  developerName: z.string().min(2).max(120),
+  developerEmail: z.string().email().max(254),
+  developerPhone: z.string().min(5).max(40).optional(),
+  reason: z.string().min(10).max(1000),
+  requestedScopes: z.array(z.enum(developerAccessRequestScopes)).min(1).max(developerAccessRequestScopes.length)
+});
+
+export const reviewDeveloperAccessRequestSchema = z.object({
+  feedback: z.string().max(1000).optional()
+});
+
 export const createAuthorityGrantSchema = z.object({
   institutionId: z.string().uuid(),
   signedByName: z.string().min(2),
@@ -100,6 +115,8 @@ export const revokeAccessGrantSchema = z.object({
 
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateInstitutionApplicationInput = z.infer<typeof createInstitutionApplicationSchema>;
+export type CreateDeveloperAccessRequestInput = z.infer<typeof createDeveloperAccessRequestSchema>;
+export type ReviewDeveloperAccessRequestInput = z.infer<typeof reviewDeveloperAccessRequestSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;

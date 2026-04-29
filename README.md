@@ -54,7 +54,7 @@ PostgreSQL remains the production database choice. Supabase PostgreSQL is now th
 
 Docker PostgreSQL is optional local fallback only, not part of the normal development workflow.
 
-For local Supabase development, use a Supabase PostgreSQL route that supports Prisma interactive transactions for `DATABASE_URL`; the direct database host is the safest default on this machine. Keep `DIRECT_URL` as the migration connection. The recommended dev parameters are `connection_limit=2` and `pool_timeout=30` so the API and local smoke test can run together without exhausting Supabase's small development connection pool.
+For local Supabase development, use a Supabase PostgreSQL route that supports Prisma runtime traffic for `DATABASE_URL` and keep `DIRECT_URL` as the migration connection. On this machine, the working runtime route uses the Supabase pooler with `pgbouncer=true`, `connection_limit=2`, and `pool_timeout=30` so the API and local smoke test can run together without exhausting Supabase's small development connection pool.
 
 See `docs/runtime-options.md` for the available local and production database setup options.
 
@@ -75,7 +75,9 @@ Founder sign-in:
 Current v3 checkpoint:
 
 - Founder can create an institution and Authority Grant.
-- Founder can generate a scoped API key.
+- Founder can review Developer Access Requests and approve optional institution Live Results API access.
+- Founder can generate internal product API keys.
+- Founder can generate institution Live Results API keys only after Developer Access is approved.
 - Founder Console connects to the live API for institution/key workflows.
 - Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.

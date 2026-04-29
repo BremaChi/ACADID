@@ -90,6 +90,26 @@ async function main() {
     })
   });
 
+  const developerAccessRequest = await request("/admin/developer-access-requests", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      institutionId: institution.uuid,
+      developerName: "AcadID Smoke Registrar",
+      developerEmail: `smoke-${runId}@example.edu.ng`,
+      reason: "Smoke test activation for Live Results API ingestion and governance.",
+      requestedScopes: ["ingest:write", "govern:write", "verify:read"]
+    })
+  });
+
+  const approvedDeveloperAccess = await request(`/admin/developer-access-requests/${developerAccessRequest.uuid}/approve`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      feedback: "Approved automatically by smoke test."
+    })
+  });
+
   const apiKey = await request(`/admin/institutions/${institution.uuid}/api-keys`, {
     method: "POST",
     token,
@@ -207,6 +227,7 @@ async function main() {
         health: health.status,
         founderLogin: login.user.email,
         institution: institution.institutionId,
+        developerAccess: approvedDeveloperAccess.status,
         apiClient: apiClientLogin.apiClient.clientId,
         learnerRows: students.rows.length,
         batchStatus: published.status,

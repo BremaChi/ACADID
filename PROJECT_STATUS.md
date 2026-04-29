@@ -57,6 +57,8 @@ The API has these first modules:
 - API keys now support v3.1 ownership: product-level MVP keys and optional institution-level keys.
 - Institution Portal application intake is implemented through the Data Center API with scoped product-key access.
 - Founder approval/rejection workflow for institution applications is implemented in the API and surfaced in the Founder Console.
+- Developer Access Requests are now a database-backed governance workflow with founder create, list, approve, reject, and suspend endpoints.
+- Institution Live Results API key generation is locked behind approved Developer Access.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -78,6 +80,7 @@ The Prisma schema includes the core AcadID model:
 - MouDocument.
 - AuditEvent.
 - ApiKey.
+- DeveloperAccessRequest.
 
 ### Web
 
@@ -92,6 +95,8 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live global API key management with search, status filters, institution context, last-used display, and revocation action.
 - Live product-level API key generation for internal AcadID products.
 - Live institution application approval queue for Founder review.
+- Live Developer Access Request queue backed by the Data Center API, including approve, reject, and suspend actions.
+- Institution Live Results API key form now lists only institutions with approved Developer Access.
 - Gateway status panel.
 - Dispute empty state.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
@@ -116,6 +121,7 @@ Completed successfully:
 - Founder Console returns 200 at `http://localhost:3000`.
 - Founder Console ACAD.ID UI refresh typechecks, builds, and renders without the stale Next.js cache error after clearing `apps/web/.next`.
 - Founder Console navigation refactor validates with `npm run typecheck`, `npm test`, and `http://localhost:3000` returning 200.
+- Developer Access Request workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, `npm run smoke:api`, and browser verification in the Founder Console.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -132,7 +138,7 @@ Known validation note:
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
-- The v3.1 database migration is authored and Prisma Client is generated, but `npm run db:deploy` is currently blocked by a Supabase Prisma connection error to the configured pooler endpoint.
+- Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
 
 ## Local Runtime
 
@@ -146,11 +152,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Align API key ownership with v3.1: product-level MVP keys first, institution-level keys locked behind optional API access approval.
-2. Build Institution Portal registration, document/MOU metadata, and Founder approval/rejection workflow.
-3. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-4. Add verifier identity capture and IP hashing to verification events.
-5. Add webhook registration and delivery log models.
+1. Add Dispute queue backend model, founder assignment, institution notice, and resolution notes.
+2. Add founder-level Verification Logs endpoint across all institutions and credentials.
+3. Add System Health and gateway metrics endpoints for response time, error rate, webhook delivery, and incidents.
+4. Add revenue ledger models for verification fees, credential exports, and institution subscriptions.
+5. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
 6. Configure stable production signing keys with `npm run crypto:keygen`.
 7. Add production-grade account recovery rules for founder MFA loss.
 

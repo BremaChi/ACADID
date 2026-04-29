@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { DeveloperAccessRequestStatus, UserRole } from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
 import { Roles } from "../auth/roles.decorator.js";
@@ -45,6 +45,31 @@ export class AdminController {
   @Post("institution-applications/:id/reject")
   rejectInstitutionApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
     return this.adminService.rejectInstitutionApplication(request.auth, id, body?.feedback);
+  }
+
+  @Get("developer-access-requests")
+  listDeveloperAccessRequests(@Query("status") status?: DeveloperAccessRequestStatus) {
+    return this.adminService.listDeveloperAccessRequests(status);
+  }
+
+  @Post("developer-access-requests")
+  createDeveloperAccessRequest(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.createDeveloperAccessRequest(request.auth, body);
+  }
+
+  @Post("developer-access-requests/:id/approve")
+  approveDeveloperAccessRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
+    return this.adminService.approveDeveloperAccessRequest(request.auth, id, body?.feedback);
+  }
+
+  @Post("developer-access-requests/:id/reject")
+  rejectDeveloperAccessRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
+    return this.adminService.rejectDeveloperAccessRequest(request.auth, id, body?.feedback);
+  }
+
+  @Post("developer-access-requests/:id/suspend")
+  suspendDeveloperAccessRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
+    return this.adminService.suspendDeveloperAccessRequest(request.auth, id, body?.feedback);
   }
 
   @Post("institutions/:id/api-keys")

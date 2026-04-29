@@ -1,7 +1,12 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { ApiKeyEnvironment, Prisma } from "@prisma/client";
-import { createAuthorityGrantSchema, createInstitutionSchema } from "@acadid/shared";
+import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, Prisma } from "@prisma/client";
+import {
+  createAuthorityGrantSchema,
+  createDeveloperAccessRequestSchema,
+  createInstitutionSchema,
+  reviewDeveloperAccessRequestSchema
+} from "@acadid/shared";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { PasswordService } from "../auth/password.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
@@ -199,6 +204,107 @@ export class AdminService {
     return application;
   }
 
+  listDeveloperAccessRequests(status?: DeveloperAccessRequestStatus) {
+    return this.prisma.developerAccessRequest.findMany({
+      where: status ? { status } : undefined,
+      include: {
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true,
+            type: true,
+            state: true,
+            status: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
+
+  async createDeveloperAccessRequest(auth: AuthTokenPayload, input: unknown) {
+    const parsed = createDeveloperAccessRequestSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.prisma.institution.findUnique({
+      where: { uuid: parsed.data.institutionId },
+      select: { uuid: true, institutionId: true, officialName: true, status: true }
+    });
+    if (!institution) {
+      throw new BadRequestException("Institution not found.");
+    }
+    if (institution.status !== "ACTIVE") {
+      throw new BadRequestException("Only active institutions can request developer access.");
+    }
+
+    const existingOpenRequest = await this.prisma.developerAccessRequest.findFirst({
+      where: {
+        institutionId: institution.uuid,
+        status: { in: ["PENDING", "APPROVED"] }
+      },
+      select: { uuid: true, status: true }
+    });
+    if (existingOpenRequest) {
+      throw new BadRequestException(`Institution already has a ${existingOpenRequest.status.toLowerCase()} developer access request.`);
+    }
+
+    const request = await this.prisma.developerAccessRequest.create({
+      data: {
+        institutionId: institution.uuid,
+        requestedById: auth.kind === "API_KEY" ? undefined : auth.sub,
+        developerName: parsed.data.developerName.trim(),
+        developerEmail: parsed.data.developerEmail.trim().toLowerCase(),
+        developerPhone: parsed.data.developerPhone?.trim(),
+        reason: parsed.data.reason.trim(),
+        requestedScopes: parsed.data.requestedScopes
+      },
+      include: {
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true,
+            type: true,
+            state: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.role,
+      action: "developer_access_request.create",
+      targetType: "DeveloperAccessRequest",
+      targetId: request.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        institutionId: institution.institutionId,
+        requestedScopes: request.requestedScopes
+      }
+    });
+
+    return request;
+  }
+
+  async approveDeveloperAccessRequest(auth: AuthTokenPayload, id: string, feedback?: string) {
+    return this.reviewDeveloperAccessRequest(auth, id, "APPROVED", feedback);
+  }
+
+  async rejectDeveloperAccessRequest(auth: AuthTokenPayload, id: string, feedback?: string) {
+    return this.reviewDeveloperAccessRequest(auth, id, "REJECTED", feedback);
+  }
+
+  async suspendDeveloperAccessRequest(auth: AuthTokenPayload, id: string, feedback?: string) {
+    return this.reviewDeveloperAccessRequest(auth, id, "SUSPENDED", feedback);
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -207,6 +313,17 @@ export class AdminService {
     });
     if (!institution) {
       throw new BadRequestException("Institution not found.");
+    }
+
+    const approvedDeveloperAccess = await this.prisma.developerAccessRequest.findFirst({
+      where: {
+        institutionId: institution.uuid,
+        status: "APPROVED"
+      },
+      select: { uuid: true }
+    });
+    if (!approvedDeveloperAccess) {
+      throw new BadRequestException("Institution needs approved developer access before Live Results API keys can be created.");
     }
 
     const clientId = this.createClientId(parsed.environment);
@@ -355,6 +472,84 @@ export class AdminService {
     });
 
     return apiKey;
+  }
+
+  private async reviewDeveloperAccessRequest(
+    auth: AuthTokenPayload,
+    id: string,
+    status: "APPROVED" | "REJECTED" | "SUSPENDED",
+    feedback?: string
+  ) {
+    const parsed = reviewDeveloperAccessRequestSchema.safeParse({ feedback });
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.developerAccessRequest.findUnique({
+      where: { uuid: id },
+      include: {
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true
+          }
+        }
+      }
+    });
+    if (!existing) {
+      throw new BadRequestException("Developer access request not found.");
+    }
+
+    if ((status === "APPROVED" || status === "REJECTED") && existing.status !== "PENDING") {
+      throw new BadRequestException("Only pending developer access requests can be approved or rejected.");
+    }
+    if (status === "SUSPENDED" && existing.status !== "APPROVED") {
+      throw new BadRequestException("Only approved developer access requests can be suspended.");
+    }
+
+    const reviewedAt = new Date();
+    const request = await this.prisma.developerAccessRequest.update({
+      where: { uuid: id },
+      data: {
+        status,
+        reviewedById: auth.sub,
+        reviewedAt,
+        reviewFeedback: parsed.data.feedback?.trim() || null,
+        approvedAt: status === "APPROVED" ? reviewedAt : existing.approvedAt,
+        suspendedAt: status === "SUSPENDED" ? reviewedAt : null
+      },
+      include: {
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true,
+            type: true,
+            state: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: `developer_access_request.${status.toLowerCase()}`,
+      targetType: "DeveloperAccessRequest",
+      targetId: id,
+      institutionId: existing.institutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.feedback,
+      metadata: {
+        institutionId: existing.institution.institutionId,
+        previousStatus: existing.status,
+        nextStatus: status
+      }
+    });
+
+    return request;
   }
 
   private async nextInstitutionDisplayId(prisma: Pick<PrismaService, "institution"> = this.prisma): Promise<string> {

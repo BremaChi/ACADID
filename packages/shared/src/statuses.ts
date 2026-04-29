@@ -1,5 +1,6 @@
 export const learnerIdentityStatuses = ["VERIFIED", "UNVERIFIED", "PENDING_REVIEW"] as const;
 export const institutionStatuses = ["ACTIVE", "SUSPENDED"] as const;
+export const developerAccessRequestStatuses = ["PENDING", "APPROVED", "REJECTED", "SUSPENDED"] as const;
 export const authorityGrantStatuses = ["ACTIVE", "SUSPENDED", "TERMINATED"] as const;
 export const enrolmentStatuses = ["ACTIVE", "CLOSED"] as const;
 export const academicRecordStatuses = [
@@ -16,6 +17,7 @@ export const verificationOutcomes = ["CONFIRMED", "DENIED", "DISCREPANCY", "REVO
 
 export type LearnerIdentityStatus = (typeof learnerIdentityStatuses)[number];
 export type InstitutionStatus = (typeof institutionStatuses)[number];
+export type DeveloperAccessRequestStatus = (typeof developerAccessRequestStatuses)[number];
 export type AuthorityGrantStatus = (typeof authorityGrantStatuses)[number];
 export type EnrolmentStatus = (typeof enrolmentStatuses)[number];
 export type AcademicRecordStatus = (typeof academicRecordStatuses)[number];

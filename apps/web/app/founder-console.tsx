@@ -122,12 +122,18 @@ type Notice = {
 };
 
 type DeveloperAccessRequest = {
-  id: string;
-  institutionName: string;
+  uuid: string;
+  institutionId: string;
+  institution: Institution;
+  developerName: string;
+  developerEmail: string;
+  developerPhone: string | null;
   reason: string;
-  developerContact: string;
   requestedScopes: string[];
-  status: "Pending" | "Approved" | "Rejected" | "Suspended";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+  reviewFeedback: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
 };
 
 type Dispute = {
@@ -167,9 +173,8 @@ async function apiRequest<T>(path: string, token: string | null, init: RequestIn
   return data as T;
 }
 
-async function loadDeveloperAccessRequests(): Promise<DeveloperAccessRequest[]> {
-  // TODO: Replace with Data Center endpoint when Developer Access Request model is added.
-  return [];
+async function loadDeveloperAccessRequests(token: string): Promise<DeveloperAccessRequest[]> {
+  return apiRequest<DeveloperAccessRequest[]>("/admin/developer-access-requests", token);
 }
 
 async function loadDisputes(): Promise<Dispute[]> {
@@ -246,6 +251,8 @@ export function FounderConsole() {
   const productApiKeys = globalApiKeys.filter((key) => key.ownerType === "PRODUCT");
   const institutionApiKeys = globalApiKeys.filter((key) => key.ownerType === "INSTITUTION");
   const pendingApplications = institutionApplications.filter((application) => application.status === "PENDING");
+  const approvedDeveloperInstitutionIds = new Set(developerRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
+  const approvedDeveloperInstitutions = institutions.filter((institution) => approvedDeveloperInstitutionIds.has(institution.uuid));
   const founderInitials = initials(founderName);
 
   const overviewMetrics = [
@@ -329,7 +336,7 @@ export function FounderConsole() {
         apiRequest<Institution[]>("/admin/institutions", activeToken),
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
-        loadDeveloperAccessRequests(),
+        loadDeveloperAccessRequests(activeToken),
         loadDisputes(),
         loadVerificationLogs()
       ]);
@@ -339,7 +346,8 @@ export function FounderConsole() {
       setDeveloperRequests(nextDeveloperRequests);
       setDisputes(nextDisputes);
       setVerificationLogs(nextVerificationLogs);
-      setSelectedInstitutionId((current) => current || nextInstitutions[0]?.uuid || "");
+      const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
+      setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not load console data." });
@@ -458,6 +466,24 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Application rejection failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateDeveloperAccessRequest(requestId: string, action: "approve" | "reject" | "suspend") {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const actionPast = action === "approve" ? "approved" : action === "reject" ? "rejected" : "suspended";
+      await apiRequest(`/admin/developer-access-requests/${requestId}/${action}`, token, {
+        method: "POST",
+        body: JSON.stringify({ feedback: `${actionPast} from Founder Console.` })
+      });
+      setNotice({ tone: "success", text: `Developer access request ${actionPast}.` });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Developer access update failed." });
     } finally {
       setLoading(false);
     }
@@ -751,6 +777,7 @@ export function FounderConsole() {
           apiKeyOwnerFilter={apiKeyOwnerFilter}
           apiKeySearch={apiKeySearch}
           apiKeyStatusFilter={apiKeyStatusFilter}
+          approvedDeveloperInstitutions={approvedDeveloperInstitutions}
           filteredApiKeys={filteredApiKeys}
           institutionApiKeys={institutionApiKeys}
           institutionKeyForm={institutionKeyForm}
@@ -774,7 +801,7 @@ export function FounderConsole() {
       );
     }
     if (activePage === "Developer Access Requests") {
-      return <DeveloperRequestsPage requests={filteredDeveloperRequests} statusFilter={developerStatusFilter} onStatusFilter={setDeveloperStatusFilter} />;
+      return <DeveloperRequestsPage loading={loading} onUpdate={updateDeveloperAccessRequest} requests={filteredDeveloperRequests} statusFilter={developerStatusFilter} onStatusFilter={setDeveloperStatusFilter} />;
     }
     if (activePage === "Disputes") {
       return <DisputesPage disputes={filteredDisputes} statusFilter={disputeStatusFilter} onStatusFilter={setDisputeStatusFilter} />;
@@ -1010,6 +1037,7 @@ function ApiKeysPage(props: {
   apiKeyOwnerFilter: string;
   apiKeySearch: string;
   apiKeyStatusFilter: string;
+  approvedDeveloperInstitutions: Institution[];
   filteredApiKeys: GlobalApiKey[];
   institutionApiKeys: GlobalApiKey[];
   institutionKeyForm: { label: string; environment: "SANDBOX" | "PRODUCTION"; rateLimitPerMinute: number; scopes: string[] };
@@ -1091,38 +1119,58 @@ function ProductApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
 }
 
 function InstitutionApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
+  const selectedInstitutionId = props.approvedDeveloperInstitutions.some((institution) => institution.uuid === props.selectedInstitutionId)
+    ? props.selectedInstitutionId
+    : "";
   return (
     <Card>
       <SectionTitle title="Institution Live Results API Keys" subtitle="Only for institutions approved for Developer Access." />
       <form className="mt-4 space-y-3" onSubmit={props.onCreateInstitutionKey}>
-        <FilterSelect value={props.selectedInstitutionId} onChange={props.onSelectInstitution} options={["", ...props.institutions.map((institution) => institution.uuid)]} labels={{ "": "Select approved institution", ...Object.fromEntries(props.institutions.map((institution) => [institution.uuid, institution.officialName])) }} />
+        <FilterSelect value={selectedInstitutionId} onChange={props.onSelectInstitution} options={["", ...props.approvedDeveloperInstitutions.map((institution) => institution.uuid)]} labels={{ "": "Select approved institution", ...Object.fromEntries(props.approvedDeveloperInstitutions.map((institution) => [institution.uuid, institution.officialName])) }} />
         <input className={inputClass} value={props.institutionKeyForm.label} onChange={(event) => props.onUpdateInstitutionKeyForm({ ...props.institutionKeyForm, label: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-2">
           <FilterSelect value={props.institutionKeyForm.environment} onChange={(environment) => props.onUpdateInstitutionKeyForm({ ...props.institutionKeyForm, environment: environment as "SANDBOX" | "PRODUCTION" })} options={["SANDBOX", "PRODUCTION"]} />
           <input className={inputClass} type="number" min={1} max={10000} value={props.institutionKeyForm.rateLimitPerMinute} onChange={(event) => props.onUpdateInstitutionKeyForm({ ...props.institutionKeyForm, rateLimitPerMinute: Number(event.target.value) })} />
         </div>
         <ScopePicker selected={props.institutionKeyForm.scopes} onToggle={props.onToggleInstitutionScope} />
-        <button className={primaryButtonClass} disabled={props.loading || !props.selectedInstitutionId}>Generate Institution Key</button>
+        <button className={primaryButtonClass} disabled={props.loading || !selectedInstitutionId}>Generate Institution Key</button>
+        {!props.approvedDeveloperInstitutions.length ? <EmptyState text="No institution has approved developer access yet." /> : null}
       </form>
     </Card>
   );
 }
 
-function DeveloperRequestsPage({ requests, statusFilter, onStatusFilter }: { requests: DeveloperAccessRequest[]; statusFilter: string; onStatusFilter: (value: string) => void }) {
+function DeveloperRequestsPage({
+  loading,
+  onStatusFilter,
+  onUpdate,
+  requests,
+  statusFilter
+}: {
+  loading: boolean;
+  onStatusFilter: (value: string) => void;
+  onUpdate: (id: string, action: "approve" | "reject" | "suspend") => void;
+  requests: DeveloperAccessRequest[];
+  statusFilter: string;
+}) {
   return (
     <Card>
       <SectionTitle title="Developer Access Requests" subtitle="Schools requesting Live Results API activation." />
-      <div className="mt-4 max-w-xs"><FilterSelect value={statusFilter} onChange={onStatusFilter} options={["ALL", "Pending", "Approved", "Rejected", "Suspended"]} /></div>
+      <div className="mt-4 max-w-xs"><FilterSelect value={statusFilter} onChange={onStatusFilter} options={["ALL", "PENDING", "APPROVED", "REJECTED", "SUSPENDED"]} /></div>
       <ResponsiveTable
-        empty="No developer access requests yet. Backend model is pending."
+        empty="No developer access requests yet."
         headers={["Institution", "Reason", "Developer", "Scopes", "Status", "Action"]}
         rows={requests.map((request) => [
-          request.institutionName,
+          request.institution.officialName,
           request.reason,
-          request.developerContact,
+          `${request.developerName} / ${request.developerEmail}`,
           request.requestedScopes.join(", "),
           <StatusBadge key="status" status={request.status} />,
-          <div key="actions" className="flex gap-2"><button className={primarySmallButtonClass} type="button">Approve</button><button className={secondaryButtonClass} type="button">Reject</button><button className={secondaryButtonClass} type="button">Suspend</button></div>
+          <div key="actions" className="flex gap-2">
+            <button className={primarySmallButtonClass} disabled={loading || request.status !== "PENDING"} onClick={() => onUpdate(request.uuid, "approve")} type="button">Approve</button>
+            <button className={secondaryButtonClass} disabled={loading || request.status !== "PENDING"} onClick={() => onUpdate(request.uuid, "reject")} type="button">Reject</button>
+            <button className={secondaryButtonClass} disabled={loading || request.status !== "APPROVED"} onClick={() => onUpdate(request.uuid, "suspend")} type="button">Suspend</button>
+          </div>
         ])}
       />
     </Card>
