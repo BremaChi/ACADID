@@ -1,22 +1,49 @@
-import { Controller, Get, Param } from "@nestjs/common";
+import { Controller, Get, Param, Req } from "@nestjs/common";
 import { VerificationService } from "./verification.service.js";
+
+type VerificationRequest = {
+  headers: Record<string, string | string[] | undefined>;
+  ip?: string;
+  socket: {
+    remoteAddress?: string;
+  };
+};
 
 @Controller("verify")
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
   @Get(":token")
-  verifyToken(@Param("token") token: string) {
-    return this.verificationService.verifyToken(token);
+  verifyToken(@Param("token") token: string, @Req() request: VerificationRequest) {
+    return this.verificationService.verifyToken(token, this.verificationContext(request));
   }
 
   @Get("ref/:refnum")
-  verifyReference(@Param("refnum") refnum: string) {
-    return this.verificationService.verifyReference(refnum);
+  verifyReference(@Param("refnum") refnum: string, @Req() request: VerificationRequest) {
+    return this.verificationService.verifyReference(refnum, this.verificationContext(request));
   }
 
   @Get("status/:credId")
-  credentialStatus(@Param("credId") credId: string) {
-    return this.verificationService.credentialStatus(credId);
+  credentialStatus(@Param("credId") credId: string, @Req() request: VerificationRequest) {
+    return this.verificationService.credentialStatus(credId, this.verificationContext(request));
+  }
+
+  private verificationContext(request: VerificationRequest) {
+    const header = (name: string) => {
+      const value = request.headers[name.toLowerCase()];
+      return Array.isArray(value) ? value[0] : value;
+    };
+    const forwardedFor = header("x-forwarded-for")?.split(",")[0]?.trim();
+
+    return {
+      ipAddress: forwardedFor || header("x-real-ip") || request.ip || request.socket.remoteAddress || null,
+      verifierName: this.truncate(header("x-acadid-verifier-name"), 120),
+      verifierEmail: this.truncate(header("x-acadid-verifier-email"), 254)
+    };
+  }
+
+  private truncate(value: string | undefined, maxLength: number): string | undefined {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed.slice(0, maxLength) : undefined;
   }
 }

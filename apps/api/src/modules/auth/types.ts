@@ -10,6 +10,9 @@ export interface AuthTokenPayload {
   institutionId?: string;
   institutionUuid?: string;
   apiKeyId?: string;
+  apiKeyOwnerType?: "PRODUCT" | "INSTITUTION";
+  productCode?: string;
+  productName?: string;
   scopes?: string[];
   environment?: "SANDBOX" | "PRODUCTION";
   rateLimitPerMinute?: number;

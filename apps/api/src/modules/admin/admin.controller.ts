@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
@@ -32,9 +32,29 @@ export class AdminController {
     return this.adminService.createAuthorityGrant(id, body);
   }
 
+  @Get("institution-applications")
+  listInstitutionApplications(@Query("status") status?: "PENDING" | "APPROVED" | "REJECTED") {
+    return this.adminService.listInstitutionApplications(status);
+  }
+
+  @Post("institution-applications/:id/approve")
+  approveInstitutionApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.approveInstitutionApplication(request.auth, id);
+  }
+
+  @Post("institution-applications/:id/reject")
+  rejectInstitutionApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
+    return this.adminService.rejectInstitutionApplication(request.auth, id, body?.feedback);
+  }
+
   @Post("institutions/:id/api-keys")
   createApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.adminService.createApiKey(request.auth, id, body);
+  }
+
+  @Post("product-api-keys")
+  createProductApiKey(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.createProductApiKey(request.auth, body);
   }
 
   @Get("api-keys")

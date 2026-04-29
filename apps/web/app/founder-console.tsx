@@ -3,8 +3,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const apiBase = process.env.NEXT_PUBLIC_ACADID_API_URL ?? "http://localhost:4000/api";
-const navItems = ["Overview", "Institutions", "API Keys", "Disputes", "Reports", "Security"];
-const scopeOptions = ["ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
+const navItems = ["Overview", "Applications", "Institutions", "API Keys", "Disputes", "Reports", "Security"];
+const scopeOptions = ["institution:apply", "ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
+const productOptions = [
+  { code: "INSTITUTION_PORTAL", name: "Institution Portal" },
+  { code: "STUDENT_APP", name: "Student Mobile App" },
+  { code: "EMPLOYER_VERIFICATION_PORTAL", name: "Employer Verification Portal" },
+  { code: "EXAM_BODY_API", name: "Exam Body API" }
+];
 
 type Institution = {
   uuid: string;
@@ -19,7 +25,10 @@ type Institution = {
 
 type ApiKey = {
   uuid: string;
-  institutionId: string;
+  ownerType: "PRODUCT" | "INSTITUTION";
+  institutionId: string | null;
+  productCode: string | null;
+  productName: string | null;
   clientId: string;
   label: string;
   scopes: string[];
@@ -32,10 +41,27 @@ type ApiKey = {
 };
 
 type GlobalApiKey = ApiKey & {
-  institutionUuid: string;
-  institutionDisplayId: string;
-  institutionName: string;
-  institutionStatus: string;
+  institutionUuid: string | null;
+  institutionDisplayId: string | null;
+  institutionName: string | null;
+  institutionStatus: string | null;
+  ownerLabel: string | null;
+  ownerReference: string | null;
+};
+
+type InstitutionApplication = {
+  uuid: string;
+  officialName: string;
+  type: string;
+  state: string;
+  address: string;
+  contactPersonName: string;
+  contactEmail: string;
+  studentVolume: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewFeedback: string | null;
+  approvedInstitutionId: string | null;
+  createdAt: string;
 };
 
 type CreatedApiKey = ApiKey & {
@@ -90,6 +116,7 @@ export function FounderConsole() {
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [institutionApplications, setInstitutionApplications] = useState<InstitutionApplication[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, ApiKey[]>>({});
   const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
   const [apiKeySearch, setApiKeySearch] = useState("");
@@ -118,9 +145,18 @@ export function FounderConsole() {
     rateLimitPerMinute: 500,
     scopes: ["ingest:write", "govern:write", "verify:read"]
   });
+  const [productKeyForm, setProductKeyForm] = useState({
+    productCode: "INSTITUTION_PORTAL",
+    productName: "Institution Portal",
+    label: "Institution Portal Backend - Sandbox",
+    environment: "SANDBOX" as "SANDBOX" | "PRODUCTION",
+    rateLimitPerMinute: 1000,
+    scopes: ["institution:apply"]
+  });
 
   const selectedInstitution = institutions.find((institution) => institution.uuid === selectedInstitutionId);
   const selectedKeys = selectedInstitutionId ? apiKeys[selectedInstitutionId] ?? [] : [];
+  const pendingApplications = institutionApplications.filter((application) => application.status === "PENDING");
   const activeKeys = globalApiKeys.filter((key) => key.status === "ACTIVE");
   const filteredGlobalApiKeys = useMemo(() => {
     const term = apiKeySearch.trim().toLowerCase();
@@ -130,8 +166,10 @@ export function FounderConsole() {
         !term ||
         key.label.toLowerCase().includes(term) ||
         key.clientId.toLowerCase().includes(term) ||
-        key.institutionName.toLowerCase().includes(term) ||
-        key.institutionDisplayId.toLowerCase().includes(term);
+        (key.ownerLabel ?? "").toLowerCase().includes(term) ||
+        (key.ownerReference ?? "").toLowerCase().includes(term) ||
+        (key.institutionName ?? "").toLowerCase().includes(term) ||
+        (key.institutionDisplayId ?? "").toLowerCase().includes(term);
       return statusMatches && termMatches;
     });
   }, [apiKeySearch, apiKeyStatusFilter, globalApiKeys]);
@@ -175,16 +213,20 @@ export function FounderConsole() {
     }
     setLoading(true);
     try {
-      const [nextInstitutions, nextGlobalKeys] = await Promise.all([
+      const [nextInstitutions, nextGlobalKeys, nextApplications] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
-        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken)
+        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
+        apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken)
       ]);
       const nextKeyEntries = nextGlobalKeys.reduce<Record<string, ApiKey[]>>((groups, key) => {
-        groups[key.institutionUuid] = [...(groups[key.institutionUuid] ?? []), key];
+        if (key.institutionUuid) {
+          groups[key.institutionUuid] = [...(groups[key.institutionUuid] ?? []), key];
+        }
         return groups;
       }, {});
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
+      setInstitutionApplications(nextApplications);
       setApiKeys(nextKeyEntries);
       setSelectedInstitutionId((current) => current || nextInstitutions[0]?.uuid || "");
     } catch (error) {
@@ -226,6 +268,7 @@ export function FounderConsole() {
     window.localStorage.removeItem("acadid_founder_mfa");
     setToken(null);
     setInstitutions([]);
+    setInstitutionApplications([]);
     setApiKeys({});
     setGlobalApiKeys([]);
     setApiKeySearch("");
@@ -331,6 +374,56 @@ export function FounderConsole() {
     }
   }
 
+  async function handleCreateProductApiKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setLoading(true);
+    try {
+      const apiKey = await apiRequest<CreatedApiKey>("/admin/product-api-keys", token, {
+        method: "POST",
+        body: JSON.stringify(productKeyForm)
+      });
+      setCreatedKey(apiKey);
+      setNotice({ tone: "success", text: "Product API key generated. Save the backend secret now." });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Product API key generation failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approveInstitutionApplication(applicationId: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/institution-applications/${applicationId}/approve`, token, { method: "POST" });
+      setNotice({ tone: "success", text: "Institution application approved and partner record created." });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Application approval failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function rejectInstitutionApplication(applicationId: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/institution-applications/${applicationId}/reject`, token, {
+        method: "POST",
+        body: JSON.stringify({ feedback: "Rejected from Founder Console." })
+      });
+      setNotice({ tone: "success", text: "Institution application rejected." });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Application rejection failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function revokeApiKey(apiKeyId: string) {
     if (!token) return;
     setLoading(true);
@@ -353,6 +446,13 @@ export function FounderConsole() {
       ? keyForm.scopes.filter((item) => item !== scope)
       : [...keyForm.scopes, scope];
     setKeyForm({ ...keyForm, scopes });
+  }
+
+  function toggleProductScope(scope: string) {
+    const scopes = productKeyForm.scopes.includes(scope)
+      ? productKeyForm.scopes.filter((item) => item !== scope)
+      : [...productKeyForm.scopes, scope];
+    setProductKeyForm({ ...productKeyForm, scopes });
   }
 
   if (!token) {
@@ -548,6 +648,70 @@ export function FounderConsole() {
             </section>
           </section>
 
+          <section id="applications" className="rounded-lg border border-borderLight bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-borderLight p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-textPrimary">Institution Applications</h2>
+                <p className="mt-1 text-sm text-textSecondary">Founder approval queue for institutions joining through the Institution Portal.</p>
+              </div>
+              <span className="rounded-full bg-soft px-3 py-1 text-xs font-semibold text-primary">{pendingApplications.length} pending</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+                <thead className="bg-soft text-xs uppercase text-textSecondary">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Institution</th>
+                    <th className="px-4 py-3 font-semibold">Contact</th>
+                    <th className="px-4 py-3 font-semibold">Volume</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Submitted</th>
+                    <th className="px-4 py-3 font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {institutionApplications.map((application) => (
+                    <tr key={application.uuid} className="border-t border-borderLight">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-textPrimary">{application.officialName}</p>
+                        <p className="text-xs text-textSecondary">
+                          {titleCase(application.type)} / {application.state}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-textPrimary">{application.contactPersonName}</p>
+                        <p className="text-xs text-textSecondary">{application.contactEmail}</p>
+                      </td>
+                      <td className="px-4 py-3 text-textPrimary">{application.studentVolume.toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={application.status} />
+                      </td>
+                      <td className="px-4 py-3 text-textPrimary">{formatDate(application.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          <button
+                            className="h-9 rounded-md bg-accent px-3 text-sm font-medium text-white disabled:bg-borderLight disabled:text-disabled"
+                            disabled={application.status !== "PENDING" || loading}
+                            onClick={() => void approveInstitutionApplication(application.uuid)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="h-9 rounded-md border border-borderLight px-3 text-sm font-medium text-primary disabled:bg-borderLight disabled:text-disabled"
+                            disabled={application.status !== "PENDING" || loading}
+                            onClick={() => void rejectInstitutionApplication(application.uuid)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {institutionApplications.length === 0 ? <EmptyState text="No institution applications yet. Portal submissions will appear here for Founder approval." /> : null}
+            </div>
+          </section>
+
           <section className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
             <article id="institutions" className="rounded-lg border border-borderLight bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-borderLight p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -674,7 +838,64 @@ export function FounderConsole() {
               </article>
 
               <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-textPrimary">API Key Generation</h2>
+                <h2 className="text-lg font-semibold text-textPrimary">Product API Key</h2>
+                <p className="mt-1 text-sm text-textSecondary">MVP keys belong to ACAD.ID products, not institutions.</p>
+                <form className="mt-4 space-y-3" onSubmit={handleCreateProductApiKey}>
+                  <select
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm text-textPrimary outline-none focus:border-accent"
+                    value={productKeyForm.productCode}
+                    onChange={(event) => {
+                      const product = productOptions.find((option) => option.code === event.target.value) ?? productOptions[0];
+                      setProductKeyForm({ ...productKeyForm, productCode: product.code, productName: product.name, label: `${product.name} Backend - Sandbox` });
+                    }}
+                  >
+                    {productOptions.map((product) => (
+                      <option key={product.code} value={product.code}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
+                    placeholder="Product key label"
+                    value={productKeyForm.label}
+                    onChange={(event) => setProductKeyForm({ ...productKeyForm, label: event.target.value })}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <select
+                      className="h-10 rounded-md border border-borderLight px-3 text-sm text-textPrimary outline-none focus:border-accent"
+                      value={productKeyForm.environment}
+                      onChange={(event) => setProductKeyForm({ ...productKeyForm, environment: event.target.value as "SANDBOX" | "PRODUCTION" })}
+                    >
+                      <option value="SANDBOX">Sandbox</option>
+                      <option value="PRODUCTION">Production</option>
+                    </select>
+                    <input
+                      className="h-10 rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={productKeyForm.rateLimitPerMinute}
+                      onChange={(event) => setProductKeyForm({ ...productKeyForm, rateLimitPerMinute: Number(event.target.value) })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-textPrimary">
+                    {scopeOptions.map((scope) => (
+                      <label key={scope} className="flex items-center gap-2 rounded-md border border-borderLight bg-soft px-3 py-2">
+                        <input checked={productKeyForm.scopes.includes(scope)} onChange={() => toggleProductScope(scope)} type="checkbox" />
+                        <span className="break-all">{scope}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button className="h-10 w-full rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-primary disabled:bg-borderLight disabled:text-disabled" disabled={loading}>
+                    Generate Product Key
+                  </button>
+                </form>
+              </article>
+
+              <article className="rounded-lg border border-borderLight bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-textPrimary">Institution API Key</h2>
+                <p className="mt-1 text-sm text-textSecondary">Optional later access for approved live-result integrations.</p>
                 <form className="mt-4 space-y-3" onSubmit={handleCreateApiKey}>
                   <input
                     className="h-10 w-full rounded-md border border-borderLight px-3 text-sm outline-none focus:border-accent"
@@ -720,7 +941,7 @@ export function FounderConsole() {
             <div className="flex flex-col gap-3 border-b border-borderLight p-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-textPrimary">Global API Key Management</h2>
-                <p className="mt-1 text-sm text-textSecondary">Search, review, and revoke API keys across every institution.</p>
+                <p className="mt-1 text-sm text-textSecondary">Search, review, and revoke product or optional institution API keys.</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input
@@ -750,7 +971,7 @@ export function FounderConsole() {
                 <thead className="bg-soft text-xs uppercase text-textSecondary">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Key</th>
-                    <th className="px-4 py-3 font-semibold">Institution</th>
+                    <th className="px-4 py-3 font-semibold">Owner</th>
                     <th className="px-4 py-3 font-semibold">Environment</th>
                     <th className="px-4 py-3 font-semibold">Rate</th>
                     <th className="px-4 py-3 font-semibold">Last Used</th>
@@ -766,8 +987,10 @@ export function FounderConsole() {
                         <p className="font-mono text-xs text-textSecondary">{apiKey.clientId}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-textPrimary">{apiKey.institutionName}</p>
-                        <p className="text-xs text-textSecondary">{apiKey.institutionDisplayId}</p>
+                        <p className="font-medium text-textPrimary">{apiKey.ownerLabel ?? "Unassigned"}</p>
+                        <p className="text-xs text-textSecondary">
+                          {apiKey.ownerType === "PRODUCT" ? "Product" : "Institution"} / {apiKey.ownerReference ?? "No reference"}
+                        </p>
                       </td>
                       <td className="px-4 py-3 text-textPrimary">{titleCase(apiKey.environment)}</td>
                       <td className="px-4 py-3 text-textPrimary">{apiKey.rateLimitPerMinute}/min</td>

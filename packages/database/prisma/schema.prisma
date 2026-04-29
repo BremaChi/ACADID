@@ -32,6 +32,12 @@ enum InstitutionStatus {
   SUSPENDED
 }
 
+enum InstitutionApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AuthorityGrantStatus {
   ACTIVE
   SUSPENDED
@@ -112,6 +118,11 @@ enum ApiKeyStatus {
   EXPIRED
 }
 
+enum ApiKeyOwnerType {
+  PRODUCT
+  INSTITUTION
+}
+
 model Learner {
   uuid           String                @id @default(uuid()) @db.Uuid
   ain            String                @unique
@@ -155,6 +166,32 @@ model Institution {
   resultBatches   ResultBatch[]
   auditEvents     AuditEvent[]
   apiKeys         ApiKey[]
+  applications    InstitutionApplication[]
+}
+
+model InstitutionApplication {
+  uuid                  String                       @id @default(uuid()) @db.Uuid
+  officialName          String
+  type                  String
+  state                 String
+  address               String
+  contactPersonName     String
+  contactEmail          String
+  studentVolume         Int
+  documentUploads       Json
+  mouAcceptedAt         DateTime?
+  status                InstitutionApplicationStatus @default(PENDING)
+  reviewFeedback        String?
+  reviewedById          String?                      @db.Uuid
+  reviewedAt            DateTime?
+  approvedInstitutionId String?                      @db.Uuid
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  approvedInstitution Institution? @relation(fields: [approvedInstitutionId], references: [uuid])
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
 }
 
 model User {
@@ -209,7 +246,10 @@ model AuthorityGrant {
 
 model ApiKey {
   uuid               String            @id @default(uuid()) @db.Uuid
-  institutionId      String            @db.Uuid
+  ownerType          ApiKeyOwnerType   @default(INSTITUTION)
+  institutionId      String?           @db.Uuid
+  productCode        String?
+  productName        String?
   clientId           String            @unique
   clientSecretHash   String
   label              String
@@ -225,9 +265,11 @@ model ApiKey {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  institution Institution @relation(fields: [institutionId], references: [uuid])
+  institution Institution? @relation(fields: [institutionId], references: [uuid])
 
   @@index([institutionId, status])
+  @@index([ownerType, status])
+  @@index([productCode, status])
   @@index([clientId, status])
 }
 

@@ -8,6 +8,7 @@ import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 
 const allowedApiKeyScopes = new Set([
+  "institution:apply",
   "ingest:write",
   "govern:write",
   "access:read",
@@ -108,6 +109,96 @@ export class AdminService {
     return grant;
   }
 
+  listInstitutionApplications(status?: "PENDING" | "APPROVED" | "REJECTED") {
+    return this.prisma.institutionApplication.findMany({
+      where: status ? { status } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
+
+  async approveInstitutionApplication(auth: AuthTokenPayload, id: string) {
+    const application = await this.prisma.institutionApplication.findUnique({
+      where: { uuid: id }
+    });
+    if (!application) {
+      throw new BadRequestException("Institution application not found.");
+    }
+    if (application.status !== "PENDING") {
+      throw new BadRequestException("Only pending institution applications can be approved.");
+    }
+
+    const institution = await this.prisma.$transaction(async (tx) => {
+      const createdInstitution = await tx.institution.create({
+        data: {
+          institutionId: await this.nextInstitutionDisplayId(tx),
+          officialName: application.officialName,
+          type: this.mapApplicationType(application.type),
+          state: application.state,
+          tier: "FOUNDING",
+          status: "ACTIVE",
+          mouSignedAt: application.mouAcceptedAt
+        }
+      });
+
+      await tx.institutionApplication.update({
+        where: { uuid: application.uuid },
+        data: {
+          status: "APPROVED",
+          reviewedById: auth.sub,
+          reviewedAt: new Date(),
+          approvedInstitutionId: createdInstitution.uuid
+        }
+      });
+
+      return createdInstitution;
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "institution_application.approve",
+      targetType: "InstitutionApplication",
+      targetId: id,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        institutionId: institution.institutionId,
+        applicationType: application.type
+      }
+    });
+
+    return {
+      accepted: true,
+      applicationId: id,
+      institution
+    };
+  }
+
+  async rejectInstitutionApplication(auth: AuthTokenPayload, id: string, feedback?: string) {
+    const application = await this.prisma.institutionApplication.update({
+      where: { uuid: id },
+      data: {
+        status: "REJECTED",
+        reviewedById: auth.sub,
+        reviewedAt: new Date(),
+        reviewFeedback: feedback?.trim() || null
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "institution_application.reject",
+      targetType: "InstitutionApplication",
+      targetId: id,
+      outcome: "SUCCESS",
+      reason: feedback
+    });
+
+    return application;
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -122,6 +213,7 @@ export class AdminService {
     const clientSecret = this.createClientSecret(parsed.environment);
     const apiKey = await this.prisma.apiKey.create({
       data: {
+        ownerType: "INSTITUTION",
         institutionId: institution.uuid,
         clientId,
         clientSecretHash: this.passwordService.hash(clientSecret),
@@ -159,6 +251,52 @@ export class AdminService {
     };
   }
 
+  async createProductApiKey(auth: AuthTokenPayload, input: unknown) {
+    const parsed = this.parseProductApiKeyInput(input);
+    const clientId = this.createClientId(parsed.environment);
+    const clientSecret = this.createClientSecret(parsed.environment);
+    const apiKey = await this.prisma.apiKey.create({
+      data: {
+        ownerType: "PRODUCT",
+        productCode: parsed.productCode,
+        productName: parsed.productName,
+        clientId,
+        clientSecretHash: this.passwordService.hash(clientSecret),
+        label: parsed.label,
+        scopes: parsed.scopes,
+        environment: parsed.environment,
+        rateLimitPerMinute: parsed.rateLimitPerMinute,
+        expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt) : undefined,
+        createdById: auth.sub
+      },
+      select: this.safeApiKeySelect()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "api_key.product.create",
+      targetType: "ApiKey",
+      targetId: apiKey.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        clientId,
+        productCode: parsed.productCode,
+        productName: parsed.productName,
+        label: parsed.label,
+        scopes: parsed.scopes,
+        environment: parsed.environment,
+        rateLimitPerMinute: parsed.rateLimitPerMinute
+      }
+    });
+
+    return {
+      ...apiKey,
+      clientSecret,
+      warning: "This product client_secret is shown once. Store it in the product backend only; never place it in browser code."
+    };
+  }
+
   async listApiKeys(institutionId: string) {
     return this.prisma.apiKey.findMany({
       where: { institutionId },
@@ -185,10 +323,12 @@ export class AdminService {
 
     return keys.map((key) => ({
       ...key,
-      institutionUuid: key.institution.uuid,
-      institutionDisplayId: key.institution.institutionId,
-      institutionName: key.institution.officialName,
-      institutionStatus: key.institution.status
+      institutionUuid: key.institution?.uuid ?? null,
+      institutionDisplayId: key.institution?.institutionId ?? null,
+      institutionName: key.institution?.officialName ?? null,
+      institutionStatus: key.institution?.status ?? null,
+      ownerLabel: key.ownerType === "PRODUCT" ? key.productName : key.institution?.officialName,
+      ownerReference: key.ownerType === "PRODUCT" ? key.productCode : key.institution?.institutionId
     }));
   }
 
@@ -209,7 +349,7 @@ export class AdminService {
       action: "api_key.revoke",
       targetType: "ApiKey",
       targetId: apiKey.uuid,
-      institutionId: apiKey.institutionId,
+      institutionId: apiKey.institutionId ?? undefined,
       outcome: "SUCCESS",
       reason
     });
@@ -217,8 +357,8 @@ export class AdminService {
     return apiKey;
   }
 
-  private async nextInstitutionDisplayId(): Promise<string> {
-    const count = await this.prisma.institution.count();
+  private async nextInstitutionDisplayId(prisma: Pick<PrismaService, "institution"> = this.prisma): Promise<string> {
+    const count = await prisma.institution.count();
     return `AINi-${(count + 1).toString().padStart(5, "0")}`;
   }
 
@@ -257,6 +397,48 @@ export class AdminService {
     return { label, scopes, environment, rateLimitPerMinute, expiresAt };
   }
 
+  private parseProductApiKeyInput(input: unknown): {
+    productCode: string;
+    productName: string;
+    label: string;
+    scopes: string[];
+    environment: ApiKeyEnvironment;
+    rateLimitPerMinute: number;
+    expiresAt?: string;
+  } {
+    const parsed = this.parseApiKeyInput(input);
+    const body = typeof input === "object" && input ? (input as Record<string, unknown>) : {};
+    const productCode = typeof body.productCode === "string" ? body.productCode.trim().toUpperCase() : "";
+    const productName = typeof body.productName === "string" ? body.productName.trim() : "";
+    const allowedProducts = new Set(["INSTITUTION_PORTAL", "STUDENT_APP", "EMPLOYER_VERIFICATION_PORTAL", "EXAM_BODY_API"]);
+
+    if (!allowedProducts.has(productCode)) {
+      throw new BadRequestException("Product code must be one of INSTITUTION_PORTAL, STUDENT_APP, EMPLOYER_VERIFICATION_PORTAL, or EXAM_BODY_API.");
+    }
+    if (productName.length < 2) {
+      throw new BadRequestException("Product name is required.");
+    }
+
+    return {
+      ...parsed,
+      productCode,
+      productName
+    };
+  }
+
+  private mapApplicationType(type: string): "PRIMARY" | "SECONDARY" | "TERTIARY" | "EXAM_BODY" {
+    if (type === "EXAM_BODY") {
+      return "EXAM_BODY";
+    }
+    if (["POLYTECHNIC", "COLLEGE_OF_EDUCATION", "UNIVERSITY"].includes(type)) {
+      return "TERTIARY";
+    }
+    if (["SECONDARY_JSS", "SECONDARY_SSS", "COMBINED_SCHOOL"].includes(type)) {
+      return "SECONDARY";
+    }
+    return "PRIMARY";
+  }
+
   private createClientId(environment: "SANDBOX" | "PRODUCTION") {
     const prefix = environment === "PRODUCTION" ? "ak_live" : "ak_sandbox";
     return `${prefix}_${randomBytes(18).toString("base64url")}`;
@@ -270,7 +452,10 @@ export class AdminService {
   private safeApiKeySelect() {
     return {
       uuid: true,
+      ownerType: true,
       institutionId: true,
+      productCode: true,
+      productName: true,
       clientId: true,
       label: true,
       scopes: true,

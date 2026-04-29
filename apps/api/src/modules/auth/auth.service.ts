@@ -156,7 +156,7 @@ export class AuthService {
       !apiKey ||
       !this.passwordService.verify(clientSecret, apiKey.clientSecretHash) ||
       apiKey.status !== "ACTIVE" ||
-      apiKey.institution.status !== "ACTIVE" ||
+      (apiKey.ownerType === "INSTITUTION" && apiKey.institution?.status !== "ACTIVE") ||
       (apiKey.expiresAt && apiKey.expiresAt <= now)
     ) {
       throw new UnauthorizedException("Invalid API credentials.");
@@ -173,9 +173,12 @@ export class AuthService {
       fullName: apiKey.label,
       role: UserRole.REGISTRAR,
       kind: "API_KEY",
-      institutionId: apiKey.institution.institutionId,
-      institutionUuid: apiKey.institution.uuid,
+      institutionId: apiKey.institution?.institutionId,
+      institutionUuid: apiKey.institution?.uuid,
       apiKeyId: apiKey.uuid,
+      apiKeyOwnerType: apiKey.ownerType,
+      productCode: apiKey.productCode ?? undefined,
+      productName: apiKey.productName ?? undefined,
       scopes: apiKey.scopes,
       environment: apiKey.environment,
       rateLimitPerMinute: apiKey.rateLimitPerMinute
@@ -188,8 +191,11 @@ export class AuthService {
       apiClient: {
         clientId: apiKey.clientId,
         label: apiKey.label,
-        institutionId: apiKey.institution.institutionId,
-        institutionName: apiKey.institution.officialName,
+        ownerType: apiKey.ownerType,
+        productCode: apiKey.productCode,
+        productName: apiKey.productName,
+        institutionId: apiKey.institution?.institutionId ?? null,
+        institutionName: apiKey.institution?.officialName ?? null,
         scopes: apiKey.scopes,
         environment: apiKey.environment,
         rateLimitPerMinute: apiKey.rateLimitPerMinute

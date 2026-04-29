@@ -54,6 +54,10 @@ The API has these first modules:
 - Credential publication now uses Ed25519 JOSE/JWS signatures and embeds a proof in the VC payload.
 - Credential signing is prepared outside the publish transaction so database writes remain fast under load.
 - Founder TOTP secrets are encrypted at rest, setup is guarded by an authenticated session, and login requires an authenticator code after TOTP is enabled.
+- API keys now support v3.1 ownership: product-level MVP keys and optional institution-level keys.
+- Institution Portal application intake is implemented through the Data Center API with scoped product-key access.
+- Founder approval/rejection workflow for institution applications is implemented in the API and surfaced in the Founder Console.
+- Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
 
@@ -86,6 +90,8 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live API key generation with one-time secret modal.
 - Live selected-institution API key list and revocation action.
 - Live global API key management with search, status filters, institution context, last-used display, and revocation action.
+- Live product-level API key generation for internal AcadID products.
+- Live institution application approval queue for Founder review.
 - Gateway status panel.
 - Dispute empty state.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
@@ -124,6 +130,7 @@ Known validation note:
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
+- The v3.1 database migration is authored and Prisma Client is generated, but `npm run db:deploy` is currently blocked by a Supabase Prisma connection error to the configured pooler endpoint.
 
 ## Local Runtime
 

@@ -10,6 +10,39 @@ export const createInstitutionSchema = z.object({
   tier: z.enum(["FOUNDING", "ACTIVE", "VERIFIED"]).default("FOUNDING")
 });
 
+export const supportedInstitutionApplicationTypes = [
+  "NURSERY",
+  "PRIMARY",
+  "SECONDARY_JSS",
+  "SECONDARY_SSS",
+  "COMBINED_SCHOOL",
+  "POLYTECHNIC",
+  "COLLEGE_OF_EDUCATION",
+  "UNIVERSITY",
+  "EXAM_BODY"
+] as const;
+
+export const createInstitutionApplicationSchema = z.object({
+  officialName: z.string().min(2).max(180),
+  type: z.enum(supportedInstitutionApplicationTypes),
+  state: z.string().min(2).max(80),
+  address: z.string().min(5).max(300),
+  contactPersonName: z.string().min(2).max(120),
+  contactEmail: z.string().email().max(254),
+  studentVolume: z.number().int().positive().max(10_000_000),
+  documentUploads: z
+    .array(
+      z.object({
+        label: z.string().min(2).max(80),
+        storageUrl: z.string().min(3).max(500),
+        checksum: z.string().max(160).optional()
+      })
+    )
+    .max(20)
+    .default([]),
+  mouAccepted: z.literal(true)
+});
+
 export const createAuthorityGrantSchema = z.object({
   institutionId: z.string().uuid(),
   signedByName: z.string().min(2),
@@ -66,6 +99,7 @@ export const revokeAccessGrantSchema = z.object({
 });
 
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
+export type CreateInstitutionApplicationInput = z.infer<typeof createInstitutionApplicationSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;

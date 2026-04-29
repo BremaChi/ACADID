@@ -8,6 +8,7 @@ import { IngestionModule } from "./gateway/ingestion.module.js";
 import { VerificationModule } from "./gateway/verification.module.js";
 import { HealthController } from "./health.controller.js";
 import { PlatformServicesModule } from "./platform/platform-services.module.js";
+import { PortalModule } from "./portal/portal.module.js";
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { PlatformServicesModule } from "./platform/platform-services.module.js";
     IngestionModule,
     GovernanceModule,
     AccessModule,
-    VerificationModule
+    VerificationModule,
+    PortalModule
   ],
   controllers: [HealthController]
 })
