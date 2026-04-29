@@ -7,6 +7,7 @@ AcadID has moved from concept documents into a working TypeScript monorepo found
 Latest architecture source:
 
 - `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
+- `C:\Users\HP\Downloads\ACADID_Full_Updated_Architecture_v2_1.docx`
 - Persistent project memory: `docs/architecture-brief-v3-memory.md`
 
 Created:
@@ -26,6 +27,7 @@ Created:
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
 - Architecture v3 memory note in `docs/architecture-brief-v3-memory.md`.
+- Architecture v3.1 MVP update memory covering product-level API keys, Institution Portal onboarding, founder approval, and optional institution API access.
 - Founder authenticator-code security for the Founder Console.
 
 ## Implemented Foundation
@@ -121,6 +123,7 @@ Known validation note:
 
 - `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
+- Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
 
 ## Local Runtime
 
@@ -134,12 +137,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
-2. Add real MOU document upload/storage metadata to Authority Grants.
-3. Add verifier identity capture and IP hashing to verification events.
-4. Add webhook registration and delivery log models.
-5. Configure stable production signing keys with `npm run crypto:keygen`.
-6. Add production-grade account recovery rules for founder MFA loss.
+1. Align API key ownership with v3.1: product-level MVP keys first, institution-level keys locked behind optional API access approval.
+2. Build Institution Portal registration, document/MOU metadata, and Founder approval/rejection workflow.
+3. Add database-backed workflow tests for institution onboarding, ingestion, governance, publishing, and verification.
+4. Add verifier identity capture and IP hashing to verification events.
+5. Add webhook registration and delivery log models.
+6. Configure stable production signing keys with `npm run crypto:keygen`.
+7. Add production-grade account recovery rules for founder MFA loss.
 
 ## GitHub Status
 
