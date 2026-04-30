@@ -28,6 +28,8 @@ const allowedApiKeyScopes = new Set([
   "*"
 ]);
 
+type HealthStatus = "OPERATIONAL" | "DEGRADED" | "DOWN" | "PENDING_CONFIGURATION";
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -581,6 +583,47 @@ export class AdminService {
     }));
   }
 
+  async readSystemHealth() {
+    const generatedAt = new Date();
+    const [database, auth, storage, email, webhook, metrics] = await Promise.all([
+      this.checkDatabase(),
+      this.checkAuthService(),
+      this.checkConfiguredService("Storage Service", Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.STORAGE_BUCKET)),
+      this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
+      this.checkWebhookDelivery(),
+      this.readGatewayMetrics()
+    ]);
+
+    const services = [
+      {
+        name: "API Gateway",
+        status: "OPERATIONAL" as HealthStatus,
+        responseTimeMs: 0,
+        message: "NestJS gateway process is running."
+      },
+      database,
+      auth,
+      storage,
+      email,
+      webhook
+    ];
+    const incidents = this.deriveIncidents(services, metrics);
+    const overallStatus = services.some((service) => service.status === "DOWN")
+      ? "DOWN"
+      : services.some((service) => service.status === "DEGRADED")
+        ? "DEGRADED"
+        : "OPERATIONAL";
+
+    return {
+      overallStatus,
+      generatedAt,
+      uptimeSeconds: Math.floor(process.uptime()),
+      services,
+      metrics,
+      incidents
+    };
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -996,5 +1039,177 @@ export class AdminService {
     }
 
     return Object.keys(viewed).slice(0, 5).join(", ") || "Summary";
+  }
+
+  private async checkDatabase() {
+    const startedAt = Date.now();
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return {
+        name: "Database",
+        status: "OPERATIONAL" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: "PostgreSQL connection is healthy."
+      };
+    } catch (error) {
+      return {
+        name: "Database",
+        status: "DOWN" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Database connection failed.")
+      };
+    }
+  }
+
+  private async checkAuthService() {
+    const startedAt = Date.now();
+    try {
+      const founderCount = await this.prisma.user.count({
+        where: { role: "ACADID_SUPER_ADMIN" }
+      });
+      return {
+        name: "Authentication Service",
+        status: founderCount > 0 ? ("OPERATIONAL" as HealthStatus) : ("DEGRADED" as HealthStatus),
+        responseTimeMs: Date.now() - startedAt,
+        message: founderCount > 0 ? "Founder authentication records are available." : "No founder account found."
+      };
+    } catch (error) {
+      return {
+        name: "Authentication Service",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Authentication data check failed.")
+      };
+    }
+  }
+
+  private async checkConfiguredService(name: string, configured: boolean) {
+    return {
+      name,
+      status: configured ? ("OPERATIONAL" as HealthStatus) : ("PENDING_CONFIGURATION" as HealthStatus),
+      responseTimeMs: 0,
+      message: configured ? `${name} configuration is present.` : `${name} is not configured for this environment yet.`
+    };
+  }
+
+  private async checkWebhookDelivery() {
+    const startedAt = Date.now();
+    try {
+      const failedWebhookEvents = await this.prisma.auditEvent.count({
+        where: {
+          targetType: "WebhookDelivery",
+          outcome: { not: "SUCCESS" },
+          createdAt: { gte: this.hoursAgo(24) }
+        }
+      });
+      return {
+        name: "Webhook Delivery",
+        status: failedWebhookEvents > 0 ? ("DEGRADED" as HealthStatus) : ("OPERATIONAL" as HealthStatus),
+        responseTimeMs: Date.now() - startedAt,
+        message: failedWebhookEvents > 0 ? `${failedWebhookEvents} failed webhook event(s) in the last 24 hours.` : "No webhook delivery failures recorded in the last 24 hours."
+      };
+    } catch (error) {
+      return {
+        name: "Webhook Delivery",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Webhook delivery check failed.")
+      };
+    }
+  }
+
+  private async readGatewayMetrics() {
+    const startedAt = Date.now();
+    const since = this.hoursAgo(24);
+    try {
+      const [verificationEventsToday, deniedVerificationEvents, revokedVerificationEvents, discrepancyEvents, auditEventsToday, failedAuditEvents, publishedCredentialsToday] =
+        await Promise.all([
+          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since } } }),
+          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since }, outcome: "DENIED" } }),
+          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since }, outcome: "REVOKED" } }),
+          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since }, outcome: "DISCREPANCY" } }),
+          this.prisma.auditEvent.count({ where: { createdAt: { gte: since } } }),
+          this.prisma.auditEvent.count({ where: { createdAt: { gte: since }, outcome: { not: "SUCCESS" } } }),
+          this.prisma.credential.count({ where: { issuedAt: { gte: since } } })
+        ]);
+      const gatewayRequestsToday = verificationEventsToday + auditEventsToday;
+      const failedEvents = deniedVerificationEvents + revokedVerificationEvents + discrepancyEvents + failedAuditEvents;
+      const errorRate = gatewayRequestsToday > 0 ? Number(((failedEvents / gatewayRequestsToday) * 100).toFixed(2)) : 0;
+
+      return {
+        status: "OPERATIONAL" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        gatewayRequestsToday,
+        verificationEventsToday,
+        deniedVerificationEvents,
+        revokedVerificationEvents,
+        discrepancyEvents,
+        auditEventsToday,
+        failedAuditEvents,
+        publishedCredentialsToday,
+        errorRate
+      };
+    } catch (error) {
+      return {
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        gatewayRequestsToday: 0,
+        verificationEventsToday: 0,
+        deniedVerificationEvents: 0,
+        revokedVerificationEvents: 0,
+        discrepancyEvents: 0,
+        auditEventsToday: 0,
+        failedAuditEvents: 0,
+        publishedCredentialsToday: 0,
+        errorRate: 0,
+        message: this.safeErrorMessage(error, "Gateway metrics query failed.")
+      };
+    }
+  }
+
+  private deriveIncidents(
+    services: Array<{ name: string; status: HealthStatus; message: string }>,
+    metrics: { status: HealthStatus; failedAuditEvents: number; deniedVerificationEvents: number; revokedVerificationEvents: number; discrepancyEvents: number; message?: string }
+  ) {
+    const incidents = services
+      .filter((service) => service.status === "DOWN" || service.status === "DEGRADED")
+      .map((service) => ({
+        title: `${service.name} ${service.status.toLowerCase()}`,
+        severity: service.status === "DOWN" ? "CRITICAL" : "WARNING",
+        status: "OPEN",
+        message: service.message,
+        detectedAt: new Date()
+      }));
+
+    if (metrics.status === "DEGRADED" && metrics.message) {
+      incidents.push({
+        title: "Gateway metrics degraded",
+        severity: "WARNING",
+        status: "OPEN",
+        message: metrics.message,
+        detectedAt: new Date()
+      });
+    }
+
+    const riskEvents = metrics.failedAuditEvents + metrics.deniedVerificationEvents + metrics.revokedVerificationEvents + metrics.discrepancyEvents;
+    if (riskEvents > 0) {
+      incidents.push({
+        title: "Gateway risk events detected",
+        severity: "INFO",
+        status: "OPEN",
+        message: `${riskEvents} denied, revoked, discrepancy, or failed audit event(s) in the last 24 hours.`,
+        detectedAt: new Date()
+      });
+    }
+
+    return incidents.slice(0, 10);
+  }
+
+  private safeErrorMessage(error: unknown, fallback: string) {
+    return error instanceof Error ? error.message : fallback;
+  }
+
+  private hoursAgo(hours: number) {
+    return new Date(Date.now() - hours * 60 * 60 * 1000);
   }
 }

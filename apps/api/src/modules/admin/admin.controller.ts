@@ -107,6 +107,11 @@ export class AdminController {
     return this.adminService.listVerificationLogs({ outcome, search });
   }
 
+  @Get("system-health")
+  readSystemHealth() {
+    return this.adminService.readSystemHealth();
+  }
+
   @Post("institutions/:id/api-keys")
   createApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.adminService.createApiKey(request.auth, id, body);

@@ -198,6 +198,41 @@ type VerificationLog = {
   verifiedAt: string;
 };
 
+type HealthStatus = "OPERATIONAL" | "DEGRADED" | "DOWN" | "PENDING_CONFIGURATION";
+
+type SystemHealth = {
+  overallStatus: HealthStatus;
+  generatedAt: string;
+  uptimeSeconds: number;
+  services: Array<{
+    name: string;
+    status: HealthStatus;
+    responseTimeMs: number;
+    message: string;
+  }>;
+  metrics: {
+    status: HealthStatus;
+    responseTimeMs: number;
+    gatewayRequestsToday: number;
+    verificationEventsToday: number;
+    deniedVerificationEvents: number;
+    revokedVerificationEvents: number;
+    discrepancyEvents: number;
+    auditEventsToday: number;
+    failedAuditEvents: number;
+    publishedCredentialsToday: number;
+    errorRate: number;
+    message?: string;
+  };
+  incidents: Array<{
+    title: string;
+    severity: string;
+    status: string;
+    message: string;
+    detectedAt: string;
+  }>;
+};
+
 function getProductOption(code: string) {
   return productOptions.find((option) => option.code === code) ?? productOptions[0];
 }
@@ -246,6 +281,10 @@ async function loadVerificationLogs(token: string): Promise<VerificationLog[]> {
   return apiRequest<VerificationLog[]>("/admin/verification-logs", token);
 }
 
+async function loadSystemHealth(token: string): Promise<SystemHealth> {
+  return apiRequest<SystemHealth>("/admin/system-health", token);
+}
+
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
   const [token, setToken] = useState<string | null>(null);
@@ -260,6 +299,7 @@ export function FounderConsole() {
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccessRequest[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
@@ -421,12 +461,14 @@ export function FounderConsole() {
         loadDisputes(activeToken),
         loadVerificationLogs(activeToken)
       ]);
+      const nextSystemHealth = await loadSystemHealth(activeToken);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
       setInstitutionApplications(nextApplications);
       setDeveloperRequests(nextDeveloperRequests);
       setDisputes(nextDisputes);
       setVerificationLogs(nextVerificationLogs);
+      setSystemHealth(nextSystemHealth);
       const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
@@ -476,6 +518,7 @@ export function FounderConsole() {
     setDisputes([]);
     setSelectedDisputeId("");
     setVerificationLogs([]);
+    setSystemHealth(null);
     setNotice(nextNotice);
     setTotpSetup(null);
     setMfaEnabled(false);
@@ -1003,7 +1046,7 @@ export function FounderConsole() {
       return <RevenuePage />;
     }
     if (activePage === "System Health") {
-      return <SystemHealthPage />;
+      return <SystemHealthPage health={systemHealth} />;
     }
     if (activePage === "Security") {
       return (
@@ -1585,28 +1628,70 @@ function RevenuePage() {
   );
 }
 
-function SystemHealthPage() {
-  const services = ["API Gateway", "Database", "Authentication Service", "Storage Service", "Email Service", "Webhook Delivery"];
+function SystemHealthPage({ health }: { health: SystemHealth | null }) {
+  const metrics = health?.metrics;
+  const services = health?.services ?? [
+    { name: "API Gateway", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Database", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Authentication Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Storage Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Email Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Webhook Delivery", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." }
+  ];
+  const incidents = health?.incidents ?? [];
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Overall Status" value={titleCase(health?.overallStatus ?? "PENDING_CONFIGURATION")} helper={health ? `Updated ${formatDate(health.generatedAt)}` : "Waiting for health data"} tone={health?.overallStatus === "OPERATIONAL" ? "success" : health?.overallStatus === "DOWN" ? "error" : "warning"} icon="System Health" />
+        <MetricCard label="Gateway Requests" value={metrics?.gatewayRequestsToday ?? "--"} helper="Last 24 hours" tone="accent" icon="API Keys" />
+        <MetricCard label="Error Rate" value={typeof metrics?.errorRate === "number" ? `${metrics.errorRate}%` : "--"} helper="Denied, revoked, discrepancy, failed audit" tone={metrics && metrics.errorRate > 0 ? "warning" : "success"} icon="Security" />
+        <MetricCard label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} helper="Current API process" tone="accent" icon="System Health" />
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
       <Card>
         <SectionTitle title="System Health" subtitle="Infrastructure status and incident review." />
         <div className="mt-4 divide-y divide-borderLight">
           {services.map((service) => (
-            <div key={service} className="flex items-center justify-between py-3 text-sm">
-              <span className="font-medium text-primary">{service}</span>
-              <StatusBadge status="Operational" />
+            <div key={service.name} className="flex items-center justify-between py-3 text-sm">
+              <div>
+                <p className="font-medium text-primary">{service.name}</p>
+                <p className="text-xs text-textSecondary">{service.message}</p>
+              </div>
+              <div className="text-right">
+                <StatusBadge status={service.status} />
+                <p className="mt-1 text-xs text-textSecondary">{service.responseTimeMs}ms</p>
+              </div>
             </div>
           ))}
         </div>
       </Card>
       <Card>
-        <SectionTitle title="Performance" subtitle="Gateway metrics endpoint pending." />
+        <SectionTitle title="Performance" subtitle="Gateway metrics from the Data Center." />
         <div className="grid gap-3">
-          <MetricLine label="API response time" value="82ms" />
-          <MetricLine label="Error rate" value="0.02%" />
-          <MetricLine label="Recent incidents" value="0 open" />
+          <MetricLine label="Metric query time" value={metrics ? `${metrics.responseTimeMs}ms` : "--"} />
+          <MetricLine label="Verification events" value={String(metrics?.verificationEventsToday ?? "--")} />
+          <MetricLine label="Audit events" value={String(metrics?.auditEventsToday ?? "--")} />
+          <MetricLine label="Published credentials" value={String(metrics?.publishedCredentialsToday ?? "--")} />
+          <MetricLine label="Denied verifications" value={String(metrics?.deniedVerificationEvents ?? "--")} />
+          <MetricLine label="Revoked/discrepancy" value={String((metrics?.revokedVerificationEvents ?? 0) + (metrics?.discrepancyEvents ?? 0))} />
+          <MetricLine label="Recent incidents" value={`${incidents.length} open`} />
         </div>
+      </Card>
+      </div>
+      <Card>
+        <SectionTitle title="Recent Incidents" subtitle="Derived from component degradation and gateway risk events." />
+        <ResponsiveTable
+          empty="No open incidents detected."
+          headers={["Incident", "Severity", "Status", "Detected", "Message"]}
+          rows={incidents.map((incident) => [
+            incident.title,
+            <StatusBadge key="severity" status={incident.severity} />,
+            <StatusBadge key="status" status={incident.status} />,
+            formatDate(incident.detectedAt),
+            incident.message
+          ])}
+        />
       </Card>
     </div>
   );
@@ -1732,7 +1817,7 @@ function MetricCard({ label, value, helper, tone, icon }: { label: string; value
         <div className="min-w-0">
           <p className="truncate text-sm text-textSecondary">{label}</p>
           <p className="mt-1 text-2xl font-semibold text-primary">{typeof value === "number" ? value.toLocaleString() : value}</p>
-          <p className={`mt-2 text-xs ${tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : "text-textSecondary"}`}>{helper}</p>
+          <p className={`mt-2 text-xs ${tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : tone === "error" ? "text-error" : "text-textSecondary"}`}>{helper}</p>
         </div>
       </div>
     </Card>
@@ -1830,7 +1915,7 @@ function HeaderIcon({ children, label, badge }: { children: ReactNode; label: st
 }
 
 function IconTile({ label, tone = "accent" }: { label: string; tone?: string }) {
-  const toneClass = tone === "success" ? "bg-success/10 text-success" : tone === "warning" ? "bg-warning/10 text-warning" : "bg-accent/10 text-accent";
+  const toneClass = tone === "success" ? "bg-success/10 text-success" : tone === "warning" ? "bg-warning/10 text-warning" : tone === "error" ? "bg-error/10 text-error" : "bg-accent/10 text-accent";
   return <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${toneClass}`}><SideIcon label={label} active /></div>;
 }
 
@@ -1944,6 +2029,13 @@ function titleCase(value: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 const inputClass = "h-10 w-full rounded-md border border-borderLight bg-white px-3 text-sm text-textPrimary outline-none focus:border-accent";
