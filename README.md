@@ -79,6 +79,7 @@ Current v3 checkpoint:
 - Founder can generate internal product API keys.
 - Founder can generate institution Live Results API keys only after Developer Access is approved.
 - Founder can review, assign, escalate, notify institutions about, and close disputes from the Data Center-backed Disputes workflow.
+- Founder can view cross-institution credential verification logs with search, outcome filters, and CSV export.
 - Founder Console connects to the live API for institution/key workflows.
 - Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.

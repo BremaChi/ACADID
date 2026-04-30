@@ -60,6 +60,7 @@ The API has these first modules:
 - Developer Access Requests are now a database-backed governance workflow with founder create, list, approve, reject, and suspend endpoints.
 - Institution Live Results API key generation is locked behind approved Developer Access.
 - Disputes are now database-backed with founder list, create, assign, institution-notice, escalate, and close endpoints.
+- Founder-level Verification Logs are exposed through the Data Center API across all institutions and credentials without returning encrypted verifier email or IP hashes.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -100,6 +101,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Developer Access Request queue backed by the Data Center API, including approve, reject, and suspend actions.
 - Institution Live Results API key form now lists only institutions with approved Developer Access.
 - Live Disputes page backed by the Data Center API, with status filters, detail panel, founder assignment, institution notice text, escalation, and resolution notes.
+- Live Verification Logs page backed by the Data Center API, with cross-institution search, outcome filters, metrics, and CSV export.
 - Gateway status panel.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
@@ -126,6 +128,7 @@ Completed successfully:
 - Founder Console navigation refactor validates with `npm run typecheck`, `npm test`, and `http://localhost:3000` returning 200.
 - Developer Access Request workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, `npm run smoke:api`, and browser verification in the Founder Console.
 - Dispute workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/disputes` check, and browser verification in the Founder Console.
+- Founder Verification Logs workflow validates with `npm run typecheck` and `npm test`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -143,6 +146,7 @@ Known validation note:
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
+- On April 30, 2026, local Supabase runtime checks temporarily returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. The Verification Logs endpoint is compiled and tested, but live authenticated browser/API verification should be retried when Supabase runtime connectivity is stable again.
 
 ## Local Runtime
 
@@ -156,12 +160,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add founder-level Verification Logs endpoint across all institutions and credentials.
-2. Add System Health and gateway metrics endpoints for response time, error rate, webhook delivery, and incidents.
-3. Add revenue ledger models for verification fees, credential exports, and institution subscriptions.
-4. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
-5. Configure stable production signing keys with `npm run crypto:keygen`.
-6. Add production-grade account recovery rules for founder MFA loss.
+1. Add System Health and gateway metrics endpoints for response time, error rate, webhook delivery, and incidents.
+2. Add revenue ledger models for verification fees, credential exports, and institution subscriptions.
+3. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
+4. Configure stable production signing keys with `npm run crypto:keygen`.
+5. Add production-grade account recovery rules for founder MFA loss.
 
 ## GitHub Status
 

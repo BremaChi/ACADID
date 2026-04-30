@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { DeveloperAccessRequestStatus, DisputeStatus, UserRole } from "@prisma/client";
+import { DeveloperAccessRequestStatus, DisputeStatus, UserRole, VerificationOutcome } from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
 import { Roles } from "../auth/roles.decorator.js";
@@ -100,6 +100,11 @@ export class AdminController {
   @Post("disputes/:id/close")
   closeDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.adminService.closeDispute(request.auth, id, body);
+  }
+
+  @Get("verification-logs")
+  listVerificationLogs(@Query("outcome") outcome?: VerificationOutcome, @Query("search") search?: string) {
+    return this.adminService.listVerificationLogs({ outcome, search });
   }
 
   @Post("institutions/:id/api-keys")

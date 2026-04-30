@@ -183,11 +183,18 @@ type Dispute = {
 type VerificationLog = {
   id: string;
   ain: string;
+  learnerName: string;
+  institutionId: string;
   institutionName: string;
+  institutionState: string;
   verifier: string;
+  verifierType: string;
   credential: string;
+  credentialType: string;
+  credentialStatus: string;
   outcome: string;
   scopeShown: string;
+  accessGrantScope: string | null;
   verifiedAt: string;
 };
 
@@ -235,9 +242,8 @@ async function loadDisputes(token: string): Promise<Dispute[]> {
   return apiRequest<Dispute[]>("/admin/disputes", token);
 }
 
-async function loadVerificationLogs(): Promise<VerificationLog[]> {
-  // TODO: Replace with Founder-level verification log endpoint. Existing learner endpoint is /access/verification-log.
-  return [];
+async function loadVerificationLogs(token: string): Promise<VerificationLog[]> {
+  return apiRequest<VerificationLog[]>("/admin/verification-logs", token);
 }
 
 export function FounderConsole() {
@@ -279,6 +285,7 @@ export function FounderConsole() {
   const [disputeStatusFilter, setDisputeStatusFilter] = useState("ALL");
   const [disputeNoticeText, setDisputeNoticeText] = useState("Please review this dispute and provide supporting evidence through the institution dashboard.");
   const [disputeResolutionNote, setDisputeResolutionNote] = useState("");
+  const [verificationSearch, setVerificationSearch] = useState("");
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
@@ -371,7 +378,23 @@ export function FounderConsole() {
 
   const filteredDeveloperRequests = developerRequests.filter((request) => developerStatusFilter === "ALL" || request.status === developerStatusFilter);
   const filteredDisputes = disputes.filter((dispute) => disputeStatusFilter === "ALL" || dispute.status === disputeStatusFilter);
-  const filteredVerificationLogs = verificationLogs.filter((log) => verificationOutcomeFilter === "ALL" || log.outcome === verificationOutcomeFilter);
+  const filteredVerificationLogs = useMemo(() => {
+    const term = verificationSearch.trim().toLowerCase();
+    return verificationLogs.filter((log) => {
+      const matchesTerm =
+        !term ||
+        log.ain.toLowerCase().includes(term) ||
+        log.learnerName.toLowerCase().includes(term) ||
+        log.institutionId.toLowerCase().includes(term) ||
+        log.institutionName.toLowerCase().includes(term) ||
+        log.institutionState.toLowerCase().includes(term) ||
+        log.verifier.toLowerCase().includes(term) ||
+        log.verifierType.toLowerCase().includes(term) ||
+        log.credential.toLowerCase().includes(term) ||
+        log.credentialType.toLowerCase().includes(term);
+      return matchesTerm && (verificationOutcomeFilter === "ALL" || log.outcome === verificationOutcomeFilter);
+    });
+  }, [verificationLogs, verificationOutcomeFilter, verificationSearch]);
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("acadid_founder_token");
@@ -396,7 +419,7 @@ export function FounderConsole() {
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
         loadDeveloperAccessRequests(activeToken),
         loadDisputes(activeToken),
-        loadVerificationLogs()
+        loadVerificationLogs(activeToken)
       ]);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
@@ -965,7 +988,16 @@ export function FounderConsole() {
       );
     }
     if (activePage === "Verification Logs") {
-      return <VerificationLogsPage logs={filteredVerificationLogs} outcomeFilter={verificationOutcomeFilter} onOutcomeFilter={setVerificationOutcomeFilter} />;
+      return (
+        <VerificationLogsPage
+          allLogs={verificationLogs}
+          logs={filteredVerificationLogs}
+          onOutcomeFilter={setVerificationOutcomeFilter}
+          onSearch={setVerificationSearch}
+          outcomeFilter={verificationOutcomeFilter}
+          search={verificationSearch}
+        />
+      );
     }
     if (activePage === "Revenue") {
       return <RevenuePage />;
@@ -1459,20 +1491,80 @@ function DisputesPage({
   );
 }
 
-function VerificationLogsPage({ logs, outcomeFilter, onOutcomeFilter }: { logs: VerificationLog[]; outcomeFilter: string; onOutcomeFilter: (value: string) => void }) {
+function VerificationLogsPage({
+  allLogs,
+  logs,
+  onOutcomeFilter,
+  onSearch,
+  outcomeFilter,
+  search
+}: {
+  allLogs: VerificationLog[];
+  logs: VerificationLog[];
+  onOutcomeFilter: (value: string) => void;
+  onSearch: (value: string) => void;
+  outcomeFilter: string;
+  search: string;
+}) {
+  const confirmed = allLogs.filter((log) => log.outcome === "CONFIRMED").length;
+  const denied = allLogs.filter((log) => log.outcome === "DENIED").length;
+  const riskEvents = allLogs.filter((log) => ["DISCREPANCY", "REVOKED"].includes(log.outcome)).length;
+
+  function exportCsv() {
+    const headers = ["AIN", "Learner", "Institution", "Verifier", "Verifier Type", "Credential", "Outcome", "Scope", "Verified At"];
+    const rows = logs.map((log) => [
+      log.ain,
+      log.learnerName,
+      log.institutionName,
+      log.verifier,
+      log.verifierType,
+      log.credential,
+      log.outcome,
+      log.scopeShown,
+      log.verifiedAt
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll("\"", "\"\"")}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `acadid-verification-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <Card>
-      <SectionTitle title="Verification Logs" subtitle="Credential verification events and consent scope shown." />
-      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <FilterSelect value={outcomeFilter} onChange={onOutcomeFilter} options={["ALL", "CONFIRMED", "DENIED", "DISCREPANCY", "REVOKED"]} />
-        <button className={secondaryButtonClass} type="button">Export logs</button>
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Verification Events" value={allLogs.length} helper="Last 500 events" tone="accent" icon="Verification Logs" />
+        <MetricCard label="Confirmed" value={confirmed} helper="Successful checks" tone="success" icon="Verification Logs" />
+        <MetricCard label="Denied" value={denied} helper="Blocked or invalid access" tone="warning" icon="Verification Logs" />
+        <MetricCard label="Risk Events" value={riskEvents} helper="Discrepancy or revoked" tone="error" icon="Security" />
       </div>
-      <ResponsiveTable
-        empty="No founder-level verification logs available yet. Founder log endpoint is pending."
-        headers={["AIN", "Institution", "Verifier", "Credential", "Outcome", "Scope", "Verified"]}
-        rows={logs.map((log) => [log.ain, log.institutionName, log.verifier, log.credential, <StatusBadge key="status" status={log.outcome} />, log.scopeShown, formatDate(log.verifiedAt)])}
-      />
-    </Card>
+      <Card>
+        <SectionTitle title="Verification Logs" subtitle="Credential verification events and consent scope shown." />
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_120px]">
+          <input className={inputClass} placeholder="Search AIN, institution, verifier, credential..." value={search} onChange={(event) => onSearch(event.target.value)} />
+          <FilterSelect value={outcomeFilter} onChange={onOutcomeFilter} options={["ALL", "CONFIRMED", "DENIED", "DISCREPANCY", "REVOKED"]} />
+          <button className={secondaryButtonClass} disabled={!logs.length} onClick={exportCsv} type="button">Export CSV</button>
+        </div>
+        <ResponsiveTable
+          empty="No verification logs match this search or filter."
+          headers={["AIN", "Institution", "Verifier", "Credential", "Outcome", "Scope", "Verified"]}
+          rows={logs.map((log) => [
+            <div key="ain"><p className="font-medium text-primary">{log.ain}</p><p className="text-xs text-textSecondary">{log.learnerName}</p></div>,
+            <div key="institution"><p>{log.institutionName}</p><p className="text-xs text-textSecondary">{log.institutionId} / {log.institutionState}</p></div>,
+            <div key="verifier"><p>{log.verifier}</p><p className="text-xs text-textSecondary">{titleCase(log.verifierType)}</p></div>,
+            <div key="credential"><p className="font-mono text-xs text-primary">{log.credential}</p><p className="text-xs text-textSecondary">{titleCase(log.credentialType)} / {titleCase(log.credentialStatus)}</p></div>,
+            <StatusBadge key="status" status={log.outcome} />,
+            log.scopeShown,
+            formatDate(log.verifiedAt)
+          ])}
+        />
+      </Card>
+    </div>
   );
 }
 

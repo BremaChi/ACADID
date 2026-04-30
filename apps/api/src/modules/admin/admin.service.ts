@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma } from "@prisma/client";
+import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma, VerificationOutcome } from "@prisma/client";
 import {
   assignDisputeSchema,
   closeDisputeSchema,
@@ -477,6 +477,110 @@ export class AdminService {
     return dispute;
   }
 
+  async listVerificationLogs(options: { outcome?: VerificationOutcome; search?: string } = {}) {
+    const search = options.search?.trim();
+    const searchWhere: Prisma.VerificationEventWhereInput | undefined = search
+      ? {
+          OR: [
+            { verifierName: { contains: search, mode: "insensitive" } },
+            {
+              credential: {
+                credentialRef: { contains: search, mode: "insensitive" }
+              }
+            },
+            {
+              credential: {
+                learner: {
+                  OR: [
+                    { ain: { contains: search, mode: "insensitive" } },
+                    { fullName: { contains: search, mode: "insensitive" } }
+                  ]
+                }
+              }
+            },
+            {
+              credential: {
+                institution: {
+                  OR: [
+                    { institutionId: { contains: search, mode: "insensitive" } },
+                    { officialName: { contains: search, mode: "insensitive" } },
+                    { state: { contains: search, mode: "insensitive" } }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      : undefined;
+
+    const events = await this.prisma.verificationEvent.findMany({
+      where: {
+        ...(options.outcome ? { outcome: options.outcome } : {}),
+        ...(searchWhere ?? {})
+      },
+      orderBy: { verifiedAt: "desc" },
+      take: 500,
+      select: {
+        uuid: true,
+        verifierType: true,
+        verifierName: true,
+        outcome: true,
+        verifiedAt: true,
+        scopeViewed: true,
+        credential: {
+          select: {
+            uuid: true,
+            credentialRef: true,
+            type: true,
+            status: true,
+            learner: {
+              select: {
+                uuid: true,
+                ain: true,
+                fullName: true
+              }
+            },
+            institution: {
+              select: {
+                uuid: true,
+                institutionId: true,
+                officialName: true,
+                state: true
+              }
+            }
+          }
+        },
+        accessGrant: {
+          select: {
+            uuid: true,
+            scope: true,
+            recipientLabel: true,
+            revokedAt: true,
+            expiresAt: true
+          }
+        }
+      }
+    });
+
+    return events.map((event) => ({
+      id: event.uuid,
+      ain: event.credential.learner.ain,
+      learnerName: event.credential.learner.fullName,
+      institutionId: event.credential.institution.institutionId,
+      institutionName: event.credential.institution.officialName,
+      institutionState: event.credential.institution.state,
+      verifier: event.verifierName ?? event.accessGrant?.recipientLabel ?? event.verifierType,
+      verifierType: event.verifierType,
+      credential: event.credential.credentialRef,
+      credentialType: event.credential.type,
+      credentialStatus: event.credential.status,
+      outcome: event.outcome,
+      scopeShown: this.describeScopeViewed(event.scopeViewed),
+      accessGrantScope: event.accessGrant?.scope ?? null,
+      verifiedAt: event.verifiedAt
+    }));
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -873,5 +977,24 @@ export class AdminService {
         }
       }
     } satisfies Prisma.DisputeInclude;
+  }
+
+  private describeScopeViewed(scopeViewed: Prisma.JsonValue): string {
+    if (!scopeViewed || typeof scopeViewed !== "object" || Array.isArray(scopeViewed)) {
+      return "No fields";
+    }
+
+    const viewed = scopeViewed as Record<string, unknown>;
+    if (typeof viewed.scope === "string") {
+      return viewed.scope;
+    }
+    if (typeof viewed.cryptographicStatus === "string") {
+      return `status:${viewed.cryptographicStatus}`;
+    }
+    if (viewed.vcPayload) {
+      return "FULL";
+    }
+
+    return Object.keys(viewed).slice(0, 5).join(", ") || "Summary";
   }
 }
