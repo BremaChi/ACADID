@@ -45,6 +45,19 @@ enum DeveloperAccessRequestStatus {
   SUSPENDED
 }
 
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+  ESCALATED
+}
+
+enum DisputePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
 enum AuthorityGrantStatus {
   ACTIVE
   SUSPENDED
@@ -149,6 +162,7 @@ model Learner {
   credentials        Credential[]
   accessGrants       AccessGrant[]
   studentUserProfile User?
+  disputes           Dispute[]
 
   @@index([fullName, dateOfBirth])
 }
@@ -175,6 +189,7 @@ model Institution {
   apiKeys         ApiKey[]
   applications    InstitutionApplication[]
   developerAccessRequests DeveloperAccessRequest[]
+  disputes       Dispute[]
 }
 
 model InstitutionApplication {
@@ -243,6 +258,7 @@ model User {
 
   institutions InstitutionUser[]
   auditEvents  AuditEvent[]
+  assignedDisputes Dispute[] @relation("DisputeAssignee")
 }
 
 model InstitutionUser {
@@ -396,6 +412,7 @@ model Credential {
   academicRecord AcademicRecord? @relation(fields: [academicRecordId], references: [uuid])
   accessGrants   AccessGrant[]
   verifications  VerificationEvent[]
+  disputes       Dispute[]
 
   @@index([learnerId, status])
   @@index([institutionId, status])
@@ -438,6 +455,39 @@ model VerificationEvent {
   accessGrant AccessGrant? @relation(fields: [accessGrantId], references: [uuid])
 
   @@index([credentialId, verifiedAt])
+}
+
+model Dispute {
+  uuid               String          @id @default(uuid()) @db.Uuid
+  title              String
+  description        String
+  category           String          @default("GENERAL")
+  priority           DisputePriority @default(NORMAL)
+  status             DisputeStatus   @default(OPEN)
+  institutionId      String?         @db.Uuid
+  learnerId          String?         @db.Uuid
+  credentialId       String?         @db.Uuid
+  reporterName       String?
+  reporterEmail      String?
+  assignedToId       String?         @db.Uuid
+  institutionNotice  String?
+  noticeSentAt       DateTime?
+  escalatedAt        DateTime?
+  resolvedAt         DateTime?
+  resolutionNote     String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  institution Institution? @relation(fields: [institutionId], references: [uuid])
+  learner     Learner?     @relation(fields: [learnerId], references: [uuid])
+  credential  Credential?  @relation(fields: [credentialId], references: [uuid])
+  assignedTo  User?        @relation("DisputeAssignee", fields: [assignedToId], references: [uuid])
+
+  @@index([status, createdAt])
+  @@index([institutionId, status])
+  @@index([learnerId])
+  @@index([credentialId])
+  @@index([assignedToId])
 }
 
 model ImportFile {

@@ -78,8 +78,10 @@ Current v3 checkpoint:
 - Founder can review Developer Access Requests and approve optional institution Live Results API access.
 - Founder can generate internal product API keys.
 - Founder can generate institution Live Results API keys only after Developer Access is approved.
+- Founder can review, assign, escalate, notify institutions about, and close disputes from the Data Center-backed Disputes workflow.
 - Founder Console connects to the live API for institution/key workflows.
 - Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.
 - External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
 - Scoped API clients can ingest and govern records through the gateway without direct database access.
+- Founder Console uses the ACAD.ID symbol asset from `apps/web/public/acadid-symbol.png`.

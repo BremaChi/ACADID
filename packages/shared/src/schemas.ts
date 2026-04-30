@@ -58,6 +58,38 @@ export const reviewDeveloperAccessRequestSchema = z.object({
   feedback: z.string().max(1000).optional()
 });
 
+export const disputeStatuses = ["OPEN", "RESOLVED", "ESCALATED"] as const;
+export const disputePriorities = ["LOW", "NORMAL", "HIGH", "CRITICAL"] as const;
+
+export const createDisputeSchema = z.object({
+  title: z.string().min(3).max(180),
+  description: z.string().min(10).max(3000),
+  category: z.string().min(2).max(80).default("GENERAL"),
+  priority: z.enum(disputePriorities).default("NORMAL"),
+  institutionId: z.string().uuid().optional(),
+  learnerId: z.string().uuid().optional(),
+  credentialId: z.string().uuid().optional(),
+  reporterName: z.string().min(2).max(120).optional(),
+  reporterEmail: z.string().email().max(254).optional()
+});
+
+export const assignDisputeSchema = z.object({
+  assignedToId: z.string().uuid().optional(),
+  assigneeName: z.string().min(2).max(120).optional()
+});
+
+export const sendDisputeNoticeSchema = z.object({
+  message: z.string().min(10).max(2000)
+});
+
+export const closeDisputeSchema = z.object({
+  resolutionNote: z.string().min(10).max(2000)
+});
+
+export const escalateDisputeSchema = z.object({
+  reason: z.string().min(10).max(1000).optional()
+});
+
 export const createAuthorityGrantSchema = z.object({
   institutionId: z.string().uuid(),
   signedByName: z.string().min(2),
@@ -117,6 +149,11 @@ export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateInstitutionApplicationInput = z.infer<typeof createInstitutionApplicationSchema>;
 export type CreateDeveloperAccessRequestInput = z.infer<typeof createDeveloperAccessRequestSchema>;
 export type ReviewDeveloperAccessRequestInput = z.infer<typeof reviewDeveloperAccessRequestSchema>;
+export type CreateDisputeInput = z.infer<typeof createDisputeSchema>;
+export type AssignDisputeInput = z.infer<typeof assignDisputeSchema>;
+export type SendDisputeNoticeInput = z.infer<typeof sendDisputeNoticeSchema>;
+export type CloseDisputeInput = z.infer<typeof closeDisputeSchema>;
+export type EscalateDisputeInput = z.infer<typeof escalateDisputeSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;

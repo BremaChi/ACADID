@@ -1,11 +1,16 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, Prisma } from "@prisma/client";
+import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma } from "@prisma/client";
 import {
+  assignDisputeSchema,
+  closeDisputeSchema,
   createAuthorityGrantSchema,
   createDeveloperAccessRequestSchema,
+  createDisputeSchema,
   createInstitutionSchema,
-  reviewDeveloperAccessRequestSchema
+  escalateDisputeSchema,
+  reviewDeveloperAccessRequestSchema,
+  sendDisputeNoticeSchema
 } from "@acadid/shared";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { PasswordService } from "../auth/password.service.js";
@@ -303,6 +308,173 @@ export class AdminService {
 
   async suspendDeveloperAccessRequest(auth: AuthTokenPayload, id: string, feedback?: string) {
     return this.reviewDeveloperAccessRequest(auth, id, "SUSPENDED", feedback);
+  }
+
+  listDisputes(status?: DisputeStatus) {
+    return this.prisma.dispute.findMany({
+      where: status ? { status } : undefined,
+      include: this.disputeInclude(),
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      take: 200
+    });
+  }
+
+  async createDispute(auth: AuthTokenPayload, input: unknown) {
+    const parsed = createDisputeSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const dispute = await this.prisma.dispute.create({
+      data: {
+        title: parsed.data.title.trim(),
+        description: parsed.data.description.trim(),
+        category: parsed.data.category.trim().toUpperCase(),
+        priority: parsed.data.priority,
+        institutionId: parsed.data.institutionId,
+        learnerId: parsed.data.learnerId,
+        credentialId: parsed.data.credentialId,
+        reporterName: parsed.data.reporterName?.trim(),
+        reporterEmail: parsed.data.reporterEmail?.trim().toLowerCase()
+      },
+      include: this.disputeInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "dispute.create",
+      targetType: "Dispute",
+      targetId: dispute.uuid,
+      institutionId: dispute.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        category: dispute.category,
+        priority: dispute.priority
+      }
+    });
+
+    return dispute;
+  }
+
+  async assignDispute(auth: AuthTokenPayload, id: string, input: unknown) {
+    const parsed = assignDisputeSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const assignedToId = parsed.data.assignedToId ?? auth.sub;
+    const dispute = await this.prisma.dispute.update({
+      where: { uuid: id },
+      data: { assignedToId },
+      include: this.disputeInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "dispute.assign",
+      targetType: "Dispute",
+      targetId: id,
+      institutionId: dispute.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        assignedToId,
+        assigneeName: parsed.data.assigneeName
+      }
+    });
+
+    return dispute;
+  }
+
+  async sendDisputeNotice(auth: AuthTokenPayload, id: string, input: unknown) {
+    const parsed = sendDisputeNoticeSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const dispute = await this.prisma.dispute.update({
+      where: { uuid: id },
+      data: {
+        institutionNotice: parsed.data.message.trim(),
+        noticeSentAt: new Date()
+      },
+      include: this.disputeInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "dispute.notice.send",
+      targetType: "Dispute",
+      targetId: id,
+      institutionId: dispute.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        delivery: "queued-placeholder"
+      }
+    });
+
+    return dispute;
+  }
+
+  async escalateDispute(auth: AuthTokenPayload, id: string, input: unknown) {
+    const parsed = escalateDisputeSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const dispute = await this.prisma.dispute.update({
+      where: { uuid: id },
+      data: {
+        status: "ESCALATED",
+        escalatedAt: new Date()
+      },
+      include: this.disputeInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "dispute.escalate",
+      targetType: "Dispute",
+      targetId: id,
+      institutionId: dispute.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      reason: parsed.data.reason
+    });
+
+    return dispute;
+  }
+
+  async closeDispute(auth: AuthTokenPayload, id: string, input: unknown) {
+    const parsed = closeDisputeSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const dispute = await this.prisma.dispute.update({
+      where: { uuid: id },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+        resolutionNote: parsed.data.resolutionNote.trim()
+      },
+      include: this.disputeInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "dispute.close",
+      targetType: "Dispute",
+      targetId: id,
+      institutionId: dispute.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      reason: parsed.data.resolutionNote
+    });
+
+    return dispute;
   }
 
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
@@ -664,5 +836,42 @@ export class AdminService {
       createdAt: true,
       updatedAt: true
     } satisfies Prisma.ApiKeySelect;
+  }
+
+  private disputeInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      },
+      learner: {
+        select: {
+          uuid: true,
+          ain: true,
+          fullName: true,
+          identityStatus: true
+        }
+      },
+      credential: {
+        select: {
+          uuid: true,
+          credentialRef: true,
+          type: true,
+          status: true
+        }
+      },
+      assignedTo: {
+        select: {
+          uuid: true,
+          fullName: true,
+          email: true
+        }
+      }
+    } satisfies Prisma.DisputeInclude;
   }
 }

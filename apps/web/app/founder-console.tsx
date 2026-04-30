@@ -161,11 +161,23 @@ type DeveloperAccessRequest = {
 };
 
 type Dispute = {
-  id: string;
+  uuid: string;
   title: string;
-  institutionName: string;
-  status: "Open" | "Resolved" | "Escalated";
+  description: string;
+  category: string;
+  priority: "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
+  status: "OPEN" | "RESOLVED" | "ESCALATED";
+  reporterName: string | null;
+  reporterEmail: string | null;
+  institutionNotice: string | null;
+  noticeSentAt: string | null;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
   createdAt: string;
+  institution: Institution | null;
+  learner: { uuid: string; ain: string; fullName: string; identityStatus: string } | null;
+  credential: { uuid: string; credentialRef: string; type: string; status: string } | null;
+  assignedTo: { uuid: string; fullName: string; email: string } | null;
 };
 
 type VerificationLog = {
@@ -219,9 +231,8 @@ async function loadDeveloperAccessRequests(token: string): Promise<DeveloperAcce
   return apiRequest<DeveloperAccessRequest[]>("/admin/developer-access-requests", token);
 }
 
-async function loadDisputes(): Promise<Dispute[]> {
-  // TODO: Replace with Data Center endpoint when Dispute model/routes are added.
-  return [];
+async function loadDisputes(token: string): Promise<Dispute[]> {
+  return apiRequest<Dispute[]>("/admin/disputes", token);
 }
 
 async function loadVerificationLogs(): Promise<VerificationLog[]> {
@@ -245,6 +256,7 @@ export function FounderConsole() {
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
+  const [selectedDisputeId, setSelectedDisputeId] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -265,6 +277,8 @@ export function FounderConsole() {
   const [apiKeyOwnerFilter, setApiKeyOwnerFilter] = useState("ALL");
   const [developerStatusFilter, setDeveloperStatusFilter] = useState("ALL");
   const [disputeStatusFilter, setDisputeStatusFilter] = useState("ALL");
+  const [disputeNoticeText, setDisputeNoticeText] = useState("Please review this dispute and provide supporting evidence through the institution dashboard.");
+  const [disputeResolutionNote, setDisputeResolutionNote] = useState("");
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
@@ -290,6 +304,7 @@ export function FounderConsole() {
 
   const selectedInstitution = institutions.find((institution) => institution.uuid === selectedInstitutionId);
   const selectedApplication = institutionApplications.find((application) => application.uuid === selectedApplicationId);
+  const selectedDispute = disputes.find((dispute) => dispute.uuid === selectedDisputeId) ?? disputes[0] ?? null;
   const activeKeys = globalApiKeys.filter((key) => key.status === "ACTIVE");
   const productApiKeys = globalApiKeys.filter((key) => key.ownerType === "PRODUCT");
   const institutionApiKeys = globalApiKeys.filter((key) => key.ownerType === "INSTITUTION");
@@ -380,7 +395,7 @@ export function FounderConsole() {
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
         loadDeveloperAccessRequests(activeToken),
-        loadDisputes(),
+        loadDisputes(activeToken),
         loadVerificationLogs()
       ]);
       setInstitutions(nextInstitutions);
@@ -392,6 +407,7 @@ export function FounderConsole() {
       const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
+      setSelectedDisputeId((current) => current || nextDisputes[0]?.uuid || "");
     } catch (error) {
       handleAuthenticatedError(error, "Could not load console data.");
     } finally {
@@ -435,6 +451,7 @@ export function FounderConsole() {
     setGlobalApiKeys([]);
     setDeveloperRequests([]);
     setDisputes([]);
+    setSelectedDisputeId("");
     setVerificationLogs([]);
     setNotice(nextNotice);
     setTotpSetup(null);
@@ -535,6 +552,79 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Developer access update failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function assignDispute(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const dispute = await apiRequest<Dispute>(`/admin/disputes/${id}/assign`, token, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      setSelectedDisputeId(dispute.uuid);
+      setNotice({ tone: "success", text: "Dispute assigned to founder console." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Dispute assignment failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendDisputeNotice(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const dispute = await apiRequest<Dispute>(`/admin/disputes/${id}/send-notice`, token, {
+        method: "POST",
+        body: JSON.stringify({ message: disputeNoticeText })
+      });
+      setSelectedDisputeId(dispute.uuid);
+      setNotice({ tone: "success", text: "Institution notice recorded for this dispute." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Dispute notice failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function escalateDispute(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const dispute = await apiRequest<Dispute>(`/admin/disputes/${id}/escalate`, token, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Escalated by founder console for priority review." })
+      });
+      setSelectedDisputeId(dispute.uuid);
+      setNotice({ tone: "success", text: "Dispute escalated." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Dispute escalation failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function closeDispute(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const dispute = await apiRequest<Dispute>(`/admin/disputes/${id}/close`, token, {
+        method: "POST",
+        body: JSON.stringify({ resolutionNote: disputeResolutionNote })
+      });
+      setSelectedDisputeId(dispute.uuid);
+      setDisputeResolutionNote("");
+      setNotice({ tone: "success", text: "Dispute closed with resolution note." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Dispute closure failed.");
     } finally {
       setLoading(false);
     }
@@ -855,7 +945,24 @@ export function FounderConsole() {
       return <DeveloperRequestsPage loading={loading} onUpdate={updateDeveloperAccessRequest} requests={filteredDeveloperRequests} statusFilter={developerStatusFilter} onStatusFilter={setDeveloperStatusFilter} />;
     }
     if (activePage === "Disputes") {
-      return <DisputesPage disputes={filteredDisputes} statusFilter={disputeStatusFilter} onStatusFilter={setDisputeStatusFilter} />;
+      return (
+        <DisputesPage
+          disputes={filteredDisputes}
+          loading={loading}
+          noticeText={disputeNoticeText}
+          onAssign={assignDispute}
+          onClose={closeDispute}
+          onEscalate={escalateDispute}
+          onNoticeText={setDisputeNoticeText}
+          onResolutionNote={setDisputeResolutionNote}
+          onSelectDispute={setSelectedDisputeId}
+          onSendNotice={sendDisputeNotice}
+          onStatusFilter={setDisputeStatusFilter}
+          resolutionNote={disputeResolutionNote}
+          selectedDispute={selectedDispute}
+          statusFilter={disputeStatusFilter}
+        />
+      );
     }
     if (activePage === "Verification Logs") {
       return <VerificationLogsPage logs={filteredVerificationLogs} outcomeFilter={verificationOutcomeFilter} onOutcomeFilter={setVerificationOutcomeFilter} />;
@@ -1248,17 +1355,107 @@ function DeveloperRequestsPage({
   );
 }
 
-function DisputesPage({ disputes, statusFilter, onStatusFilter }: { disputes: Dispute[]; statusFilter: string; onStatusFilter: (value: string) => void }) {
+function DisputesPage({
+  disputes,
+  loading,
+  noticeText,
+  onAssign,
+  onClose,
+  onEscalate,
+  onNoticeText,
+  onResolutionNote,
+  onSelectDispute,
+  onSendNotice,
+  onStatusFilter,
+  resolutionNote,
+  selectedDispute,
+  statusFilter
+}: {
+  disputes: Dispute[];
+  loading: boolean;
+  noticeText: string;
+  onAssign: (id: string) => void;
+  onClose: (id: string) => void;
+  onEscalate: (id: string) => void;
+  onNoticeText: (value: string) => void;
+  onResolutionNote: (value: string) => void;
+  onSelectDispute: (id: string) => void;
+  onSendNotice: (id: string) => void;
+  onStatusFilter: (value: string) => void;
+  resolutionNote: string;
+  selectedDispute: Dispute | null;
+  statusFilter: string;
+}) {
+  const openCount = disputes.filter((dispute) => dispute.status === "OPEN").length;
+  const escalatedCount = disputes.filter((dispute) => dispute.status === "ESCALATED").length;
+  const selectedCanAct = selectedDispute && selectedDispute.status !== "RESOLVED";
+
   return (
-    <Card>
-      <SectionTitle title="Disputes" subtitle="Learner and institution dispute operations." />
-      <div className="mt-4 max-w-xs"><FilterSelect value={statusFilter} onChange={onStatusFilter} options={["ALL", "Open", "Resolved", "Escalated"]} /></div>
-      <ResponsiveTable
-        empty="No disputes yet. Dispute workflow backend is pending."
-        headers={["Dispute", "Institution", "Status", "Created", "Action"]}
-        rows={disputes.map((dispute) => [dispute.title, dispute.institutionName, <StatusBadge key="status" status={dispute.status} />, formatDate(dispute.createdAt), <button key="action" className={secondaryButtonClass} type="button">View details</button>])}
-      />
-    </Card>
+    <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+      <Card>
+        <SectionTitle title="Disputes" subtitle="Learner and institution dispute operations." />
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <MetricLine label="Open" value={String(openCount)} />
+          <MetricLine label="Escalated" value={String(escalatedCount)} />
+          <MetricLine label="Filtered" value={String(disputes.length)} />
+        </div>
+        <div className="mt-4 max-w-xs"><FilterSelect value={statusFilter} onChange={onStatusFilter} options={["ALL", "OPEN", "RESOLVED", "ESCALATED"]} /></div>
+        <ResponsiveTable
+          empty="No disputes match this filter yet."
+          headers={["Dispute", "Institution", "Priority", "Status", "Created", "Action"]}
+          rows={disputes.map((dispute) => [
+            <div key="title">
+              <p className="font-medium text-primary">{dispute.title}</p>
+              <p className="text-xs text-textSecondary">{dispute.category}</p>
+            </div>,
+            dispute.institution?.officialName ?? "Unlinked",
+            <StatusBadge key="priority" status={dispute.priority} />,
+            <StatusBadge key="status" status={dispute.status} />,
+            formatDate(dispute.createdAt),
+            <button key="action" className={secondaryButtonClass} onClick={() => onSelectDispute(dispute.uuid)} type="button">View details</button>
+          ])}
+        />
+      </Card>
+      <Card>
+        <SectionTitle title="Dispute Detail" subtitle="Assign, notify institution, escalate, or close." />
+        {selectedDispute ? (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-borderLight bg-soft p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-primary">{selectedDispute.title}</p>
+                  <p className="mt-1 text-xs text-textSecondary">{selectedDispute.institution?.officialName ?? "No institution linked"}{selectedDispute.learner ? ` / ${selectedDispute.learner.ain}` : ""}</p>
+                </div>
+                <StatusBadge status={selectedDispute.status} />
+              </div>
+              <p className="mt-3 text-sm leading-6 text-textSecondary">{selectedDispute.description}</p>
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                <MetricLine label="Assigned to" value={selectedDispute.assignedTo?.fullName ?? "Unassigned"} />
+                <MetricLine label="Credential" value={selectedDispute.credential?.credentialRef ?? "Not linked"} />
+                <MetricLine label="Notice sent" value={selectedDispute.noticeSentAt ? formatDate(selectedDispute.noticeSentAt) : "Not sent"} />
+                <MetricLine label="Resolved" value={selectedDispute.resolvedAt ? formatDate(selectedDispute.resolvedAt) : "Open"} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button className={primarySmallButtonClass} disabled={loading || !selectedCanAct} onClick={() => onAssign(selectedDispute.uuid)} type="button">Assign to founder</button>
+              <button className={secondaryButtonClass} disabled={loading || !selectedCanAct} onClick={() => onEscalate(selectedDispute.uuid)} type="button">Escalate</button>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase text-textSecondary">Institution notice</label>
+              <textarea className={`${inputClass} mt-2 min-h-24`} value={noticeText} onChange={(event) => onNoticeText(event.target.value)} />
+              <button className={`${secondaryButtonClass} mt-3`} disabled={loading || !selectedCanAct || noticeText.trim().length < 10} onClick={() => onSendNotice(selectedDispute.uuid)} type="button">Send notice to institution</button>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase text-textSecondary">Resolution note</label>
+              <textarea className={`${inputClass} mt-2 min-h-24`} placeholder="Explain the final resolution before closing the dispute." value={resolutionNote} onChange={(event) => onResolutionNote(event.target.value)} />
+              <button className={`${primarySmallButtonClass} mt-3`} disabled={loading || !selectedCanAct || resolutionNote.trim().length < 10} onClick={() => onClose(selectedDispute.uuid)} type="button">Close dispute</button>
+            </div>
+          </div>
+        ) : (
+          <EmptyState text="Select a dispute to review its details." />
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -1546,7 +1743,14 @@ function IconTile({ label, tone = "accent" }: { label: string; tone?: string }) 
 }
 
 function BrandMark({ compact = false, inverse = false }: { compact?: boolean; inverse?: boolean }) {
-  return <div className={`flex items-center gap-3 ${inverse ? "text-white" : "text-primary"}`}><span className="relative h-8 w-8 shrink-0 rounded-full border-[4px] border-current"><span className="absolute -right-1 bottom-0 h-3 w-3 rounded-full bg-accent ring-2 ring-white" /></span>{compact ? null : <span className="text-[18px] font-semibold">ACAD<span className="text-accent">.ID</span></span>}</div>;
+  return (
+    <div className={`flex items-center gap-3 ${compact ? "justify-center" : ""}`}>
+      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md ${inverse ? "bg-white p-1" : ""}`}>
+        <img alt="ACAD.ID mark" className="h-full w-full object-contain" src="/acadid-symbol.png" />
+      </span>
+      {compact ? null : <span className={`text-[18px] font-semibold tracking-normal ${inverse ? "text-white" : "text-primary"}`}>ACAD<span className="text-accent">.ID</span></span>}
+    </div>
+  );
 }
 
 function SideIcon({ label, active = false, inverse = false }: { label: string; active?: boolean; inverse?: boolean }) {

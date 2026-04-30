@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { DeveloperAccessRequestStatus, UserRole } from "@prisma/client";
+import { DeveloperAccessRequestStatus, DisputeStatus, UserRole } from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
 import { Roles } from "../auth/roles.decorator.js";
@@ -70,6 +70,36 @@ export class AdminController {
   @Post("developer-access-requests/:id/suspend")
   suspendDeveloperAccessRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { feedback?: string }) {
     return this.adminService.suspendDeveloperAccessRequest(request.auth, id, body?.feedback);
+  }
+
+  @Get("disputes")
+  listDisputes(@Query("status") status?: DisputeStatus) {
+    return this.adminService.listDisputes(status);
+  }
+
+  @Post("disputes")
+  createDispute(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.createDispute(request.auth, body);
+  }
+
+  @Post("disputes/:id/assign")
+  assignDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.assignDispute(request.auth, id, body);
+  }
+
+  @Post("disputes/:id/send-notice")
+  sendDisputeNotice(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.sendDisputeNotice(request.auth, id, body);
+  }
+
+  @Post("disputes/:id/escalate")
+  escalateDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.escalateDispute(request.auth, id, body);
+  }
+
+  @Post("disputes/:id/close")
+  closeDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.closeDispute(request.auth, id, body);
   }
 
   @Post("institutions/:id/api-keys")

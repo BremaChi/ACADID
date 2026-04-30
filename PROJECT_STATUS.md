@@ -59,6 +59,7 @@ The API has these first modules:
 - Founder approval/rejection workflow for institution applications is implemented in the API and surfaced in the Founder Console.
 - Developer Access Requests are now a database-backed governance workflow with founder create, list, approve, reject, and suspend endpoints.
 - Institution Live Results API key generation is locked behind approved Developer Access.
+- Disputes are now database-backed with founder list, create, assign, institution-notice, escalate, and close endpoints.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -81,6 +82,7 @@ The Prisma schema includes the core AcadID model:
 - AuditEvent.
 - ApiKey.
 - DeveloperAccessRequest.
+- Dispute.
 
 ### Web
 
@@ -97,8 +99,9 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live institution application approval queue for Founder review.
 - Live Developer Access Request queue backed by the Data Center API, including approve, reject, and suspend actions.
 - Institution Live Results API key form now lists only institutions with approved Developer Access.
+- Live Disputes page backed by the Data Center API, with status filters, detail panel, founder assignment, institution notice text, escalation, and resolution notes.
 - Gateway status panel.
-- Dispute empty state.
+- Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
 
@@ -122,6 +125,7 @@ Completed successfully:
 - Founder Console ACAD.ID UI refresh typechecks, builds, and renders without the stale Next.js cache error after clearing `apps/web/.next`.
 - Founder Console navigation refactor validates with `npm run typecheck`, `npm test`, and `http://localhost:3000` returning 200.
 - Developer Access Request workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, `npm run smoke:api`, and browser verification in the Founder Console.
+- Dispute workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/disputes` check, and browser verification in the Founder Console.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -152,13 +156,12 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add Dispute queue backend model, founder assignment, institution notice, and resolution notes.
-2. Add founder-level Verification Logs endpoint across all institutions and credentials.
-3. Add System Health and gateway metrics endpoints for response time, error rate, webhook delivery, and incidents.
-4. Add revenue ledger models for verification fees, credential exports, and institution subscriptions.
-5. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
-6. Configure stable production signing keys with `npm run crypto:keygen`.
-7. Add production-grade account recovery rules for founder MFA loss.
+1. Add founder-level Verification Logs endpoint across all institutions and credentials.
+2. Add System Health and gateway metrics endpoints for response time, error rate, webhook delivery, and incidents.
+3. Add revenue ledger models for verification fees, credential exports, and institution subscriptions.
+4. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
+5. Configure stable production signing keys with `npm run crypto:keygen`.
+6. Add production-grade account recovery rules for founder MFA loss.
 
 ## GitHub Status
 
