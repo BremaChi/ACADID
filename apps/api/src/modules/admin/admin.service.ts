@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma, VerificationOutcome } from "@prisma/client";
+import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma, RevenueCategory, RevenueEntryStatus, VerificationOutcome } from "@prisma/client";
 import {
   assignDisputeSchema,
   closeDisputeSchema,
@@ -29,6 +29,8 @@ const allowedApiKeyScopes = new Set([
 ]);
 
 type HealthStatus = "OPERATIONAL" | "DEGRADED" | "DOWN" | "PENDING_CONFIGURATION";
+const revenueCategories: RevenueCategory[] = ["VERIFICATION_FEE", "CREDENTIAL_EXPORT_FEE", "INSTITUTION_SUBSCRIPTION"];
+const billableRevenueStatuses: RevenueEntryStatus[] = ["BILLABLE", "INVOICED", "PAID"];
 
 @Injectable()
 export class AdminService {
@@ -624,6 +626,108 @@ export class AdminService {
     };
   }
 
+  async readRevenueOverview() {
+    const generatedAt = new Date();
+    const monthStart = new Date(generatedAt.getFullYear(), generatedAt.getMonth(), 1);
+    const chartStart = this.daysAgo(30);
+    const [categoryTotals, statusTotals, recentEntries, subscriptions, dailyRows] = await Promise.all([
+      this.prisma.revenueLedgerEntry.groupBy({
+        by: ["category"],
+        where: { status: { in: billableRevenueStatuses } },
+        _sum: { amountMinor: true },
+        _count: { _all: true }
+      }),
+      this.prisma.revenueLedgerEntry.groupBy({
+        by: ["status"],
+        where: { occurredAt: { gte: monthStart } },
+        _sum: { amountMinor: true },
+        _count: { _all: true }
+      }),
+      this.prisma.revenueLedgerEntry.findMany({
+        orderBy: { occurredAt: "desc" },
+        take: 50,
+        include: {
+          institution: {
+            select: {
+              institutionId: true,
+              officialName: true
+            }
+          }
+        }
+      }),
+      this.prisma.institutionSubscription.findMany({
+        orderBy: [{ status: "asc" }, { nextBillingAt: "asc" }],
+        take: 50,
+        include: {
+          institution: {
+            select: {
+              institutionId: true,
+              officialName: true
+            }
+          }
+        }
+      }),
+      this.readDailyRevenue(chartStart)
+    ]);
+
+    const categoryBreakdown = revenueCategories.map((category) => {
+      const total = categoryTotals.find((entry) => entry.category === category);
+      return {
+        category,
+        amountMinor: total?._sum.amountMinor ?? 0,
+        count: total?._count._all ?? 0
+      };
+    });
+    const statusBreakdown = statusTotals.map((entry) => ({
+      status: entry.status,
+      amountMinor: entry._sum.amountMinor ?? 0,
+      count: entry._count._all
+    }));
+    const totalAmountMinor = categoryBreakdown.reduce((sum, entry) => sum + entry.amountMinor, 0);
+    const paidThisMonthMinor = this.sumRevenueStatuses(statusBreakdown, ["PAID"]);
+    const pendingThisMonthMinor = this.sumRevenueStatuses(statusBreakdown, ["PENDING", "BILLABLE", "INVOICED"]);
+
+    return {
+      generatedAt,
+      currency: "NGN",
+      totals: {
+        totalAmountMinor,
+        paidThisMonthMinor,
+        pendingThisMonthMinor,
+        activeSubscriptions: subscriptions.filter((subscription) => subscription.status === "ACTIVE" || subscription.status === "TRIALING").length,
+        openLedgerEntries: statusBreakdown.filter((entry) => ["PENDING", "BILLABLE", "INVOICED"].includes(entry.status)).reduce((sum, entry) => sum + entry.count, 0)
+      },
+      categoryBreakdown,
+      statusBreakdown,
+      daily: this.normaliseDailyRevenue(chartStart, dailyRows),
+      recentEntries: recentEntries.map((entry) => ({
+        id: entry.uuid,
+        category: entry.category,
+        status: entry.status,
+        amountMinor: entry.amountMinor,
+        currency: entry.currency,
+        institutionId: entry.institution?.institutionId ?? null,
+        institutionName: entry.institution?.officialName ?? null,
+        sourceType: entry.sourceType,
+        sourceId: entry.sourceId,
+        description: entry.description,
+        occurredAt: entry.occurredAt
+      })),
+      subscriptions: subscriptions.map((subscription) => ({
+        id: subscription.uuid,
+        institutionId: subscription.institution.institutionId,
+        institutionName: subscription.institution.officialName,
+        planCode: subscription.planCode,
+        status: subscription.status,
+        amountMinor: subscription.amountMinor,
+        currency: subscription.currency,
+        billingInterval: subscription.billingInterval,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        nextBillingAt: subscription.nextBillingAt
+      }))
+    };
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -1211,5 +1315,62 @@ export class AdminService {
 
   private hoursAgo(hours: number) {
     return new Date(Date.now() - hours * 60 * 60 * 1000);
+  }
+
+  private daysAgo(days: number) {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }
+
+  private async readDailyRevenue(chartStart: Date) {
+    return this.prisma.$queryRaw<Array<{ day: Date | string; amountMinor: number | bigint | null; count: number | bigint }>>`
+      SELECT date_trunc('day', "occurredAt")::date AS day,
+             COALESCE(SUM("amountMinor"), 0)::int AS "amountMinor",
+             COUNT(*)::int AS count
+      FROM "RevenueLedgerEntry"
+      WHERE "occurredAt" >= ${chartStart}
+        AND "status" IN ('BILLABLE', 'INVOICED', 'PAID')
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `;
+  }
+
+  private normaliseDailyRevenue(
+    chartStart: Date,
+    rows: Array<{ day: Date | string; amountMinor: number | bigint | null; count: number | bigint }>
+  ) {
+    const byDay = new Map(
+      rows.map((row) => [
+        this.dateKey(row.day),
+        {
+          amountMinor: this.toNumber(row.amountMinor),
+          count: this.toNumber(row.count)
+        }
+      ])
+    );
+    return Array.from({ length: 31 }, (_, index) => {
+      const day = new Date(chartStart);
+      day.setDate(day.getDate() + index);
+      const key = this.dateKey(day);
+      const value = byDay.get(key);
+      return {
+        day: key,
+        amountMinor: value?.amountMinor ?? 0,
+        count: value?.count ?? 0
+      };
+    });
+  }
+
+  private sumRevenueStatuses(statusBreakdown: Array<{ status: RevenueEntryStatus; amountMinor: number }>, statuses: RevenueEntryStatus[]) {
+    const allowed = new Set(statuses);
+    return statusBreakdown.filter((entry) => allowed.has(entry.status)).reduce((sum, entry) => sum + entry.amountMinor, 0);
+  }
+
+  private dateKey(value: Date | string) {
+    return new Date(value).toISOString().slice(0, 10);
+  }
+
+  private toNumber(value: number | bigint | null | undefined) {
+    if (typeof value === "bigint") return Number(value);
+    return value ?? 0;
   }
 }

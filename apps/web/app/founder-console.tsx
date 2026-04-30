@@ -233,6 +233,58 @@ type SystemHealth = {
   }>;
 };
 
+type RevenueOverview = {
+  generatedAt: string;
+  currency: string;
+  totals: {
+    totalAmountMinor: number;
+    paidThisMonthMinor: number;
+    pendingThisMonthMinor: number;
+    activeSubscriptions: number;
+    openLedgerEntries: number;
+  };
+  categoryBreakdown: Array<{
+    category: "VERIFICATION_FEE" | "CREDENTIAL_EXPORT_FEE" | "INSTITUTION_SUBSCRIPTION";
+    amountMinor: number;
+    count: number;
+  }>;
+  statusBreakdown: Array<{
+    status: string;
+    amountMinor: number;
+    count: number;
+  }>;
+  daily: Array<{
+    day: string;
+    amountMinor: number;
+    count: number;
+  }>;
+  recentEntries: Array<{
+    id: string;
+    category: string;
+    status: string;
+    amountMinor: number;
+    currency: string;
+    institutionId: string | null;
+    institutionName: string | null;
+    sourceType: string;
+    sourceId: string | null;
+    description: string;
+    occurredAt: string;
+  }>;
+  subscriptions: Array<{
+    id: string;
+    institutionId: string;
+    institutionName: string;
+    planCode: string;
+    status: string;
+    amountMinor: number;
+    currency: string;
+    billingInterval: string;
+    currentPeriodEnd: string;
+    nextBillingAt: string | null;
+  }>;
+};
+
 function getProductOption(code: string) {
   return productOptions.find((option) => option.code === code) ?? productOptions[0];
 }
@@ -285,6 +337,10 @@ async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
 
+async function loadRevenueOverview(token: string): Promise<RevenueOverview> {
+  return apiRequest<RevenueOverview>("/admin/revenue", token);
+}
+
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
   const [token, setToken] = useState<string | null>(null);
@@ -300,6 +356,7 @@ export function FounderConsole() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
@@ -453,15 +510,16 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs] = await Promise.all([
+      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
         loadDeveloperAccessRequests(activeToken),
         loadDisputes(activeToken),
-        loadVerificationLogs(activeToken)
+        loadVerificationLogs(activeToken),
+        loadSystemHealth(activeToken),
+        loadRevenueOverview(activeToken)
       ]);
-      const nextSystemHealth = await loadSystemHealth(activeToken);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
       setInstitutionApplications(nextApplications);
@@ -469,6 +527,7 @@ export function FounderConsole() {
       setDisputes(nextDisputes);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
+      setRevenueOverview(nextRevenueOverview);
       const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
@@ -519,6 +578,7 @@ export function FounderConsole() {
     setSelectedDisputeId("");
     setVerificationLogs([]);
     setSystemHealth(null);
+    setRevenueOverview(null);
     setNotice(nextNotice);
     setTotpSetup(null);
     setMfaEnabled(false);
@@ -1043,7 +1103,7 @@ export function FounderConsole() {
       );
     }
     if (activePage === "Revenue") {
-      return <RevenuePage />;
+      return <RevenuePage revenue={revenueOverview} />;
     }
     if (activePage === "System Health") {
       return <SystemHealthPage health={systemHealth} />;
@@ -1611,19 +1671,83 @@ function VerificationLogsPage({
   );
 }
 
-function RevenuePage() {
+function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
+  const verificationFees = revenue?.categoryBreakdown.find((entry) => entry.category === "VERIFICATION_FEE");
+  const credentialExports = revenue?.categoryBreakdown.find((entry) => entry.category === "CREDENTIAL_EXPORT_FEE");
+  const subscriptions = revenue?.categoryBreakdown.find((entry) => entry.category === "INSTITUTION_SUBSCRIPTION");
+
+  function exportCsv() {
+    if (!revenue?.recentEntries.length) return;
+    const headers = ["Category", "Status", "Amount", "Institution", "Source", "Description", "Occurred At"];
+    const rows = revenue.recentEntries.map((entry) => [
+      titleCase(entry.category),
+      entry.status,
+      formatMoney(entry.amountMinor, entry.currency),
+      entry.institutionName ?? "Platform",
+      entry.sourceType,
+      entry.description,
+      entry.occurredAt
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll("\"", "\"\"")}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `acadid-revenue-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Verification Fees" value="NGN 0" helper="Billing ledger pending" tone="success" icon="Revenue" />
-        <MetricCard label="Credential Export Fees" value="NGN 0" helper="Export billing pending" tone="accent" icon="Revenue" />
-        <MetricCard label="Institution Subscriptions" value="NGN 0" helper="Subscription billing pending" tone="warning" icon="Revenue" />
+        <MetricCard label="Verification Fees" value={formatMoney(verificationFees?.amountMinor ?? 0, revenue?.currency)} helper={`${verificationFees?.count ?? 0} ledger event(s)`} tone="success" icon="Revenue" />
+        <MetricCard label="Credential Export Fees" value={formatMoney(credentialExports?.amountMinor ?? 0, revenue?.currency)} helper={`${credentialExports?.count ?? 0} export event(s)`} tone="accent" icon="Revenue" />
+        <MetricCard label="Institution Subscriptions" value={formatMoney(subscriptions?.amountMinor ?? 0, revenue?.currency)} helper={`${revenue?.totals.activeSubscriptions ?? 0} active/trial subscriptions`} tone="warning" icon="Revenue" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Total Ledger" value={formatMoney(revenue?.totals.totalAmountMinor ?? 0, revenue?.currency)} helper="Billable, invoiced, and paid" tone="accent" icon="Revenue" />
+        <MetricCard label="Paid This Month" value={formatMoney(revenue?.totals.paidThisMonthMinor ?? 0, revenue?.currency)} helper="Recognized paid entries" tone="success" icon="Revenue" />
+        <MetricCard label="Open Billing" value={formatMoney(revenue?.totals.pendingThisMonthMinor ?? 0, revenue?.currency)} helper={`${revenue?.totals.openLedgerEntries ?? 0} open ledger entry(s)`} tone="warning" icon="Revenue" />
       </div>
       <Card>
-        <SectionTitle title="Revenue" subtitle="Charts by day, week, and month." />
-        <BarChart />
-        <div className="mt-4 flex gap-2"><button className={secondaryButtonClass}>Export CSV</button><button className={secondaryButtonClass}>Export PDF</button></div>
+        <SectionTitle title="Revenue Trend" subtitle={revenue ? `Last 30 days from ledger, updated ${formatDate(revenue.generatedAt)}.` : "Waiting for revenue ledger data."} />
+        <RevenueBarChart data={revenue?.daily ?? []} currency={revenue?.currency ?? "NGN"} />
+        <div className="mt-4 flex gap-2"><button className={secondaryButtonClass} disabled={!revenue?.recentEntries.length} onClick={exportCsv} type="button">Export CSV</button><button className={secondaryButtonClass} disabled type="button">Export PDF</button></div>
       </Card>
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+        <Card>
+          <SectionTitle title="Recent Ledger Entries" subtitle="Verification, credential export, and subscription billing events." />
+          <ResponsiveTable
+            empty="No revenue ledger entries yet. New verification, export, and subscription events will appear here."
+            headers={["Category", "Amount", "Institution", "Source", "Status", "Occurred"]}
+            rows={(revenue?.recentEntries ?? []).map((entry) => [
+              titleCase(entry.category),
+              formatMoney(entry.amountMinor, entry.currency),
+              <div key="institution"><p>{entry.institutionName ?? "Platform"}</p><p className="text-xs text-textSecondary">{entry.institutionId ?? "No institution link"}</p></div>,
+              <div key="source"><p>{entry.sourceType}</p><p className="text-xs text-textSecondary">{entry.description}</p></div>,
+              <StatusBadge key="status" status={entry.status} />,
+              formatDate(entry.occurredAt)
+            ])}
+          />
+        </Card>
+        <Card>
+          <SectionTitle title="Institution Subscriptions" subtitle="Plan status for partner institutions." />
+          <ResponsiveTable
+            empty="No institution subscriptions are configured yet."
+            headers={["Institution", "Plan", "Amount", "Status", "Next Billing"]}
+            rows={(revenue?.subscriptions ?? []).map((subscription) => [
+              <div key="institution"><p>{subscription.institutionName}</p><p className="text-xs text-textSecondary">{subscription.institutionId}</p></div>,
+              subscription.planCode,
+              `${formatMoney(subscription.amountMinor, subscription.currency)} / ${titleCase(subscription.billingInterval)}`,
+              <StatusBadge key="status" status={subscription.status} />,
+              subscription.nextBillingAt ? formatDate(subscription.nextBillingAt) : `Period ends ${formatDate(subscription.currentPeriodEnd)}`
+            ])}
+          />
+        </Card>
+      </div>
     </div>
   );
 }
@@ -1898,6 +2022,27 @@ function BarChart() {
   return <div className="mt-6 flex h-48 items-end gap-4">{[44, 60, 52, 88, 72, 95, 68].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-accent" style={{ height: `${height}%` }} /><span className="text-xs text-textSecondary">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}</span></div>)}</div>;
 }
 
+function RevenueBarChart({ data, currency }: { data: RevenueOverview["daily"]; currency: string }) {
+  const recent = data.slice(-7);
+  const maxAmount = Math.max(...recent.map((entry) => entry.amountMinor), 1);
+  if (!recent.length) {
+    return <EmptyState text="No revenue events have been recorded yet." />;
+  }
+  return (
+    <div className="mt-6 flex h-48 items-end gap-3">
+      {recent.map((entry) => {
+        const height = Math.max((entry.amountMinor / maxAmount) * 100, entry.amountMinor > 0 ? 8 : 2);
+        return (
+          <div key={entry.day} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+            <div className="w-full rounded-t-md bg-accent" title={formatMoney(entry.amountMinor, currency)} style={{ height: `${height}%` }} />
+            <span className="truncate text-xs text-textSecondary">{new Intl.DateTimeFormat("en", { weekday: "short" }).format(new Date(entry.day))}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MetricLine({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between gap-3 border-b border-borderLight py-2 text-sm last:border-b-0"><span className="text-textSecondary">{label}</span><span className="text-right font-medium text-primary">{value}</span></div>;
 }
@@ -1980,9 +2125,9 @@ function LoadingBar() {
 
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
-  const cls = normalized.includes("ACTIVE") || normalized.includes("APPROVED") || normalized.includes("CONFIRMED") || normalized.includes("OPERATIONAL") || normalized.includes("ENABLED")
+  const cls = normalized.includes("ACTIVE") || normalized.includes("APPROVED") || normalized.includes("CONFIRMED") || normalized.includes("OPERATIONAL") || normalized.includes("ENABLED") || normalized.includes("PAID")
     ? "bg-success/10 text-success"
-    : normalized.includes("PENDING") || normalized.includes("OPEN") || normalized.includes("NOT")
+    : normalized.includes("PENDING") || normalized.includes("OPEN") || normalized.includes("NOT") || normalized.includes("BILLABLE") || normalized.includes("INVOICED") || normalized.includes("TRIALING")
       ? "bg-warning/10 text-warning"
       : "bg-error/10 text-error";
   return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{titleCase(status)}</span>;
@@ -2029,6 +2174,10 @@ function titleCase(value: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatMoney(amountMinor: number, currency = "NGN") {
+  return new Intl.NumberFormat("en-NG", { style: "currency", currency, maximumFractionDigits: 0 }).format(amountMinor / 100);
 }
 
 function formatDuration(seconds: number) {

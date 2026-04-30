@@ -112,6 +112,11 @@ export class AdminController {
     return this.adminService.readSystemHealth();
   }
 
+  @Get("revenue")
+  readRevenueOverview() {
+    return this.adminService.readRevenueOverview();
+  }
+
   @Post("institutions/:id/api-keys")
   createApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.adminService.createApiKey(request.auth, id, body);
