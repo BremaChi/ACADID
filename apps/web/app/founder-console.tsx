@@ -20,10 +20,34 @@ const navItems = [
 
 const scopeOptions = ["institution:apply", "ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
 const productOptions = [
-  { code: "INSTITUTION_PORTAL", name: "Institution Portal" },
-  { code: "STUDENT_APP", name: "Student Mobile App" },
-  { code: "EMPLOYER_VERIFICATION_PORTAL", name: "Employer Verification Portal" },
-  { code: "EXAM_BODY_API", name: "Exam Body Connector" }
+  {
+    code: "INSTITUTION_PORTAL",
+    name: "Institution Portal",
+    description: "For the public institution web portal that receives school applications and MOU acceptance.",
+    recommendedScopes: ["institution:apply"],
+    rateLimitPerMinute: 1000
+  },
+  {
+    code: "STUDENT_APP",
+    name: "Student Mobile App",
+    description: "For the learner passport app that reads credentials and manages share access.",
+    recommendedScopes: ["access:read", "identity:write"],
+    rateLimitPerMinute: 2000
+  },
+  {
+    code: "EMPLOYER_VERIFICATION_PORTAL",
+    name: "Employer Verification Portal",
+    description: "For verifier web products that validate credential references and share links.",
+    recommendedScopes: ["verify:read"],
+    rateLimitPerMinute: 1500
+  },
+  {
+    code: "EXAM_BODY_API",
+    name: "Exam Body Connector",
+    description: "For exam-body integrations that submit result data and verify publication status.",
+    recommendedScopes: ["ingest:write", "govern:write", "verify:read"],
+    rateLimitPerMinute: 2000
+  }
 ];
 const institutionTypeOptions = [
   "Nursery",
@@ -155,6 +179,24 @@ type VerificationLog = {
   verifiedAt: string;
 };
 
+function getProductOption(code: string) {
+  return productOptions.find((option) => option.code === code) ?? productOptions[0];
+}
+
+class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+function isSessionExpired(error: unknown) {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
 async function apiRequest<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
@@ -168,7 +210,7 @@ async function apiRequest<T>(path: string, token: string | null, init: RequestIn
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
     const message = typeof data.message === "string" ? data.message : JSON.stringify(data);
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status);
   }
   return data as T;
 }
@@ -230,13 +272,14 @@ export function FounderConsole() {
     state: "Lagos",
     tier: "ACTIVE"
   });
+  const defaultProductOption = getProductOption("INSTITUTION_PORTAL");
   const [productKeyForm, setProductKeyForm] = useState({
-    productCode: "INSTITUTION_PORTAL",
-    productName: "Institution Portal",
-    label: "Institution Portal Backend - Sandbox",
+    productCode: defaultProductOption.code,
+    productName: defaultProductOption.name,
+    label: `${defaultProductOption.name} Backend - Sandbox`,
     environment: "SANDBOX" as "SANDBOX" | "PRODUCTION",
-    rateLimitPerMinute: 1000,
-    scopes: ["institution:apply"]
+    rateLimitPerMinute: defaultProductOption.rateLimitPerMinute,
+    scopes: defaultProductOption.recommendedScopes
   });
   const [institutionKeyForm, setInstitutionKeyForm] = useState({
     label: "Live Results API - Sandbox",
@@ -350,7 +393,7 @@ export function FounderConsole() {
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not load console data." });
+      handleAuthenticatedError(error, "Could not load console data.");
     } finally {
       setLoading(false);
     }
@@ -382,7 +425,7 @@ export function FounderConsole() {
     }
   }
 
-  function logout() {
+  function logout(nextNotice: Notice | null = null) {
     window.localStorage.removeItem("acadid_founder_token");
     window.localStorage.removeItem("acadid_founder_name");
     window.localStorage.removeItem("acadid_founder_mfa");
@@ -393,9 +436,17 @@ export function FounderConsole() {
     setDeveloperRequests([]);
     setDisputes([]);
     setVerificationLogs([]);
-    setNotice(null);
+    setNotice(nextNotice);
     setTotpSetup(null);
     setMfaEnabled(false);
+  }
+
+  function handleAuthenticatedError(error: unknown, fallback: string) {
+    if (isSessionExpired(error)) {
+      logout({ tone: "error", text: "Founder session expired. Please sign in again." });
+      return;
+    }
+    setNotice({ tone: "error", text: error instanceof Error ? error.message : fallback });
   }
 
   function navigate(page: PageKey) {
@@ -417,7 +468,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: `Created ${institution.institutionId}.` });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Institution creation failed." });
+      handleAuthenticatedError(error, "Institution creation failed.");
     } finally {
       setLoading(false);
     }
@@ -434,7 +485,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: status === "ACTIVE" ? "Institution reactivated." : "Institution suspended." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Institution status update failed." });
+      handleAuthenticatedError(error, "Institution status update failed.");
     } finally {
       setLoading(false);
     }
@@ -448,7 +499,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Institution application approved and partner record created." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Application approval failed." });
+      handleAuthenticatedError(error, "Application approval failed.");
     } finally {
       setLoading(false);
     }
@@ -465,7 +516,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Institution application rejected." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Application rejection failed." });
+      handleAuthenticatedError(error, "Application rejection failed.");
     } finally {
       setLoading(false);
     }
@@ -483,7 +534,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: `Developer access request ${actionPast}.` });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Developer access update failed." });
+      handleAuthenticatedError(error, "Developer access update failed.");
     } finally {
       setLoading(false);
     }
@@ -502,7 +553,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Product API key generated. Save the backend secret now." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Product API key generation failed." });
+      handleAuthenticatedError(error, "Product API key generation failed.");
     } finally {
       setLoading(false);
     }
@@ -521,7 +572,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Institution Live Results API key generated." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Institution API key generation failed." });
+      handleAuthenticatedError(error, "Institution API key generation failed.");
     } finally {
       setLoading(false);
     }
@@ -538,7 +589,7 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "API key revoked." });
       await refreshData();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "API key revocation failed." });
+      handleAuthenticatedError(error, "API key revocation failed.");
     } finally {
       setLoading(false);
     }
@@ -553,7 +604,7 @@ export function FounderConsole() {
       setTotpEnableCode("");
       setNotice({ tone: "success", text: "Authenticator setup started. Enter the code from your app to enable it." });
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not start TOTP setup." });
+      handleAuthenticatedError(error, "Could not start TOTP setup.");
     } finally {
       setLoading(false);
     }
@@ -574,7 +625,7 @@ export function FounderConsole() {
       setTotpEnableCode("");
       setNotice({ tone: "success", text: "Founder TOTP is now enabled. Future logins require the 6-digit code." });
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not enable TOTP." });
+      handleAuthenticatedError(error, "Could not enable TOTP.");
     } finally {
       setLoading(false);
     }
@@ -667,7 +718,7 @@ export function FounderConsole() {
                 </button>
               ) : null}
             </div>
-            <button className={`flex h-10 w-full items-center rounded-md px-3 text-sm font-medium text-white/85 hover:bg-white/10 ${sidebarCollapsed ? "justify-center" : "gap-3"}`} onClick={logout} type="button">
+            <button className={`flex h-10 w-full items-center rounded-md px-3 text-sm font-medium text-white/85 hover:bg-white/10 ${sidebarCollapsed ? "justify-center" : "gap-3"}`} onClick={() => logout()} type="button">
               <SideIcon label="Logout" inverse />
               {sidebarCollapsed ? null : "Logout"}
             </button>
@@ -1094,6 +1145,8 @@ function ApiKeysPage(props: {
 }
 
 function ProductApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
+  const selectedProduct = getProductOption(props.productKeyForm.productCode);
+  const productLabels = Object.fromEntries(productOptions.map((product) => [product.code, product.name]));
   return (
     <Card>
       <SectionTitle title="Internal Product API Keys" subtitle="Founder-generated keys for ACAD.ID-owned products." />
@@ -1101,17 +1154,35 @@ function ProductApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
         <FilterSelect
           value={props.productKeyForm.productCode}
           onChange={(code) => {
-            const product = productOptions.find((option) => option.code === code) ?? productOptions[0];
-            props.onUpdateProductKeyForm({ ...props.productKeyForm, productCode: product.code, productName: product.name, label: `${product.name} Backend - Sandbox` });
+            const product = getProductOption(code);
+            props.onUpdateProductKeyForm({
+              ...props.productKeyForm,
+              productCode: product.code,
+              productName: product.name,
+              label: `${product.name} Backend - ${titleCase(props.productKeyForm.environment)}`,
+              rateLimitPerMinute: product.rateLimitPerMinute,
+              scopes: product.recommendedScopes
+            });
           }}
           options={productOptions.map((product) => product.code)}
+          labels={productLabels}
         />
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-primary">Recommended for {selectedProduct.name}</p>
+              <p className="mt-1 text-xs leading-5 text-textSecondary">{selectedProduct.description}</p>
+            </div>
+            <span className="rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success">Auto-selected</span>
+          </div>
+          <p className="mt-3 text-xs text-textSecondary">Recommended scopes: {selectedProduct.recommendedScopes.join(", ")}</p>
+        </div>
         <input className={inputClass} value={props.productKeyForm.label} onChange={(event) => props.onUpdateProductKeyForm({ ...props.productKeyForm, label: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-2">
           <FilterSelect value={props.productKeyForm.environment} onChange={(environment) => props.onUpdateProductKeyForm({ ...props.productKeyForm, environment: environment as "SANDBOX" | "PRODUCTION" })} options={["SANDBOX", "PRODUCTION"]} />
           <input className={inputClass} type="number" min={1} max={10000} value={props.productKeyForm.rateLimitPerMinute} onChange={(event) => props.onUpdateProductKeyForm({ ...props.productKeyForm, rateLimitPerMinute: Number(event.target.value) })} />
         </div>
-        <ScopePicker selected={props.productKeyForm.scopes} onToggle={props.onToggleProductScope} />
+        <ScopePicker selected={props.productKeyForm.scopes} onToggle={props.onToggleProductScope} recommendedScopes={selectedProduct.recommendedScopes} />
         <button className={primaryButtonClass} disabled={props.loading}>Generate Product API Key</button>
       </form>
     </Card>
@@ -1132,7 +1203,7 @@ function InstitutionApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
           <FilterSelect value={props.institutionKeyForm.environment} onChange={(environment) => props.onUpdateInstitutionKeyForm({ ...props.institutionKeyForm, environment: environment as "SANDBOX" | "PRODUCTION" })} options={["SANDBOX", "PRODUCTION"]} />
           <input className={inputClass} type="number" min={1} max={10000} value={props.institutionKeyForm.rateLimitPerMinute} onChange={(event) => props.onUpdateInstitutionKeyForm({ ...props.institutionKeyForm, rateLimitPerMinute: Number(event.target.value) })} />
         </div>
-        <ScopePicker selected={props.institutionKeyForm.scopes} onToggle={props.onToggleInstitutionScope} />
+        <ScopePicker selected={props.institutionKeyForm.scopes} onToggle={props.onToggleInstitutionScope} recommendedScopes={["ingest:write", "govern:write", "verify:read"]} />
         <button className={primaryButtonClass} disabled={props.loading || !selectedInstitutionId}>Generate Institution Key</button>
         {!props.approvedDeveloperInstitutions.length ? <EmptyState text="No institution has approved developer access yet." /> : null}
       </form>
@@ -1401,15 +1472,21 @@ function FilterSelect({ value, onChange, options, labels = {} }: { value: string
   );
 }
 
-function ScopePicker({ selected, onToggle }: { selected: string[]; onToggle: (scope: string) => void }) {
+function ScopePicker({ recommendedScopes = [], selected, onToggle }: { recommendedScopes?: string[]; selected: string[]; onToggle: (scope: string) => void }) {
+  const recommended = new Set(recommendedScopes);
   return (
     <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-      {scopeOptions.map((scope) => (
-        <label key={scope} className="flex items-center gap-2 rounded-md border border-borderLight bg-soft px-3 py-2">
-          <input checked={selected.includes(scope)} onChange={() => onToggle(scope)} type="checkbox" />
-          <span className="break-all">{scope}</span>
-        </label>
-      ))}
+      {scopeOptions.map((scope) => {
+        const isRecommended = recommended.has(scope);
+        const isSelected = selected.includes(scope);
+        return (
+          <label key={scope} className={`flex items-center gap-2 rounded-md border px-3 py-2 ${isRecommended ? "border-accent/40 bg-accent/5" : "border-borderLight bg-soft"}`}>
+            <input checked={isSelected} onChange={() => onToggle(scope)} type="checkbox" />
+            <span className="min-w-0 flex-1 break-all">{scope}</span>
+            {isRecommended ? <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">{isSelected ? "Recommended" : "Suggested"}</span> : null}
+          </label>
+        );
+      })}
     </div>
   );
 }
