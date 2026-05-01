@@ -285,6 +285,71 @@ type RevenueOverview = {
   }>;
 };
 
+type PlatformSettings = {
+  approval: {
+    requireMou: boolean;
+    requireDocumentUpload: boolean;
+    allowAutoApprove: boolean;
+    maxApplicationReviewDays: number;
+  };
+  api: {
+    defaultEnvironment: "SANDBOX" | "PRODUCTION";
+    defaultRateLimitPerMinute: number;
+    productKeyRotationDays: number;
+    institutionKeyRotationDays: number;
+  };
+  notifications: {
+    founderEmail: string;
+    notifyOnNewApplication: boolean;
+    notifyOnDeveloperRequest: boolean;
+    notifyOnDispute: boolean;
+    weeklySummaryEnabled: boolean;
+  };
+  emailTemplates: {
+    applicationApprovedSubject: string;
+    applicationRejectedSubject: string;
+    developerAccessApprovedSubject: string;
+    disputeNoticeSubject: string;
+  };
+};
+
+type PlatformSettingsResponse = {
+  settings: PlatformSettings;
+  metadata: {
+    updatedAt: string | null;
+    updatedBy: { fullName: string; email: string } | null;
+    persistedKeys: string[];
+  };
+};
+
+const defaultPlatformSettings: PlatformSettings = {
+  approval: {
+    requireMou: true,
+    requireDocumentUpload: true,
+    allowAutoApprove: false,
+    maxApplicationReviewDays: 14
+  },
+  api: {
+    defaultEnvironment: "SANDBOX",
+    defaultRateLimitPerMinute: 1000,
+    productKeyRotationDays: 180,
+    institutionKeyRotationDays: 90
+  },
+  notifications: {
+    founderEmail: "founder@acadid.local",
+    notifyOnNewApplication: true,
+    notifyOnDeveloperRequest: true,
+    notifyOnDispute: true,
+    weeklySummaryEnabled: true
+  },
+  emailTemplates: {
+    applicationApprovedSubject: "ACAD.ID institution application approved",
+    applicationRejectedSubject: "ACAD.ID institution application update",
+    developerAccessApprovedSubject: "ACAD.ID Developer Access approved",
+    disputeNoticeSubject: "ACAD.ID credential dispute notice"
+  }
+};
+
 function getProductOption(code: string) {
   return productOptions.find((option) => option.code === code) ?? productOptions[0];
 }
@@ -341,6 +406,10 @@ async function loadRevenueOverview(token: string): Promise<RevenueOverview> {
   return apiRequest<RevenueOverview>("/admin/revenue", token);
 }
 
+async function loadPlatformSettings(token: string): Promise<PlatformSettingsResponse> {
+  return apiRequest<PlatformSettingsResponse>("/admin/settings", token);
+}
+
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
   const [token, setToken] = useState<string | null>(null);
@@ -357,6 +426,7 @@ export function FounderConsole() {
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettingsResponse | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
@@ -510,7 +580,7 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview] = await Promise.all([
+      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview, nextPlatformSettings] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
@@ -518,7 +588,8 @@ export function FounderConsole() {
         loadDisputes(activeToken),
         loadVerificationLogs(activeToken),
         loadSystemHealth(activeToken),
-        loadRevenueOverview(activeToken)
+        loadRevenueOverview(activeToken),
+        loadPlatformSettings(activeToken)
       ]);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
@@ -528,6 +599,7 @@ export function FounderConsole() {
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
       setRevenueOverview(nextRevenueOverview);
+      setPlatformSettings(nextPlatformSettings);
       const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
@@ -579,6 +651,7 @@ export function FounderConsole() {
     setVerificationLogs([]);
     setSystemHealth(null);
     setRevenueOverview(null);
+    setPlatformSettings(null);
     setNotice(nextNotice);
     setTotpSetup(null);
     setMfaEnabled(false);
@@ -842,6 +915,23 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Founder TOTP is now enabled. Future logins require the 6-digit code." });
     } catch (error) {
       handleAuthenticatedError(error, "Could not enable TOTP.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveSettings(nextSettings: PlatformSettings) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<PlatformSettingsResponse>("/admin/settings", token, {
+        method: "PATCH",
+        body: JSON.stringify(nextSettings)
+      });
+      setPlatformSettings(response);
+      setNotice({ tone: "success", text: "Platform settings saved." });
+    } catch (error) {
+      handleAuthenticatedError(error, "Could not save platform settings.");
     } finally {
       setLoading(false);
     }
@@ -1121,7 +1211,7 @@ export function FounderConsole() {
         />
       );
     }
-    return <SettingsPage founderName={founderName} />;
+    return <SettingsPage founderName={founderName} loading={loading} onSave={handleSaveSettings} settings={platformSettings} />;
   }
 }
 
@@ -1858,11 +1948,110 @@ function SecurityPage(props: {
   );
 }
 
-function SettingsPage({ founderName }: { founderName: string }) {
+function SettingsPage({
+  founderName,
+  loading,
+  onSave,
+  settings
+}: {
+  founderName: string;
+  loading: boolean;
+  onSave: (settings: PlatformSettings) => Promise<void>;
+  settings: PlatformSettingsResponse | null;
+}) {
+  const [form, setForm] = useState<PlatformSettings>(settings?.settings ?? defaultPlatformSettings);
+
+  useEffect(() => {
+    setForm(settings?.settings ?? defaultPlatformSettings);
+  }, [settings]);
+
+  function updateGroup<Group extends keyof PlatformSettings>(group: Group, patch: Partial<PlatformSettings[Group]>) {
+    setForm((current) => ({
+      ...current,
+      [group]: {
+        ...current[group],
+        ...patch
+      }
+    }));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSave(form);
+  }
+
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Card><SectionTitle title="Founder Profile" subtitle="Profile and notification preferences." /><div className="mt-4"><MetricLine label="Name" value={founderName} /><MetricLine label="Role" value="Super Admin" /></div></Card>
-      <Card><SectionTitle title="Platform Settings" subtitle="Settings persistence endpoint pending." /><div className="mt-4 grid gap-3">{["Email templates", "Institution approval settings", "API rate limit defaults", "Notification preferences"].map((item) => <PlaceholderRow key={item} label={item} />)}</div></Card>
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Founder" value={founderName} helper="Super Admin profile" tone="accent" icon="Settings" />
+        <MetricCard label="Persisted Groups" value={settings?.metadata.persistedKeys.length ?? 0} helper="Approval, API, notifications, templates" tone="success" icon="Settings" />
+        <MetricCard label="Last Updated" value={settings?.metadata.updatedAt ? formatDate(settings.metadata.updatedAt) : "Defaults"} helper={settings?.metadata.updatedBy?.fullName ?? "Not persisted yet"} tone="warning" icon="Settings" />
+      </div>
+      <form className="grid gap-5 xl:grid-cols-2" onSubmit={submit}>
+        <Card>
+          <SectionTitle title="Institution Approval" subtitle="Rules used by the Institution Portal review workflow." />
+          <div className="mt-4 grid gap-3">
+            <ToggleRow checked={form.approval.requireMou} label="Require signed MOU" onChange={(checked) => updateGroup("approval", { requireMou: checked })} />
+            <ToggleRow checked={form.approval.requireDocumentUpload} label="Require document upload" onChange={(checked) => updateGroup("approval", { requireDocumentUpload: checked })} />
+            <ToggleRow checked={form.approval.allowAutoApprove} label="Allow auto-approval" onChange={(checked) => updateGroup("approval", { allowAutoApprove: checked })} />
+            <Field label="Maximum review days">
+              <input className={inputClass} min={1} max={90} type="number" value={form.approval.maxApplicationReviewDays} onChange={(event) => updateGroup("approval", { maxApplicationReviewDays: Number(event.target.value) })} />
+            </Field>
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="API Defaults" subtitle="Default environment, rate limits, and rotation windows." />
+          <div className="mt-4 grid gap-3">
+            <Field label="Default environment">
+              <select className={inputClass} value={form.api.defaultEnvironment} onChange={(event) => updateGroup("api", { defaultEnvironment: event.target.value as "SANDBOX" | "PRODUCTION" })}>
+                <option value="SANDBOX">Sandbox</option>
+                <option value="PRODUCTION">Production</option>
+              </select>
+            </Field>
+            <Field label="Default rate limit per minute">
+              <input className={inputClass} min={10} max={100000} type="number" value={form.api.defaultRateLimitPerMinute} onChange={(event) => updateGroup("api", { defaultRateLimitPerMinute: Number(event.target.value) })} />
+            </Field>
+            <Field label="Product key rotation days">
+              <input className={inputClass} min={1} max={730} type="number" value={form.api.productKeyRotationDays} onChange={(event) => updateGroup("api", { productKeyRotationDays: Number(event.target.value) })} />
+            </Field>
+            <Field label="Institution key rotation days">
+              <input className={inputClass} min={1} max={730} type="number" value={form.api.institutionKeyRotationDays} onChange={(event) => updateGroup("api", { institutionKeyRotationDays: Number(event.target.value) })} />
+            </Field>
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Notifications" subtitle="Founder alert routing for control-plane events." />
+          <div className="mt-4 grid gap-3">
+            <Field label="Founder email">
+              <input className={inputClass} type="email" value={form.notifications.founderEmail} onChange={(event) => updateGroup("notifications", { founderEmail: event.target.value })} />
+            </Field>
+            <ToggleRow checked={form.notifications.notifyOnNewApplication} label="New institution applications" onChange={(checked) => updateGroup("notifications", { notifyOnNewApplication: checked })} />
+            <ToggleRow checked={form.notifications.notifyOnDeveloperRequest} label="Developer access requests" onChange={(checked) => updateGroup("notifications", { notifyOnDeveloperRequest: checked })} />
+            <ToggleRow checked={form.notifications.notifyOnDispute} label="Credential disputes" onChange={(checked) => updateGroup("notifications", { notifyOnDispute: checked })} />
+            <ToggleRow checked={form.notifications.weeklySummaryEnabled} label="Weekly founder summary" onChange={(checked) => updateGroup("notifications", { weeklySummaryEnabled: checked })} />
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Email Templates" subtitle="Subject lines used by institution and governance workflows." />
+          <div className="mt-4 grid gap-3">
+            <Field label="Application approved subject">
+              <input className={inputClass} value={form.emailTemplates.applicationApprovedSubject} onChange={(event) => updateGroup("emailTemplates", { applicationApprovedSubject: event.target.value })} />
+            </Field>
+            <Field label="Application rejected subject">
+              <input className={inputClass} value={form.emailTemplates.applicationRejectedSubject} onChange={(event) => updateGroup("emailTemplates", { applicationRejectedSubject: event.target.value })} />
+            </Field>
+            <Field label="Developer access approved subject">
+              <input className={inputClass} value={form.emailTemplates.developerAccessApprovedSubject} onChange={(event) => updateGroup("emailTemplates", { developerAccessApprovedSubject: event.target.value })} />
+            </Field>
+            <Field label="Dispute notice subject">
+              <input className={inputClass} value={form.emailTemplates.disputeNoticeSubject} onChange={(event) => updateGroup("emailTemplates", { disputeNoticeSubject: event.target.value })} />
+            </Field>
+          </div>
+        </Card>
+        <div className="xl:col-span-2">
+          <button className={`${primaryButtonClass} w-full md:w-auto`} disabled={loading} type="submit">{loading ? "Saving..." : "Save Settings"}</button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -2045,6 +2234,15 @@ function RevenueBarChart({ data, currency }: { data: RevenueOverview["daily"]; c
 
 function MetricLine({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between gap-3 border-b border-borderLight py-2 text-sm last:border-b-0"><span className="text-textSecondary">{label}</span><span className="text-right font-medium text-primary">{value}</span></div>;
+}
+
+function ToggleRow({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-md border border-borderLight bg-soft px-3 py-2 text-sm">
+      <span className="font-medium text-primary">{label}</span>
+      <input checked={checked} className="h-4 w-4 accent-accent" onChange={(event) => onChange(event.target.checked)} type="checkbox" />
+    </label>
+  );
 }
 
 function PlaceholderRow({ label }: { label: string }) {

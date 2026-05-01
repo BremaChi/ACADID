@@ -117,6 +117,16 @@ export class AdminController {
     return this.adminService.readRevenueOverview();
   }
 
+  @Get("settings")
+  readPlatformSettings() {
+    return this.adminService.readPlatformSettings();
+  }
+
+  @Patch("settings")
+  updatePlatformSettings(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.updatePlatformSettings(request.auth, body);
+  }
+
   @Post("institutions/:id/api-keys")
   createApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.adminService.createApiKey(request.auth, id, body);

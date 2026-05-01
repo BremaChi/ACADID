@@ -82,6 +82,7 @@ Current v3 checkpoint:
 - Founder can view cross-institution credential verification logs with search, outcome filters, and CSV export.
 - Founder can view live System Health and gateway metrics from the Data Center API.
 - Founder can view Revenue from a real ledger foundation for verification fees, credential exports, and institution subscriptions.
+- Founder can manage persisted platform settings for approval rules, API defaults, notifications, and email template subjects.
 - Founder Console connects to the live API for institution/key workflows.
 - Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.

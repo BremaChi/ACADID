@@ -63,6 +63,7 @@ The API has these first modules:
 - Founder-level Verification Logs are exposed through the Data Center API across all institutions and credentials without returning encrypted verifier email or IP hashes.
 - Founder-level System Health and gateway metrics are exposed through the Data Center API with component status, response timing, gateway counts, error rate, and derived incidents.
 - Founder-level Revenue overview is backed by a ledger model for verification fees, credential export fees, and institution subscriptions.
+- Founder-level Platform Settings are persisted through the Data Center API for approval rules, API defaults, notifications, and email template subjects.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -88,6 +89,7 @@ The Prisma schema includes the core AcadID model:
 - Dispute.
 - RevenueLedgerEntry.
 - InstitutionSubscription.
+- PlatformSetting.
 
 ### Web
 
@@ -108,6 +110,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Verification Logs page backed by the Data Center API, with cross-institution search, outcome filters, metrics, and CSV export.
 - Live System Health page backed by the Data Center API, with service status, gateway metrics, and recent incidents.
 - Live Revenue page backed by the Data Center API, with ledger totals, subscription status, recent entries, and CSV export.
+- Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -136,6 +139,7 @@ Completed successfully:
 - Founder Verification Logs workflow validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/verification-logs` check.
 - Founder System Health workflow validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health` check.
 - Founder Revenue workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/admin/revenue` check.
+- Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -153,7 +157,7 @@ Known validation note:
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
-- On April 30, 2026, local Supabase runtime checks briefly returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. Connectivity later recovered, and authenticated Verification Logs, System Health, and Revenue checks returned 200.
+- On April 30, 2026, local Supabase runtime checks briefly returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. Connectivity later recovered, and authenticated Verification Logs, System Health, Revenue, and Settings checks returned 200.
 
 ## Local Runtime
 
@@ -167,10 +171,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add settings persistence for email templates, approval rules, API rate defaults, and notifications.
-2. Configure stable production signing keys with `npm run crypto:keygen`.
-3. Add production-grade account recovery rules for founder MFA loss.
-4. Add billing event writers when verification/export/subscription workflows begin charging real fees.
+1. Configure stable production signing keys with `npm run crypto:keygen`.
+2. Add production-grade account recovery rules for founder MFA loss.
+3. Add billing event writers when verification/export/subscription workflows begin charging real fees.
+4. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
 
 ## GitHub Status
 

@@ -9,6 +9,7 @@ import {
   createDisputeSchema,
   createInstitutionSchema,
   escalateDisputeSchema,
+  platformSettingsSchema,
   reviewDeveloperAccessRequestSchema,
   sendDisputeNoticeSchema
 } from "@acadid/shared";
@@ -31,6 +32,33 @@ const allowedApiKeyScopes = new Set([
 type HealthStatus = "OPERATIONAL" | "DEGRADED" | "DOWN" | "PENDING_CONFIGURATION";
 const revenueCategories: RevenueCategory[] = ["VERIFICATION_FEE", "CREDENTIAL_EXPORT_FEE", "INSTITUTION_SUBSCRIPTION"];
 const billableRevenueStatuses: RevenueEntryStatus[] = ["BILLABLE", "INVOICED", "PAID"];
+const defaultPlatformSettings = {
+  approval: {
+    requireMou: true,
+    requireDocumentUpload: true,
+    allowAutoApprove: false,
+    maxApplicationReviewDays: 14
+  },
+  api: {
+    defaultEnvironment: "SANDBOX",
+    defaultRateLimitPerMinute: 1000,
+    productKeyRotationDays: 180,
+    institutionKeyRotationDays: 90
+  },
+  notifications: {
+    founderEmail: "founder@acadid.local",
+    notifyOnNewApplication: true,
+    notifyOnDeveloperRequest: true,
+    notifyOnDispute: true,
+    weeklySummaryEnabled: true
+  },
+  emailTemplates: {
+    applicationApprovedSubject: "ACAD.ID institution application approved",
+    applicationRejectedSubject: "ACAD.ID institution application update",
+    developerAccessApprovedSubject: "ACAD.ID Developer Access approved",
+    disputeNoticeSubject: "ACAD.ID credential dispute notice"
+  }
+} as const;
 
 @Injectable()
 export class AdminService {
@@ -728,6 +756,75 @@ export class AdminService {
     };
   }
 
+  async readPlatformSettings() {
+    const rows = await this.prisma.platformSetting.findMany({
+      select: {
+        key: true,
+        value: true,
+        updatedAt: true,
+        updatedBy: {
+          select: {
+            fullName: true,
+            email: true
+          }
+        }
+      }
+    });
+    const rowByKey = new Map(rows.map((row) => [row.key, row]));
+    const settings = {
+      approval: this.mergeSettingValue(defaultPlatformSettings.approval, rowByKey.get("approval")?.value),
+      api: this.mergeSettingValue(defaultPlatformSettings.api, rowByKey.get("api")?.value),
+      notifications: this.mergeSettingValue(defaultPlatformSettings.notifications, rowByKey.get("notifications")?.value),
+      emailTemplates: this.mergeSettingValue(defaultPlatformSettings.emailTemplates, rowByKey.get("emailTemplates")?.value)
+    };
+
+    return {
+      settings,
+      metadata: {
+        updatedAt: rows.reduce<Date | null>((latest, row) => (!latest || row.updatedAt > latest ? row.updatedAt : latest), null),
+        updatedBy: rows.find((row) => row.updatedBy)?.updatedBy ?? null,
+        persistedKeys: rows.map((row) => row.key).sort()
+      }
+    };
+  }
+
+  async updatePlatformSettings(auth: AuthTokenPayload, input: unknown) {
+    const parsed = platformSettingsSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    await this.prisma.$transaction(
+      Object.entries(parsed.data).map(([key, value]) =>
+        this.prisma.platformSetting.upsert({
+          where: { key },
+          update: {
+            value: value as Prisma.InputJsonValue,
+            updatedById: auth.sub
+          },
+          create: {
+            key,
+            value: value as Prisma.InputJsonValue,
+            updatedById: auth.sub
+          }
+        })
+      )
+    );
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "platform_settings.update",
+      targetType: "PlatformSettings",
+      outcome: "SUCCESS",
+      metadata: {
+        keys: Object.keys(parsed.data)
+      }
+    });
+
+    return this.readPlatformSettings();
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -1372,5 +1469,12 @@ export class AdminService {
   private toNumber(value: number | bigint | null | undefined) {
     if (typeof value === "bigint") return Number(value);
     return value ?? 0;
+  }
+
+  private mergeSettingValue<T extends Record<string, unknown>>(defaults: T, value: Prisma.JsonValue | undefined) {
+    return {
+      ...defaults,
+      ...(value && typeof value === "object" && !Array.isArray(value) ? value : {})
+    } as T;
   }
 }

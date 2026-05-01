@@ -145,6 +145,34 @@ export const revokeAccessGrantSchema = z.object({
   accessGrantId: z.string().uuid()
 });
 
+export const platformSettingsSchema = z.object({
+  approval: z.object({
+    requireMou: z.boolean(),
+    requireDocumentUpload: z.boolean(),
+    allowAutoApprove: z.boolean(),
+    maxApplicationReviewDays: z.number().int().min(1).max(90)
+  }),
+  api: z.object({
+    defaultEnvironment: z.enum(["SANDBOX", "PRODUCTION"]),
+    defaultRateLimitPerMinute: z.number().int().min(10).max(100_000),
+    productKeyRotationDays: z.number().int().min(1).max(730),
+    institutionKeyRotationDays: z.number().int().min(1).max(730)
+  }),
+  notifications: z.object({
+    founderEmail: z.string().email().max(254),
+    notifyOnNewApplication: z.boolean(),
+    notifyOnDeveloperRequest: z.boolean(),
+    notifyOnDispute: z.boolean(),
+    weeklySummaryEnabled: z.boolean()
+  }),
+  emailTemplates: z.object({
+    applicationApprovedSubject: z.string().min(4).max(160),
+    applicationRejectedSubject: z.string().min(4).max(160),
+    developerAccessApprovedSubject: z.string().min(4).max(160),
+    disputeNoticeSubject: z.string().min(4).max(160)
+  })
+});
+
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateInstitutionApplicationInput = z.infer<typeof createInstitutionApplicationSchema>;
 export type CreateDeveloperAccessRequestInput = z.infer<typeof createDeveloperAccessRequestSchema>;
@@ -161,3 +189,4 @@ export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSch
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
 export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
 export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
+export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;
