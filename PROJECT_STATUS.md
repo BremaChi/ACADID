@@ -28,6 +28,7 @@ Created:
 - Runtime setup guidance in `docs/runtime-options.md`.
 - Architecture v3 memory note in `docs/architecture-brief-v3-memory.md`.
 - Architecture v3.1 MVP update memory covering product-level API keys, Institution Portal onboarding, founder approval, and optional institution API access.
+- Architecture v4 memory note in `docs/architecture-brief-v4-memory.md`, making Institution Workspace isolation, human institution sessions, expanded audit logging, and Graduate Record Requests the active next planning source.
 - Founder authenticator-code security for the Founder Console.
 
 ## Implemented Foundation
@@ -178,6 +179,7 @@ Known validation note:
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
 - On April 30, 2026, local Supabase runtime checks briefly returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. Connectivity later recovered, and authenticated Verification Logs, System Health, Revenue, and Settings checks returned 200.
 - On May 1, 2026, local System Health correctly reports `Credential Signing` as `DEGRADED` because development is using an ephemeral signing key. This is expected until real deployment secrets are provisioned.
+- On May 1, 2026, Architecture Brief v4 was reviewed. It supersedes v3/v3.1 for the next Engineer 1 work: add/expand InstitutionUser human staff auth, RecordRequest, workspace isolation middleware, stronger audit fields, registrar invitation on approval, and record-request intelligence in the Founder Console.
 
 ## Local Runtime
 
@@ -191,10 +193,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-2. Add credential export and subscription billing event writers when those workflows are implemented.
-3. Add login history and session management to the Security page.
-4. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
+1. Add the v4 InstitutionUser human staff auth/invitation lifecycle so institution dashboard actions are attributed to a human user, role, permissions, and institution scope.
+2. Add workspace isolation utilities/middleware so institution-scoped service queries derive `institution_id` from the verified session/token, not request body input.
+3. Add the v4 RecordRequest model, enums, indexes, payment/escrow status fields, and student/institution/founder API surfaces.
+4. Update founder approval to create the institution workspace, AuthorityGrant, Registrar InstitutionUser invite, public directory status, and audit event.
+5. Upgrade AuditEvent schema/writer toward the v4 minimum fields: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, IP/user-agent, timestamp.
+6. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
+7. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
 
 ## GitHub Status
 

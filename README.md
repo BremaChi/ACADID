@@ -103,3 +103,11 @@ Current v3 checkpoint:
 - Scoped API clients can ingest and govern records through the gateway without direct database access.
 - Founder Console uses the ACAD.ID symbol asset from `apps/web/public/acadid-symbol.png`.
 - Engineer 2 Institution Portal handoff is documented with API contract and sandbox test script.
+
+Current v4 architecture update:
+
+- `docs/architecture-brief-v4-memory.md` is now the active architecture memory for Engineer 1 next work.
+- v4 keeps the four-layer Data Center/Gateway/Product/Partner model and Supabase PostgreSQL path.
+- v4 adds mandatory institution workspace isolation, human InstitutionUser sessions, expanded audit logging, and Graduate Record Requests.
+- Normal institution dashboard actions must be attributed to human staff users, not only to a shared product API key.
+- The next build priority is InstitutionUser auth/invites, workspace scoping, RecordRequest schema/API, and founder approval creating a registrar invite.
