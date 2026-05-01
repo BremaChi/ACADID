@@ -75,6 +75,7 @@ type Institution = {
   state: string;
   tier: string;
   status: string;
+  mouSignedAt: string | null;
   createdAt: string;
 };
 
@@ -241,6 +242,51 @@ type SystemHealth = {
     message: string;
     detectedAt: string;
   }>;
+};
+
+type AuditEvent = {
+  id: string;
+  action: string;
+  label: string;
+  targetType: string;
+  targetId: string | null;
+  outcome: string;
+  reason: string | null;
+  actorRole: string | null;
+  actorName: string;
+  actorEmail: string | null;
+  institutionId: string | null;
+  institutionName: string | null;
+  createdAt: string;
+};
+
+type DashboardSummary = {
+  generatedAt: string;
+  metrics: {
+    totalInstitutions: number;
+    pendingApplications: number;
+    activeLearners: number;
+    resultsPublished: number;
+    credentialsIssued: number;
+    apiCallsToday: number;
+    activeApiKeys: number;
+    pendingDeveloperRequests: number;
+    openDisputes: number;
+  };
+  institutionStatus: {
+    total: number;
+    active: number;
+    suspended: number;
+    pendingApproval: number;
+    apiAccessActive: number;
+  };
+  apiUsage: Array<{
+    day: string;
+    verification: number;
+    audit: number;
+    total: number;
+  }>;
+  latestAuditEvents: AuditEvent[];
 };
 
 type RevenueOverview = {
@@ -412,6 +458,14 @@ async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
 
+async function loadDashboardSummary(token: string): Promise<DashboardSummary> {
+  return apiRequest<DashboardSummary>("/admin/dashboard-summary", token);
+}
+
+async function loadAuditEvents(token: string): Promise<AuditEvent[]> {
+  return apiRequest<AuditEvent[]>("/admin/audit-events", token);
+}
+
 async function loadRevenueOverview(token: string): Promise<RevenueOverview> {
   return apiRequest<RevenueOverview>("/admin/revenue", token);
 }
@@ -440,6 +494,8 @@ export function FounderConsole() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingsResponse | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
@@ -506,12 +562,12 @@ export function FounderConsole() {
   const founderInitials = initials(founderName);
 
   const overviewMetrics = [
-    { label: "Total Institutions", value: institutions.length, helper: "Approved partners", tone: "accent", icon: "Institutions" },
-    { label: "Pending Applications", value: pendingApplications.length, helper: "Needs your review", tone: "warning", icon: "Institution Applications" },
-    { label: "Active Learners", value: "--", helper: "Aggregate endpoint pending", tone: "success", icon: "Overview" },
-    { label: "Results Published", value: "--", helper: "Aggregate endpoint pending", tone: "warning", icon: "Verification Logs" },
-    { label: "Credentials Issued", value: "--", helper: "Aggregate endpoint pending", tone: "accent", icon: "Security" },
-    { label: "API Calls Today", value: "--", helper: "Gateway metrics pending", tone: "success", icon: "API Keys" }
+    { label: "Total Institutions", value: dashboardSummary?.metrics.totalInstitutions ?? institutions.length, helper: "Approved partners", tone: "accent", icon: "Institutions" },
+    { label: "Pending Applications", value: dashboardSummary?.metrics.pendingApplications ?? pendingApplications.length, helper: "Needs your review", tone: "warning", icon: "Institution Applications" },
+    { label: "Active Learners", value: dashboardSummary?.metrics.activeLearners ?? "--", helper: "Learner identities in Core Data Center", tone: "success", icon: "Overview" },
+    { label: "Results Published", value: dashboardSummary?.metrics.resultsPublished ?? "--", helper: "Published academic records", tone: "warning", icon: "Verification Logs" },
+    { label: "Credentials Issued", value: dashboardSummary?.metrics.credentialsIssued ?? "--", helper: "W3C VC-ready credential rows", tone: "accent", icon: "Security" },
+    { label: "API Calls Today", value: dashboardSummary?.metrics.apiCallsToday ?? systemHealth?.metrics.gatewayRequestsToday ?? "--", helper: "Gateway activity today", tone: "success", icon: "API Keys" }
   ];
 
   const filteredInstitutions = useMemo(() => {
@@ -598,7 +654,20 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview, nextPlatformSettings, nextRecoveryCodeStatus] = await Promise.all([
+      const [
+        nextInstitutions,
+        nextGlobalKeys,
+        nextApplications,
+        nextDeveloperRequests,
+        nextDisputes,
+        nextVerificationLogs,
+        nextSystemHealth,
+        nextDashboardSummary,
+        nextAuditEvents,
+        nextRevenueOverview,
+        nextPlatformSettings,
+        nextRecoveryCodeStatus
+      ] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
@@ -606,6 +675,8 @@ export function FounderConsole() {
         loadDisputes(activeToken),
         loadVerificationLogs(activeToken),
         loadSystemHealth(activeToken),
+        loadDashboardSummary(activeToken),
+        loadAuditEvents(activeToken),
         loadRevenueOverview(activeToken),
         loadPlatformSettings(activeToken),
         loadRecoveryCodeStatus(activeToken)
@@ -617,6 +688,8 @@ export function FounderConsole() {
       setDisputes(nextDisputes);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
+      setDashboardSummary(nextDashboardSummary);
+      setAuditEvents(nextAuditEvents);
       setRevenueOverview(nextRevenueOverview);
       setPlatformSettings(nextPlatformSettings);
       setRecoveryCodeStatus(nextRecoveryCodeStatus);
@@ -671,6 +744,8 @@ export function FounderConsole() {
     setSelectedDisputeId("");
     setVerificationLogs([]);
     setSystemHealth(null);
+    setDashboardSummary(null);
+    setAuditEvents([]);
     setRevenueOverview(null);
     setPlatformSettings(null);
     setNotice(nextNotice);
@@ -757,6 +832,45 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Application rejection failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function requestInstitutionApplicationInfo(applicationId: string) {
+    if (!token) return;
+    const message = window.prompt("What information should this institution provide?", "Please provide the missing registration document or clarification requested by ACAD.ID.");
+    if (!message?.trim()) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/institution-applications/${applicationId}/request-info`, token, {
+        method: "POST",
+        body: JSON.stringify({ message })
+      });
+      setNotice({ tone: "success", text: "More-information request recorded for this application." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Application information request failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendInstitutionApplicationEmail(applicationId: string) {
+    if (!token) return;
+    const application = institutionApplications.find((item) => item.uuid === applicationId);
+    const message = window.prompt("Email message to record for this institution", `Hello ${application?.contactPersonName ?? "there"}, your ACAD.ID institution application has an update in Founder review.`);
+    if (!message?.trim()) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/institution-applications/${applicationId}/send-email`, token, {
+        method: "POST",
+        body: JSON.stringify({ message })
+      });
+      setNotice({ tone: "success", text: "Application email action recorded for provider delivery." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Application email action failed.");
     } finally {
       setLoading(false);
     }
@@ -908,6 +1022,21 @@ export function FounderConsole() {
     }
   }
 
+  async function regenerateApiKey(apiKeyId: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const apiKey = await apiRequest<CreatedApiKey>(`/admin/api-keys/${apiKeyId}/regenerate`, token, { method: "PATCH" });
+      setCreatedKey(apiKey);
+      setNotice({ tone: "success", text: "API key regenerated. Save the new secret now and rotate it in the backend." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "API key regeneration failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSetupTotp() {
     if (!token) return;
     setLoading(true);
@@ -976,6 +1105,26 @@ export function FounderConsole() {
       setNotice({ tone: "success", text: "Platform settings saved." });
     } catch (error) {
       handleAuthenticatedError(error, "Could not save platform settings.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function emergencyLockdown() {
+    if (!token) return;
+    const confirmation = window.prompt("Type LOCKDOWN to revoke all active API keys and stop external gateway access.");
+    if (confirmation !== "LOCKDOWN") return;
+    const reason = window.prompt("Reason for emergency lockdown", "Founder emergency lockdown from Security page.") ?? undefined;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ revokedApiKeys: number }>("/admin/emergency-lockdown", token, {
+        method: "POST",
+        body: JSON.stringify({ reason })
+      });
+      setNotice({ tone: "success", text: `Emergency lockdown complete. ${response.revokedApiKeys} active API key(s) revoked.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Emergency lockdown failed.");
     } finally {
       setLoading(false);
     }
@@ -1127,10 +1276,12 @@ export function FounderConsole() {
         <OverviewPage
           apiKeys={globalApiKeys}
           applications={institutionApplications}
+          dashboardSummary={dashboardSummary}
           institutions={institutions}
           metrics={overviewMetrics}
           onGenerateKey={() => setActivePage("API Keys")}
           onViewApplications={() => setActivePage("Institution Applications")}
+          systemHealth={systemHealth}
         />
       );
     }
@@ -1146,6 +1297,9 @@ export function FounderConsole() {
           institutionTypeFilter={institutionTypeFilter}
           institutions={institutions}
           loading={loading}
+          apiKeys={globalApiKeys}
+          auditEvents={auditEvents}
+          developerRequests={developerRequests}
           onCreateInstitution={handleCreateInstitution}
           onSelectInstitution={setSelectedInstitutionId}
           onStateFilter={setInstitutionStateFilter}
@@ -1155,6 +1309,7 @@ export function FounderConsole() {
           onUpdateInstitutionForm={setInstitutionForm}
           onUpdateSearch={setInstitutionSearch}
           onUpdateStatus={updateInstitutionStatus}
+          verificationLogs={verificationLogs}
           selectedInstitution={selectedInstitution}
         />
       );
@@ -1168,6 +1323,8 @@ export function FounderConsole() {
           loading={loading}
           onApprove={approveInstitutionApplication}
           onReject={rejectInstitutionApplication}
+          onRequestInfo={requestInstitutionApplicationInfo}
+          onSendEmail={sendInstitutionApplicationEmail}
           onSelectApplication={setSelectedApplicationId}
           onStatusFilter={setApplicationStatusFilter}
           onUpdateSearch={setApplicationSearch}
@@ -1190,6 +1347,7 @@ export function FounderConsole() {
           onCreateInstitutionKey={handleCreateInstitutionApiKey}
           onCreateProductKey={handleCreateProductApiKey}
           onOwnerFilter={setApiKeyOwnerFilter}
+          onRegenerate={regenerateApiKey}
           onRevoke={revokeApiKey}
           onSelectInstitution={setSelectedInstitutionId}
           onStatusFilter={setApiKeyStatusFilter}
@@ -1249,7 +1407,10 @@ export function FounderConsole() {
       return (
         <SecurityPage
           loading={loading}
+          auditEvents={auditEvents}
+          apiKeys={globalApiKeys}
           mfaEnabled={mfaEnabled}
+          onEmergencyLockdown={emergencyLockdown}
           onEnableTotp={handleEnableTotp}
           onRotateRecoveryCodes={handleRotateRecoveryCodes}
           onSetupTotp={handleSetupTotp}
@@ -1271,24 +1432,24 @@ export function FounderConsole() {
 function OverviewPage({
   apiKeys,
   applications,
+  dashboardSummary,
   institutions,
   metrics,
   onGenerateKey,
-  onViewApplications
+  onViewApplications,
+  systemHealth
 }: {
   apiKeys: GlobalApiKey[];
   applications: InstitutionApplication[];
+  dashboardSummary: DashboardSummary | null;
   institutions: Institution[];
   metrics: { label: string; value: string | number; helper: string; tone: string; icon: string }[];
   onGenerateKey: () => void;
   onViewApplications: () => void;
+  systemHealth: SystemHealth | null;
 }) {
   const recentApplications = applications.slice(0, 5);
-  const latestEvents = [
-    { label: "New institution application submitted", meta: recentApplications[0]?.officialName ?? "Waiting for portal submissions", time: "Live" },
-    { label: "API key generated", meta: apiKeys[0]?.ownerLabel ?? "No API keys yet", time: apiKeys[0] ? formatDate(apiKeys[0].createdAt) : "Empty" },
-    { label: "Institution approved", meta: institutions[0]?.officialName ?? "No partner yet", time: institutions[0] ? formatDate(institutions[0].createdAt) : "Empty" }
-  ];
+  const latestEvents = dashboardSummary?.latestAuditEvents ?? [];
 
   return (
     <div className="space-y-5">
@@ -1303,12 +1464,17 @@ function OverviewPage({
             <SectionTitle title="API Usage" subtitle="Last 7 days" />
             <button className={secondaryButtonClass} onClick={onGenerateKey} type="button">Generate API Key</button>
           </div>
-          <LineChart />
+          <LineChart data={dashboardSummary?.apiUsage ?? []} />
           <div className="grid gap-3 md:grid-cols-4">
-            {["Institution Portal", "Student App", "Verification Portal", "Exam Bodies"].map((label, index) => (
-              <div key={label} className="rounded-lg border border-borderLight bg-white p-3">
-                <p className="text-xs text-textSecondary">{label}</p>
-                <p className="mt-1 text-lg font-semibold text-primary">{["642K", "321K", "198K", "82K"][index]}</p>
+            {[
+              { label: "Gateway Events", value: formatCompactNumber(dashboardSummary?.apiUsage.reduce((sum, item) => sum + item.total, 0) ?? 0) },
+              { label: "Verification Events", value: formatCompactNumber(dashboardSummary?.apiUsage.reduce((sum, item) => sum + item.verification, 0) ?? 0) },
+              { label: "Audit Events", value: formatCompactNumber(dashboardSummary?.apiUsage.reduce((sum, item) => sum + item.audit, 0) ?? 0) },
+              { label: "Active API Keys", value: formatCompactNumber(dashboardSummary?.metrics.activeApiKeys ?? apiKeys.filter((key) => key.status === "ACTIVE").length) }
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg border border-borderLight bg-white p-3">
+                <p className="text-xs text-textSecondary">{item.label}</p>
+                <p className="mt-1 text-lg font-semibold text-primary">{item.value}</p>
               </div>
             ))}
           </div>
@@ -1332,19 +1498,22 @@ function OverviewPage({
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr_0.95fr]">
         <Card>
           <SectionTitle title="Institution Status Overview" subtitle="Partner distribution" />
-          <DonutSummary total={institutions.length} />
+          <DonutSummary status={dashboardSummary?.institutionStatus} fallbackTotal={institutions.length} />
         </Card>
         <Card>
           <SectionTitle title="Latest Audit Events" subtitle="Recent control-plane activity" />
-          <ListBlock empty="No audit events connected yet." items={latestEvents.map((event) => ({ title: event.label, meta: event.meta, date: event.time }))} />
+          <ListBlock empty="No audit events recorded yet." items={latestEvents.map((event) => ({ title: event.label, meta: event.institutionName ?? event.actorName, status: event.outcome, date: formatDate(event.createdAt) }))} />
         </Card>
-        <SystemHealthCompact />
+        <SystemHealthCompact health={systemHealth} />
       </div>
     </div>
   );
 }
 
 function InstitutionsPage(props: {
+  apiKeys: GlobalApiKey[];
+  auditEvents: AuditEvent[];
+  developerRequests: DeveloperAccessRequest[];
   filteredInstitutions: Institution[];
   institutionForm: { officialName: string; type: string; state: string; tier: string };
   institutionSearch: string;
@@ -1364,6 +1533,7 @@ function InstitutionsPage(props: {
   onUpdateSearch: (value: string) => void;
   onUpdateStatus: (id: string, status: "ACTIVE" | "SUSPENDED") => void;
   selectedInstitution?: Institution;
+  verificationLogs: VerificationLog[];
 }) {
   const states = uniqueValues(props.institutions.map((institution) => institution.state));
   return (
@@ -1419,7 +1589,7 @@ function InstitutionsPage(props: {
             <button className={primaryButtonClass} disabled={props.loading}>Create Institution</button>
           </form>
         </Card>
-        <InstitutionDetail institution={props.selectedInstitution} />
+        <InstitutionDetail apiKeys={props.apiKeys} auditEvents={props.auditEvents} developerRequests={props.developerRequests} institution={props.selectedInstitution} verificationLogs={props.verificationLogs} />
       </div>
     </div>
   );
@@ -1432,6 +1602,8 @@ function ApplicationsPage(props: {
   loading: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onRequestInfo: (id: string) => void;
+  onSendEmail: (id: string) => void;
   onSelectApplication: (id: string) => void;
   onStatusFilter: (value: string) => void;
   onUpdateSearch: (value: string) => void;
@@ -1464,7 +1636,7 @@ function ApplicationsPage(props: {
           ])}
         />
       </Card>
-      <ApplicationDetail application={props.selectedApplication} onApprove={props.onApprove} onReject={props.onReject} loading={props.loading} />
+      <ApplicationDetail application={props.selectedApplication} onApprove={props.onApprove} onReject={props.onReject} onRequestInfo={props.onRequestInfo} onSendEmail={props.onSendEmail} loading={props.loading} />
     </div>
   );
 }
@@ -1482,6 +1654,7 @@ function ApiKeysPage(props: {
   onCreateInstitutionKey: (event: FormEvent<HTMLFormElement>) => void;
   onCreateProductKey: (event: FormEvent<HTMLFormElement>) => void;
   onOwnerFilter: (value: string) => void;
+  onRegenerate: (id: string) => void;
   onRevoke: (id: string) => void;
   onSelectInstitution: (id: string) => void;
   onStatusFilter: (value: string) => void;
@@ -1519,7 +1692,7 @@ function ApiKeysPage(props: {
             apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never",
             <StatusBadge key="status" status={apiKey.status} />,
             <div key="actions" className="flex gap-2">
-              <button className={secondaryButtonClass} disabled type="button">Regenerate</button>
+              <button className={secondaryButtonClass} disabled={props.loading} onClick={() => props.onRegenerate(apiKey.uuid)} type="button">Regenerate</button>
               <button className={secondaryButtonClass} disabled={apiKey.status !== "ACTIVE" || props.loading} onClick={() => props.onRevoke(apiKey.uuid)} type="button">Revoke</button>
             </div>
           ])}
@@ -1858,7 +2031,7 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
       <Card>
         <SectionTitle title="Revenue Trend" subtitle={revenue ? `Last 30 days from ledger, updated ${formatDate(revenue.generatedAt)}.` : "Waiting for revenue ledger data."} />
         <RevenueBarChart data={revenue?.daily ?? []} currency={revenue?.currency ?? "NGN"} />
-        <div className="mt-4 flex gap-2"><button className={secondaryButtonClass} disabled={!revenue?.recentEntries.length} onClick={exportCsv} type="button">Export CSV</button><button className={secondaryButtonClass} disabled type="button">Export PDF</button></div>
+        <div className="mt-4 flex gap-2"><button className={secondaryButtonClass} disabled={!revenue?.recentEntries.length} onClick={exportCsv} type="button">Export CSV</button><button className={secondaryButtonClass} disabled={!revenue?.recentEntries.length} onClick={() => window.print()} type="button">Print / PDF</button></div>
       </Card>
       <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
         <Card>
@@ -1965,8 +2138,11 @@ function SystemHealthPage({ health }: { health: SystemHealth | null }) {
 }
 
 function SecurityPage(props: {
+  auditEvents: AuditEvent[];
+  apiKeys: GlobalApiKey[];
   loading: boolean;
   mfaEnabled: boolean;
+  onEmergencyLockdown: () => void;
   onEnableTotp: (event: FormEvent<HTMLFormElement>) => void;
   onRotateRecoveryCodes: (event: FormEvent<HTMLFormElement>) => void;
   onSetupTotp: () => void;
@@ -1979,6 +2155,10 @@ function SecurityPage(props: {
   totpEnableCode: string;
   totpSetup: TotpSetup | null;
 }) {
+  const loginEvents = props.auditEvents.filter((event) => event.action === "auth.login").slice(0, 5);
+  const apiSecurityEvents = props.auditEvents.filter((event) => event.action.includes("api_key")).slice(0, 5);
+  const activeSessions = loginEvents.length ? "Current browser session" : "No tracked session yet";
+  const revokedKeys = props.apiKeys.filter((key) => key.status === "REVOKED").length;
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
       <Card>
@@ -2022,10 +2202,49 @@ function SecurityPage(props: {
         ) : null}
       </Card>
       <Card>
-        <SectionTitle title="Security Operations" subtitle="Login history and session management endpoints pending." />
-        <div className="mt-4 grid gap-3">
-          {["Login history", "Session management", "API key security logs", "Founder audit logs"].map((item) => <PlaceholderRow key={item} label={item} />)}
-          <button className="h-10 rounded-md border border-error px-4 text-sm font-medium text-error" type="button">Emergency lockdown</button>
+        <SectionTitle title="Security Operations" subtitle="Founder access, API key actions, and audit trail." />
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">Session</p><p className="mt-1 text-sm font-semibold text-primary">{activeSessions}</p></div>
+            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">API key events</p><p className="mt-1 text-sm font-semibold text-primary">{apiSecurityEvents.length}</p></div>
+            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">Revoked keys</p><p className="mt-1 text-sm font-semibold text-primary">{revokedKeys}</p></div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-primary">Login history</p>
+            <ListBlock
+              empty="No founder login audit events recorded yet."
+              items={loginEvents.map((event) => ({
+                title: event.actorName,
+                meta: event.actorEmail ?? event.actorRole ?? "Founder",
+                status: event.outcome,
+                date: formatDate(event.createdAt)
+              }))}
+            />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-primary">API key security logs</p>
+            <ListBlock
+              empty="No API key security events recorded yet."
+              items={apiSecurityEvents.map((event) => ({
+                title: event.label,
+                meta: event.institutionName ?? event.actorName,
+                status: event.outcome,
+                date: formatDate(event.createdAt)
+              }))}
+            />
+          </div>
+          <ResponsiveTable
+            empty="No founder audit events recorded yet."
+            headers={["Action", "Actor", "Target", "Outcome", "When"]}
+            rows={props.auditEvents.slice(0, 12).map((event) => [
+              event.label,
+              event.actorName,
+              `${event.targetType}${event.institutionName ? ` / ${event.institutionName}` : ""}`,
+              <StatusBadge key="outcome" status={event.outcome} />,
+              formatDate(event.createdAt)
+            ])}
+          />
+          <button className="h-10 rounded-md border border-error px-4 text-sm font-medium text-error disabled:opacity-60" disabled={props.loading} onClick={props.onEmergencyLockdown} type="button">Emergency lockdown</button>
         </div>
       </Card>
     </div>
@@ -2156,8 +2375,24 @@ function PageHeading({ activePage, onGenerateKey }: { activePage: PageKey; onGen
   );
 }
 
-function InstitutionDetail({ institution }: { institution?: Institution }) {
+function InstitutionDetail({
+  apiKeys,
+  auditEvents,
+  developerRequests,
+  institution,
+  verificationLogs
+}: {
+  apiKeys: GlobalApiKey[];
+  auditEvents: AuditEvent[];
+  developerRequests: DeveloperAccessRequest[];
+  institution?: Institution;
+  verificationLogs: VerificationLog[];
+}) {
   if (!institution) return <Card><SectionTitle title="Institution Details" subtitle="Select an institution." /><EmptyState text="No institution selected." /></Card>;
+  const institutionKeys = apiKeys.filter((key) => key.institutionUuid === institution.uuid);
+  const institutionDeveloperRequest = developerRequests.find((request) => request.institutionId === institution.uuid);
+  const institutionVerifications = verificationLogs.filter((log) => log.institutionId === institution.institutionId);
+  const institutionAuditEvents = auditEvents.filter((event) => event.institutionId === institution.institutionId || event.institutionName === institution.officialName).slice(0, 5);
   return (
     <Card>
       <SectionTitle title="Institution Details" subtitle={institution.institutionId} />
@@ -2168,14 +2403,60 @@ function InstitutionDetail({ institution }: { institution?: Institution }) {
         <MetricLine label="Tier" value={titleCase(institution.tier)} />
         <MetricLine label="Status" value={titleCase(institution.status)} />
       </div>
-      <div className="mt-4 grid gap-2 text-sm text-textSecondary">
-        {["Staff", "Learners", "Results", "API status", "MOU", "Audit trail"].map((item) => <PlaceholderRow key={item} label={`View ${item}`} />)}
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">Staff</p>
+          <p className="mt-1 text-sm font-semibold text-primary">Registrar accounts endpoint pending</p>
+        </div>
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">Learners</p>
+          <p className="mt-1 text-sm font-semibold text-primary">Institution learner aggregate pending</p>
+        </div>
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">Results / verification</p>
+          <p className="mt-1 text-sm font-semibold text-primary">{institutionVerifications.length} verification events</p>
+        </div>
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">API status</p>
+          <p className="mt-1 text-sm font-semibold text-primary">{institutionKeys.filter((key) => key.status === "ACTIVE").length} active keys</p>
+        </div>
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">MOU</p>
+          <p className="mt-1 text-sm font-semibold text-primary">{institution.mouSignedAt ? `Signed ${formatDate(institution.mouSignedAt)}` : "Not recorded"}</p>
+        </div>
+        <div className="rounded-lg border border-borderLight bg-soft p-3">
+          <p className="text-xs text-textSecondary">Developer access</p>
+          <p className="mt-1 text-sm font-semibold text-primary">{institutionDeveloperRequest ? titleCase(institutionDeveloperRequest.status) : "Not requested"}</p>
+        </div>
       </div>
+      <ListBlock
+        empty="No audit trail events for this institution yet."
+        items={institutionAuditEvents.map((event) => ({
+          title: event.label,
+          meta: event.actorName,
+          status: event.outcome,
+          date: formatDate(event.createdAt)
+        }))}
+      />
     </Card>
   );
 }
 
-function ApplicationDetail({ application, loading, onApprove, onReject }: { application?: InstitutionApplication; loading: boolean; onApprove: (id: string) => void; onReject: (id: string) => void }) {
+function ApplicationDetail({
+  application,
+  loading,
+  onApprove,
+  onReject,
+  onRequestInfo,
+  onSendEmail
+}: {
+  application?: InstitutionApplication;
+  loading: boolean;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+  onRequestInfo: (id: string) => void;
+  onSendEmail: (id: string) => void;
+}) {
   if (!application) return <Card><SectionTitle title="Application Detail" subtitle="Select an application." /><EmptyState text="No application selected." /></Card>;
   return (
     <Card>
@@ -2191,8 +2472,8 @@ function ApplicationDetail({ application, loading, onApprove, onReject }: { appl
       <div className="mt-4 flex flex-wrap gap-2">
         <button className={primarySmallButtonClass} disabled={application.status !== "PENDING" || loading} onClick={() => onApprove(application.uuid)} type="button">Approve Institution</button>
         <button className={secondaryButtonClass} disabled={application.status !== "PENDING" || loading} onClick={() => onReject(application.uuid)} type="button">Reject</button>
-        <button className={secondaryButtonClass} disabled type="button">Request more info</button>
-        <button className={secondaryButtonClass} disabled type="button">Send email</button>
+        <button className={secondaryButtonClass} disabled={application.status !== "PENDING" || loading} onClick={() => onRequestInfo(application.uuid)} type="button">Request more info</button>
+        <button className={secondaryButtonClass} disabled={loading} onClick={() => onSendEmail(application.uuid)} type="button">Send email</button>
       </div>
     </Card>
   );
@@ -2267,28 +2548,60 @@ function ListBlock({ items, empty }: { items: { title: string; meta: string; sta
   return <div className="mt-4 divide-y divide-borderLight">{items.map((item) => <div key={`${item.title}-${item.date}`} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-primary">{item.title}</p><p className="text-xs text-textSecondary">{item.meta}</p></div><div className="text-right">{item.status ? <StatusBadge status={item.status} /> : null}<p className="mt-1 text-xs text-textSecondary">{item.date}</p></div></div>)}</div>;
 }
 
-function SystemHealthCompact() {
+function SystemHealthCompact({ health }: { health: SystemHealth | null }) {
+  const services = health?.services.slice(0, 5) ?? [
+    { name: "API Gateway", status: "PENDING_CONFIGURATION" as HealthStatus },
+    { name: "Database", status: "PENDING_CONFIGURATION" as HealthStatus },
+    { name: "Authentication Service", status: "PENDING_CONFIGURATION" as HealthStatus },
+    { name: "Storage Service", status: "PENDING_CONFIGURATION" as HealthStatus },
+    { name: "Email Service", status: "PENDING_CONFIGURATION" as HealthStatus }
+  ];
+  const statusLabel = titleCase(health?.overallStatus ?? "PENDING_CONFIGURATION");
   return (
     <Card>
-      <div className="flex items-center justify-between"><SectionTitle title="System Health" subtitle="All systems operational" /><span className="text-sm text-success">Operational</span></div>
-      <div className="mt-4 divide-y divide-borderLight">{["API Gateway", "Database", "Authentication Service", "Storage Service", "Email Service"].map((item) => <div key={item} className="flex items-center justify-between py-3 text-sm"><span>{item}</span><StatusBadge status="Operational" /></div>)}</div>
+      <div className="flex items-center justify-between"><SectionTitle title="System Health" subtitle={health ? `Updated ${formatDate(health.generatedAt)}` : "Waiting for health data"} /><StatusBadge status={statusLabel} /></div>
+      <div className="mt-4 divide-y divide-borderLight">{services.map((item) => <div key={item.name} className="flex items-center justify-between py-3 text-sm"><span>{item.name}</span><StatusBadge status={titleCase(item.status)} /></div>)}</div>
     </Card>
   );
 }
 
-function DonutSummary({ total }: { total: number }) {
-  const safeTotal = Math.max(total, 1);
+function DonutSummary({ status, fallbackTotal }: { status?: DashboardSummary["institutionStatus"]; fallbackTotal: number }) {
+  const active = status?.active ?? fallbackTotal;
+  const pending = status?.pendingApproval ?? 0;
+  const apiAccess = status?.apiAccessActive ?? 0;
+  const suspended = status?.suspended ?? 0;
+  const total = Math.max(status?.total ?? fallbackTotal, 1);
+  const activeArc = Math.round((active / total) * 276);
+  const pendingArc = Math.round((pending / total) * 276);
+  const suspendedArc = Math.round((suspended / total) * 276);
   return (
     <div className="mt-4 flex items-center gap-6">
-      <svg className="h-36 w-36 -rotate-90" viewBox="0 0 120 120"><circle cx="60" cy="60" fill="none" r="44" stroke="#E5E7EB" strokeWidth="18" /><circle cx="60" cy="60" fill="none" r="44" stroke="#10B981" strokeDasharray={`${safeTotal ? 210 : 0} 276`} strokeLinecap="round" strokeWidth="18" /></svg>
-      <div className="flex-1 space-y-3"><MetricLine label="Active Partners" value={String(total)} /><MetricLine label="Pending Approval" value="0" /><MetricLine label="API Access Active" value="Pending" /><MetricLine label="Suspended" value="0" /></div>
+      <svg className="h-36 w-36 -rotate-90" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" fill="none" r="44" stroke="#E5E7EB" strokeWidth="18" />
+        <circle cx="60" cy="60" fill="none" r="44" stroke="#10B981" strokeDasharray={`${activeArc} 276`} strokeLinecap="round" strokeWidth="18" />
+        <circle cx="60" cy="60" fill="none" r="44" stroke="#F59E0B" strokeDasharray={`${pendingArc} 276`} strokeDashoffset={-activeArc} strokeLinecap="round" strokeWidth="18" />
+        <circle cx="60" cy="60" fill="none" r="44" stroke="#EF4444" strokeDasharray={`${suspendedArc} 276`} strokeDashoffset={-(activeArc + pendingArc)} strokeLinecap="round" strokeWidth="18" />
+      </svg>
+      <div className="flex-1 space-y-3"><MetricLine label="Active Partners" value={String(active)} /><MetricLine label="Pending Approval" value={String(pending)} /><MetricLine label="API Access Active" value={String(apiAccess)} /><MetricLine label="Suspended" value={String(suspended)} /></div>
     </div>
   );
 }
 
-function LineChart() {
-  const points = "0,120 90,125 180,95 270,70 360,84 450,60 540,22 640,44";
-  return <svg className="my-5 h-56 w-full" preserveAspectRatio="none" viewBox="0 0 640 160"><path d="M0 120 L90 125 L180 95 L270 70 L360 84 L450 60 L540 22 L640 44" fill="none" stroke="#2F6BFF" strokeWidth="4" /><polyline fill="none" points={points} stroke="#2F6BFF" strokeWidth="0" />{[30, 70, 110, 150].map((y) => <line key={y} stroke="#E5E7EB" x1="0" x2="640" y1={y} y2={y} />)}</svg>;
+function LineChart({ data = [] }: { data?: DashboardSummary["apiUsage"] }) {
+  const fallback = [8, 12, 10, 18, 14, 24, 20].map((total, index) => ({ day: `D${index + 1}`, total, audit: 0, verification: total }));
+  const entries = data.length ? data : fallback;
+  const max = Math.max(...entries.map((entry) => entry.total), 1);
+  const width = 640;
+  const height = 160;
+  const points = entries
+    .map((entry, index) => {
+      const x = entries.length === 1 ? width : (index / (entries.length - 1)) * width;
+      const y = height - 20 - (entry.total / max) * 110;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const path = points.split(" ").map((point, index) => `${index === 0 ? "M" : "L"}${point}`).join(" ");
+  return <svg className="my-5 h-56 w-full" preserveAspectRatio="none" viewBox="0 0 640 160"><path d={path} fill="none" stroke="#2F6BFF" strokeWidth="4" />{[30, 70, 110, 150].map((y) => <line key={y} stroke="#E5E7EB" x1="0" x2="640" y1={y} y2={y} />)}</svg>;
 }
 
 function BarChart() {
@@ -2327,10 +2640,6 @@ function ToggleRow({ checked, label, onChange }: { checked: boolean; label: stri
       <input checked={checked} className="h-4 w-4 accent-accent" onChange={(event) => onChange(event.target.checked)} type="checkbox" />
     </label>
   );
-}
-
-function PlaceholderRow({ label }: { label: string }) {
-  return <div className="rounded-md border border-dashed border-borderLight bg-soft px-3 py-2 text-sm text-textSecondary">{label} - backend integration pending</div>;
 }
 
 function SecretCode({ label, value }: { label: string; value: string }) {
@@ -2460,6 +2769,10 @@ function formatDate(value: string) {
 
 function formatMoney(amountMinor: number, currency = "NGN") {
   return new Intl.NumberFormat("en-NG", { style: "currency", currency, maximumFractionDigits: 0 }).format(amountMinor / 100);
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
 function formatDuration(seconds: number) {

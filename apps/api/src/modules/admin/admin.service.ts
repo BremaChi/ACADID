@@ -243,6 +243,83 @@ export class AdminService {
     return application;
   }
 
+  async requestInstitutionApplicationInfo(auth: AuthTokenPayload, id: string, message?: string) {
+    const trimmedMessage = message?.trim();
+    if (!trimmedMessage) {
+      throw new BadRequestException("A request message is required.");
+    }
+
+    const application = await this.prisma.institutionApplication.findUnique({
+      where: { uuid: id }
+    });
+    if (!application) {
+      throw new BadRequestException("Institution application not found.");
+    }
+    if (application.status !== "PENDING") {
+      throw new BadRequestException("More information can only be requested for pending applications.");
+    }
+
+    const updated = await this.prisma.institutionApplication.update({
+      where: { uuid: id },
+      data: {
+        reviewFeedback: trimmedMessage,
+        reviewedById: auth.sub,
+        reviewedAt: new Date()
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "institution_application.request_info",
+      targetType: "InstitutionApplication",
+      targetId: id,
+      outcome: "SUCCESS",
+      reason: trimmedMessage
+    });
+
+    return updated;
+  }
+
+  async sendInstitutionApplicationEmail(auth: AuthTokenPayload, id: string, input: { subject?: string; message?: string }) {
+    const subject = input?.subject?.trim() || "ACAD.ID institution application update";
+    const message = input?.message?.trim();
+    if (!message) {
+      throw new BadRequestException("Email message is required.");
+    }
+
+    const application = await this.prisma.institutionApplication.findUnique({
+      where: { uuid: id },
+      select: { uuid: true, contactEmail: true, officialName: true, status: true }
+    });
+    if (!application) {
+      throw new BadRequestException("Institution application not found.");
+    }
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "institution_application.email.record",
+      targetType: "InstitutionApplication",
+      targetId: id,
+      outcome: "SUCCESS",
+      metadata: {
+        subject,
+        contactEmail: application.contactEmail,
+        officialName: application.officialName,
+        status: application.status
+      }
+    });
+
+    return {
+      accepted: true,
+      applicationId: id,
+      contactEmail: application.contactEmail,
+      subject,
+      delivery: "RECORDED_FOR_EMAIL_PROVIDER"
+    };
+  }
+
   listDeveloperAccessRequests(status?: DeveloperAccessRequestStatus) {
     return this.prisma.developerAccessRequest.findMany({
       where: status ? { status } : undefined,
@@ -613,6 +690,69 @@ export class AdminService {
       accessGrantScope: event.accessGrant?.scope ?? null,
       verifiedAt: event.verifiedAt
     }));
+  }
+
+  async readDashboardSummary() {
+    const generatedAt = new Date();
+    const [
+      totalInstitutions,
+      activeInstitutions,
+      suspendedInstitutions,
+      pendingApplications,
+      activeLearners,
+      resultsPublished,
+      credentialsIssued,
+      activeApiKeys,
+      pendingDeveloperRequests,
+      approvedDeveloperRequests,
+      openDisputes,
+      latestAuditEvents,
+      apiUsage
+    ] = await Promise.all([
+      this.prisma.institution.count(),
+      this.prisma.institution.count({ where: { status: "ACTIVE" } }),
+      this.prisma.institution.count({ where: { status: "SUSPENDED" } }),
+      this.prisma.institutionApplication.count({ where: { status: "PENDING" } }),
+      this.prisma.learner.count(),
+      this.prisma.academicRecord.count({ where: { status: "PUBLISHED" } }),
+      this.prisma.credential.count(),
+      this.prisma.apiKey.count({ where: { status: "ACTIVE" } }),
+      this.prisma.developerAccessRequest.count({ where: { status: "PENDING" } }),
+      this.prisma.developerAccessRequest.count({ where: { status: "APPROVED" } }),
+      this.prisma.dispute.count({ where: { status: { in: ["OPEN", "ESCALATED"] } } }),
+      this.readAuditEvents({ take: 8 }),
+      this.readDailyGatewayUsage(7)
+    ]);
+
+    const apiCallsToday = apiUsage[apiUsage.length - 1]?.total ?? 0;
+
+    return {
+      generatedAt,
+      metrics: {
+        totalInstitutions,
+        pendingApplications,
+        activeLearners,
+        resultsPublished,
+        credentialsIssued,
+        apiCallsToday,
+        activeApiKeys,
+        pendingDeveloperRequests,
+        openDisputes
+      },
+      institutionStatus: {
+        total: totalInstitutions,
+        active: activeInstitutions,
+        suspended: suspendedInstitutions,
+        pendingApproval: pendingApplications,
+        apiAccessActive: approvedDeveloperRequests
+      },
+      apiUsage,
+      latestAuditEvents
+    };
+  }
+
+  async listAuditEvents(options: { search?: string; targetType?: string; action?: string; outcome?: string } = {}) {
+    return this.readAuditEvents({ ...options, take: 250 });
   }
 
   async readSystemHealth() {
@@ -998,6 +1138,95 @@ export class AdminService {
     return apiKey;
   }
 
+  async regenerateApiKey(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.apiKey.findUnique({
+      where: { uuid: id },
+      select: {
+        uuid: true,
+        institutionId: true,
+        ownerType: true,
+        environment: true,
+        productCode: true,
+        productName: true,
+        label: true
+      }
+    });
+    if (!existing) {
+      throw new BadRequestException("API key not found.");
+    }
+
+    const clientId = this.createClientId(existing.environment);
+    const clientSecret = this.createClientSecret(existing.environment);
+    const apiKey = await this.prisma.apiKey.update({
+      where: { uuid: id },
+      data: {
+        clientId,
+        clientSecretHash: this.passwordService.hash(clientSecret),
+        status: "ACTIVE",
+        revokedAt: null,
+        revokedReason: null
+      },
+      select: this.safeApiKeySelect()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: existing.ownerType === "PRODUCT" ? "api_key.product.regenerate" : "api_key.regenerate",
+      targetType: "ApiKey",
+      targetId: apiKey.uuid,
+      institutionId: apiKey.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        clientId,
+        ownerType: existing.ownerType,
+        productCode: existing.productCode,
+        productName: existing.productName,
+        label: existing.label,
+        environment: existing.environment
+      }
+    });
+
+    return {
+      ...apiKey,
+      clientSecret,
+      warning: "This regenerated client_secret is shown once. Replace the old secret in the backend and store it securely."
+    };
+  }
+
+  async emergencyLockdown(auth: AuthTokenPayload, reason?: string) {
+    const finalReason = reason?.trim() || "Emergency lockdown triggered from Founder Console.";
+    const now = new Date();
+    const revoked = await this.prisma.apiKey.updateMany({
+      where: { status: "ACTIVE" },
+      data: {
+        status: "REVOKED",
+        revokedAt: now,
+        revokedReason: finalReason
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "founder.emergency_lockdown",
+      targetType: "Platform",
+      targetId: "api-gateway",
+      outcome: "SUCCESS",
+      reason: finalReason,
+      metadata: {
+        revokedApiKeys: revoked.count
+      }
+    });
+
+    return {
+      accepted: true,
+      revokedApiKeys: revoked.count,
+      reason: finalReason,
+      executedAt: now
+    };
+  }
+
   private async reviewDeveloperAccessRequest(
     auth: AuthTokenPayload,
     id: string,
@@ -1244,6 +1473,128 @@ export class AdminService {
     }
 
     return Object.keys(viewed).slice(0, 5).join(", ") || "Summary";
+  }
+
+  private async readAuditEvents(options: { search?: string; targetType?: string; action?: string; outcome?: string; take?: number } = {}) {
+    const search = options.search?.trim();
+    const where: Prisma.AuditEventWhereInput = {
+      ...(options.targetType ? { targetType: options.targetType } : {}),
+      ...(options.action ? { action: { contains: options.action.trim(), mode: "insensitive" } } : {}),
+      ...(options.outcome ? { outcome: { equals: options.outcome.trim(), mode: "insensitive" } } : {}),
+      ...(search
+        ? {
+            OR: [
+              { action: { contains: search, mode: "insensitive" } },
+              { targetType: { contains: search, mode: "insensitive" } },
+              { targetId: { contains: search, mode: "insensitive" } },
+              { outcome: { contains: search, mode: "insensitive" } },
+              { reason: { contains: search, mode: "insensitive" } },
+              {
+                institution: {
+                  is: {
+                    OR: [
+                      { officialName: { contains: search, mode: "insensitive" } },
+                      { institutionId: { contains: search, mode: "insensitive" } },
+                      { state: { contains: search, mode: "insensitive" } }
+                    ]
+                  }
+                }
+              },
+              {
+                actor: {
+                  is: {
+                    OR: [
+                      { fullName: { contains: search, mode: "insensitive" } },
+                      { email: { contains: search, mode: "insensitive" } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        : {})
+    };
+
+    const events = await this.prisma.auditEvent.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: options.take ?? 200,
+      select: {
+        uuid: true,
+        action: true,
+        targetType: true,
+        targetId: true,
+        outcome: true,
+        reason: true,
+        actorRole: true,
+        createdAt: true,
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true
+          }
+        },
+        actor: {
+          select: {
+            uuid: true,
+            fullName: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return events.map((event) => ({
+      id: event.uuid,
+      action: event.action,
+      label: this.humanizeAuditAction(event.action),
+      targetType: event.targetType,
+      targetId: event.targetId,
+      outcome: event.outcome,
+      reason: event.reason,
+      actorRole: event.actorRole,
+      actorName: event.actor?.fullName ?? event.actorRole ?? "System",
+      actorEmail: event.actor?.email ?? null,
+      institutionId: event.institution?.institutionId ?? null,
+      institutionName: event.institution?.officialName ?? null,
+      createdAt: event.createdAt
+    }));
+  }
+
+  private async readDailyGatewayUsage(days: number) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const entries = Array.from({ length: days }, (_, index) => {
+      const start = new Date(today);
+      start.setDate(today.getDate() - (days - 1 - index));
+      const end = new Date(start);
+      end.setDate(start.getDate() + 1);
+      return { start, end };
+    });
+
+    return Promise.all(
+      entries.map(async ({ start, end }) => {
+        const [verification, audit] = await Promise.all([
+          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: start, lt: end } } }),
+          this.prisma.auditEvent.count({ where: { createdAt: { gte: start, lt: end } } })
+        ]);
+        return {
+          day: start.toISOString().slice(0, 10),
+          verification,
+          audit,
+          total: verification + audit
+        };
+      })
+    );
+  }
+
+  private humanizeAuditAction(action: string) {
+    return action
+      .split(/[._-]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
   }
 
   private async checkDatabase() {

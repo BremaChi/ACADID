@@ -38,6 +38,7 @@ export class AuthService {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
+    let mfaMethod = "NONE";
     if (user.mfaEnabled) {
       if (!user.totpSecretEncrypted) {
         throw new UnauthorizedException("Authenticator code is required.");
@@ -48,6 +49,7 @@ export class AuthService {
       if (!verifiedTotp && !consumedRecoveryCode) {
         throw new UnauthorizedException("Invalid authenticator code.");
       }
+      mfaMethod = verifiedTotp ? "TOTP" : "RECOVERY_CODE";
     }
 
     const accessToken = this.tokenService.sign({
@@ -56,6 +58,18 @@ export class AuthService {
       role: user.role,
       fullName: user.fullName,
       learnerId: user.learnerId ?? undefined
+    });
+
+    await this.audit.write({
+      actorId: user.uuid,
+      actorRole: user.role,
+      action: "auth.login",
+      targetType: "User",
+      targetId: user.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        mfaMethod
+      }
     });
 
     return {

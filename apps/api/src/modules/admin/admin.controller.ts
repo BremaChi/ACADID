@@ -47,6 +47,16 @@ export class AdminController {
     return this.adminService.rejectInstitutionApplication(request.auth, id, body?.feedback);
   }
 
+  @Post("institution-applications/:id/request-info")
+  requestInstitutionApplicationInfo(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { message?: string }) {
+    return this.adminService.requestInstitutionApplicationInfo(request.auth, id, body?.message);
+  }
+
+  @Post("institution-applications/:id/send-email")
+  sendInstitutionApplicationEmail(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { subject?: string; message?: string }) {
+    return this.adminService.sendInstitutionApplicationEmail(request.auth, id, body);
+  }
+
   @Get("developer-access-requests")
   listDeveloperAccessRequests(@Query("status") status?: DeveloperAccessRequestStatus) {
     return this.adminService.listDeveloperAccessRequests(status);
@@ -107,6 +117,21 @@ export class AdminController {
     return this.adminService.listVerificationLogs({ outcome, search });
   }
 
+  @Get("dashboard-summary")
+  readDashboardSummary() {
+    return this.adminService.readDashboardSummary();
+  }
+
+  @Get("audit-events")
+  listAuditEvents(
+    @Query("search") search?: string,
+    @Query("targetType") targetType?: string,
+    @Query("action") action?: string,
+    @Query("outcome") outcome?: string
+  ) {
+    return this.adminService.listAuditEvents({ search, targetType, action, outcome });
+  }
+
   @Get("system-health")
   readSystemHealth() {
     return this.adminService.readSystemHealth();
@@ -150,5 +175,15 @@ export class AdminController {
   @Patch("api-keys/:id/revoke")
   revokeApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { reason?: string }) {
     return this.adminService.revokeApiKey(request.auth, id, body?.reason);
+  }
+
+  @Patch("api-keys/:id/regenerate")
+  regenerateApiKey(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.regenerateApiKey(request.auth, id);
+  }
+
+  @Post("emergency-lockdown")
+  emergencyLockdown(@Req() request: AuthenticatedRequest, @Body() body: { reason?: string }) {
+    return this.adminService.emergencyLockdown(request.auth, body?.reason);
   }
 }

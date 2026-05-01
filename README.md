@@ -89,6 +89,10 @@ Current v3 checkpoint:
 - Founder can view live System Health and gateway metrics from the Data Center API.
 - Founder can view Revenue from a real ledger foundation for verification fees, credential exports, and institution subscriptions.
 - Founder can manage persisted platform settings for approval rules, API defaults, notifications, and email template subjects.
+- Founder can view backend-backed dashboard summary metrics, seven-day gateway usage, latest audit events, and live institution status distribution.
+- Founder can regenerate API keys with one-time secret display and audit logging.
+- Founder can request more information from institution applications and record application email actions for provider delivery.
+- Founder Security includes login/audit history plus guarded emergency lockdown that revokes active API keys.
 - Credential signing uses JOSE/JWS Ed25519 readiness checks and reports whether stable deployment keys are configured.
 - Founder MFA supports hashed one-time recovery codes with TOTP-protected rotation and recovery-code login fallback.
 - Successful credential-reference verification can write billable revenue ledger events when `ACADID_VERIFICATION_FEE_MINOR` is configured.

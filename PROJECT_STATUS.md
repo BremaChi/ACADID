@@ -64,6 +64,10 @@ The API has these first modules:
 - Founder-level System Health and gateway metrics are exposed through the Data Center API with component status, response timing, gateway counts, error rate, and derived incidents.
 - Founder-level Revenue overview is backed by a ledger model for verification fees, credential export fees, and institution subscriptions.
 - Founder-level Platform Settings are persisted through the Data Center API for approval rules, API defaults, notifications, and email template subjects.
+- Founder dashboard summary and audit-event endpoints now provide live aggregate metrics, seven-day gateway usage, institution status distribution, and recent control-plane activity.
+- Founder API key regeneration is implemented with one-time secret display, audit logging, and status reset for rotated keys.
+- Founder emergency lockdown is implemented as a guarded API-key revocation workflow that records an audit event.
+- Institution application request-more-information and email-record actions are implemented with founder audit events.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
@@ -117,6 +121,10 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Revenue page backed by the Data Center API, with ledger totals, subscription status, recent entries, and CSV export.
 - Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
 - Live Security page includes founder recovery-code status and TOTP-protected rotation with one-time display.
+- Live Security page includes login history, API key security logs, founder audit trail, and guarded emergency lockdown.
+- Live Overview page now uses backend aggregate metrics, audit events, gateway usage, institution status distribution, and live system-health data.
+- Live API Keys page can regenerate existing keys and show the new secret once.
+- Institution Applications page can request more information and record application email actions.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -149,6 +157,7 @@ Completed successfully:
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
+- Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
