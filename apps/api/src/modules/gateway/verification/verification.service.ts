@@ -47,12 +47,12 @@ export class VerificationService {
     }
 
     const scopeViewed = this.scopeCredential(accessGrant.scope, credential);
-    await this.prisma.$transaction([
-      this.prisma.accessGrant.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.accessGrant.update({
         where: { uuid: accessGrant.uuid },
         data: { viewCount: { increment: 1 } }
-      }),
-      this.prisma.verificationEvent.create({
+      });
+      const verificationEvent = await tx.verificationEvent.create({
         data: {
           credentialId: credential.uuid,
           accessGrantId: accessGrant.uuid,
@@ -63,8 +63,14 @@ export class VerificationService {
           outcome: "CONFIRMED",
           scopeViewed: scopeViewed as Prisma.InputJsonValue
         }
-      })
-    ]);
+      });
+      await this.recordVerificationRevenue(tx, {
+        verificationEventId: verificationEvent.uuid,
+        credentialId: credential.uuid,
+        institutionId: credential.institutionId,
+        description: "Share-link credential verification fee"
+      });
+    });
 
     return {
       outcome: "CONFIRMED",
@@ -86,6 +92,7 @@ export class VerificationService {
         vcPayload: true,
         institution: {
           select: {
+            uuid: true,
             institutionId: true,
             officialName: true
           }
@@ -109,7 +116,7 @@ export class VerificationService {
       credential.signature && (await this.signer.verify(this.unsignedPayload(credential.vcPayload), credential.signature))
         ? "VALID"
         : "INVALID";
-    await this.prisma.verificationEvent.create({
+    const verificationEvent = await this.prisma.verificationEvent.create({
       data: {
         credentialId: credential.uuid,
         verifierType: "CREDENTIAL_REFERENCE",
@@ -123,6 +130,14 @@ export class VerificationService {
         }
       }
     });
+    if (cryptographicStatus === "VALID") {
+      await this.recordVerificationRevenue(this.prisma, {
+        verificationEventId: verificationEvent.uuid,
+        credentialId: credential.uuid,
+        institutionId: credential.institution.uuid,
+        description: "Credential reference verification fee"
+      });
+    }
 
     return {
       outcome: "CONFIRMED",
@@ -214,6 +229,46 @@ export class VerificationService {
         scopeViewed
       }
     });
+  }
+
+  private async recordVerificationRevenue(
+    client: Pick<PrismaService, "revenueLedgerEntry"> | Prisma.TransactionClient,
+    input: {
+      verificationEventId: string;
+      credentialId: string;
+      institutionId?: string;
+      description: string;
+    }
+  ) {
+    const amountMinor = this.verificationFeeMinor();
+    if (amountMinor <= 0) {
+      return;
+    }
+
+    await client.revenueLedgerEntry.create({
+      data: {
+        category: "VERIFICATION_FEE",
+        status: "BILLABLE",
+        amountMinor,
+        currency: "NGN",
+        institutionId: input.institutionId,
+        credentialId: input.credentialId,
+        verificationEventId: input.verificationEventId,
+        sourceType: "VerificationEvent",
+        sourceId: input.verificationEventId,
+        description: input.description,
+        metadata: {
+          configuredBy: "ACADID_VERIFICATION_FEE_MINOR"
+        }
+      }
+    });
+  }
+
+  private verificationFeeMinor() {
+    const raw = process.env.ACADID_VERIFICATION_FEE_MINOR;
+    if (!raw) return 0;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 
   private hashToken(token: string): string {

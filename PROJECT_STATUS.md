@@ -66,6 +66,7 @@ The API has these first modules:
 - Founder-level Platform Settings are persisted through the Data Center API for approval rules, API defaults, notifications, and email template subjects.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
+- Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -146,6 +147,7 @@ Completed successfully:
 - Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
+- Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -179,7 +181,7 @@ API app:
 ## Next Engineering Steps
 
 1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-2. Add billing event writers when verification/export/subscription workflows begin charging real fees.
+2. Add credential export and subscription billing event writers when those workflows are implemented.
 3. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
 4. Add login history and session management to the Security page.
 
