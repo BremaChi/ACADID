@@ -65,6 +65,7 @@ The API has these first modules:
 - Founder-level Revenue overview is backed by a ledger model for verification fees, credential export fees, and institution subscriptions.
 - Founder-level Platform Settings are persisted through the Data Center API for approval rules, API defaults, notifications, and email template subjects.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
+- Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -91,6 +92,7 @@ The Prisma schema includes the core AcadID model:
 - RevenueLedgerEntry.
 - InstitutionSubscription.
 - PlatformSetting.
+- MfaRecoveryCode.
 
 ### Web
 
@@ -112,6 +114,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live System Health page backed by the Data Center API, with service status, gateway metrics, and recent incidents.
 - Live Revenue page backed by the Data Center API, with ledger totals, subscription status, recent entries, and CSV export.
 - Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
+- Live Security page includes founder recovery-code status and TOTP-protected rotation with one-time display.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -142,6 +145,7 @@ Completed successfully:
 - Founder Revenue workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/admin/revenue` check.
 - Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
+- Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -175,9 +179,9 @@ API app:
 ## Next Engineering Steps
 
 1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-2. Add production-grade account recovery rules for founder MFA loss.
-3. Add billing event writers when verification/export/subscription workflows begin charging real fees.
-4. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
+2. Add billing event writers when verification/export/subscription workflows begin charging real fees.
+3. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
+4. Add login history and session management to the Security page.
 
 ## GitHub Status
 

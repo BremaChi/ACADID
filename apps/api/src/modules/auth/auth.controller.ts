@@ -8,12 +8,12 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post("login")
-  login(@Body() body: { email: string; password: string; totpCode?: string }) {
+  login(@Body() body: { email: string; password: string; totpCode?: string; recoveryCode?: string }) {
     if (!body?.email || !body.password) {
       throw new BadRequestException("Email and password are required.");
     }
 
-    return this.authService.login(body.email, body.password, body.totpCode);
+    return this.authService.login(body.email, body.password, body.totpCode, body.recoveryCode);
   }
 
   @Post("token")
@@ -40,6 +40,22 @@ export class AuthController {
     }
 
     return this.authService.enableTotp(request.auth, body.code);
+  }
+
+  @UseGuards(AuthGuard)
+  @Get("mfa/recovery-codes")
+  recoveryCodeStatus(@Req() request: AuthenticatedRequest) {
+    return this.authService.recoveryCodeStatus(request.auth);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post("mfa/recovery-codes/rotate")
+  rotateRecoveryCodes(@Req() request: AuthenticatedRequest, @Body() body: { code?: string }) {
+    if (!body?.code) {
+      throw new BadRequestException("TOTP code is required.");
+    }
+
+    return this.authService.rotateRecoveryCodes(request.auth, body.code);
   }
 
   @UseGuards(AuthGuard)

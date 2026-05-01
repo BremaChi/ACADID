@@ -285,6 +285,7 @@ model User {
   auditEvents  AuditEvent[]
   assignedDisputes Dispute[] @relation("DisputeAssignee")
   platformSettings PlatformSetting[]
+  mfaRecoveryCodes MfaRecoveryCode[]
 }
 
 model InstitutionUser {
@@ -546,6 +547,19 @@ model PlatformSetting {
   updatedBy User? @relation(fields: [updatedById], references: [uuid])
 
   @@index([updatedAt])
+}
+
+model MfaRecoveryCode {
+  uuid      String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [uuid])
+
+  @@index([userId, usedAt])
+  @@index([createdAt])
 }
 
 model Dispute {

@@ -140,6 +140,16 @@ type TotpSetup = {
   mfaEnabled: boolean;
 };
 
+type RecoveryCodeStatus = {
+  remaining: number;
+  generatedAt: string | null;
+};
+
+type RecoveryCodeRotation = {
+  recoveryCodes: string[];
+  warning: string;
+};
+
 type Notice = {
   tone: "success" | "error";
   text: string;
@@ -410,6 +420,10 @@ async function loadPlatformSettings(token: string): Promise<PlatformSettingsResp
   return apiRequest<PlatformSettingsResponse>("/admin/settings", token);
 }
 
+async function loadRecoveryCodeStatus(token: string): Promise<RecoveryCodeStatus> {
+  return apiRequest<RecoveryCodeStatus>("/auth/mfa/recovery-codes", token);
+}
+
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
   const [token, setToken] = useState<string | null>(null);
@@ -418,6 +432,7 @@ export function FounderConsole() {
   const [email, setEmail] = useState("founder@acadid.local");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [institutionApplications, setInstitutionApplications] = useState<InstitutionApplication[]>([]);
   const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
@@ -437,6 +452,9 @@ export function FounderConsole() {
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
   const [totpEnableCode, setTotpEnableCode] = useState("");
+  const [recoveryRotateCode, setRecoveryRotateCode] = useState("");
+  const [recoveryCodeStatus, setRecoveryCodeStatus] = useState<RecoveryCodeStatus | null>(null);
+  const [newRecoveryCodes, setNewRecoveryCodes] = useState<RecoveryCodeRotation | null>(null);
   const [globalSearch, setGlobalSearch] = useState("");
   const [institutionSearch, setInstitutionSearch] = useState("");
   const [institutionTypeFilter, setInstitutionTypeFilter] = useState("ALL");
@@ -580,7 +598,7 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview, nextPlatformSettings] = await Promise.all([
+      const [nextInstitutions, nextGlobalKeys, nextApplications, nextDeveloperRequests, nextDisputes, nextVerificationLogs, nextSystemHealth, nextRevenueOverview, nextPlatformSettings, nextRecoveryCodeStatus] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
         apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
@@ -589,7 +607,8 @@ export function FounderConsole() {
         loadVerificationLogs(activeToken),
         loadSystemHealth(activeToken),
         loadRevenueOverview(activeToken),
-        loadPlatformSettings(activeToken)
+        loadPlatformSettings(activeToken),
+        loadRecoveryCodeStatus(activeToken)
       ]);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
@@ -600,6 +619,7 @@ export function FounderConsole() {
       setSystemHealth(nextSystemHealth);
       setRevenueOverview(nextRevenueOverview);
       setPlatformSettings(nextPlatformSettings);
+      setRecoveryCodeStatus(nextRecoveryCodeStatus);
       const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
@@ -618,7 +638,7 @@ export function FounderConsole() {
     try {
       const login = await apiRequest<LoginResponse>("/auth/login", null, {
         method: "POST",
-        body: JSON.stringify({ email, password, ...(totpCode ? { totpCode } : {}) })
+        body: JSON.stringify({ email, password, ...(totpCode ? { totpCode } : {}), ...(recoveryCode ? { recoveryCode } : {}) })
       });
       setToken(login.accessToken);
       setFounderName(login.user.fullName);
@@ -628,6 +648,7 @@ export function FounderConsole() {
       window.localStorage.setItem("acadid_founder_mfa", String(login.user.mfaEnabled));
       setPassword("");
       setTotpCode("");
+      setRecoveryCode("");
       setNotice({ tone: "success", text: "Founder login confirmed." });
       await refreshData(login.accessToken);
     } catch (error) {
@@ -654,6 +675,9 @@ export function FounderConsole() {
     setPlatformSettings(null);
     setNotice(nextNotice);
     setTotpSetup(null);
+    setRecoveryCodeStatus(null);
+    setNewRecoveryCodes(null);
+    setRecoveryRotateCode("");
     setMfaEnabled(false);
   }
 
@@ -920,6 +944,26 @@ export function FounderConsole() {
     }
   }
 
+  async function handleRotateRecoveryCodes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setLoading(true);
+    try {
+      const rotated = await apiRequest<RecoveryCodeRotation>("/auth/mfa/recovery-codes/rotate", token, {
+        method: "POST",
+        body: JSON.stringify({ code: recoveryRotateCode })
+      });
+      setNewRecoveryCodes(rotated);
+      setRecoveryRotateCode("");
+      setRecoveryCodeStatus(await loadRecoveryCodeStatus(token));
+      setNotice({ tone: "success", text: "New founder recovery codes generated. Save them now." });
+    } catch (error) {
+      handleAuthenticatedError(error, "Could not rotate recovery codes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSaveSettings(nextSettings: PlatformSettings) {
     if (!token) return;
     setLoading(true);
@@ -967,6 +1011,9 @@ export function FounderConsole() {
             </Field>
             <Field label="Authenticator code">
               <input className={inputClass} value={totpCode} onChange={(event) => setTotpCode(event.target.value)} inputMode="numeric" placeholder="Required after TOTP is enabled" />
+            </Field>
+            <Field label="Recovery code">
+              <input className={inputClass} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} placeholder="Use only if authenticator is unavailable" />
             </Field>
             <button className={primaryButtonClass} disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
           </form>
@@ -1204,8 +1251,14 @@ export function FounderConsole() {
           loading={loading}
           mfaEnabled={mfaEnabled}
           onEnableTotp={handleEnableTotp}
+          onRotateRecoveryCodes={handleRotateRecoveryCodes}
           onSetupTotp={handleSetupTotp}
+          recoveryCodeStatus={recoveryCodeStatus}
+          recoveryRotateCode={recoveryRotateCode}
+          setNewRecoveryCodes={setNewRecoveryCodes}
+          setRecoveryRotateCode={setRecoveryRotateCode}
           setTotpEnableCode={setTotpEnableCode}
+          newRecoveryCodes={newRecoveryCodes}
           totpEnableCode={totpEnableCode}
           totpSetup={totpSetup}
         />
@@ -1915,8 +1968,14 @@ function SecurityPage(props: {
   loading: boolean;
   mfaEnabled: boolean;
   onEnableTotp: (event: FormEvent<HTMLFormElement>) => void;
+  onRotateRecoveryCodes: (event: FormEvent<HTMLFormElement>) => void;
   onSetupTotp: () => void;
+  recoveryCodeStatus: RecoveryCodeStatus | null;
+  recoveryRotateCode: string;
+  setNewRecoveryCodes: (value: RecoveryCodeRotation | null) => void;
+  setRecoveryRotateCode: (value: string) => void;
   setTotpEnableCode: (value: string) => void;
+  newRecoveryCodes: RecoveryCodeRotation | null;
   totpEnableCode: string;
   totpSetup: TotpSetup | null;
 }) {
@@ -1936,6 +1995,31 @@ function SecurityPage(props: {
             <button className={primaryButtonClass} disabled={props.loading}>Enable TOTP</button>
           </form>
         ) : <EmptyState text="No setup secret on screen. Start setup when ready." />}
+      </Card>
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <SectionTitle title="Recovery Codes" subtitle="One-time backup codes for founder MFA recovery." />
+          <StatusBadge status={`${props.recoveryCodeStatus?.remaining ?? 0} Remaining`} />
+        </div>
+        <div className="mt-4 grid gap-3">
+          <MetricLine label="Remaining codes" value={String(props.recoveryCodeStatus?.remaining ?? 0)} />
+          <MetricLine label="Last generated" value={props.recoveryCodeStatus?.generatedAt ? formatDate(props.recoveryCodeStatus.generatedAt) : "Not generated"} />
+        </div>
+        <form className="mt-4 space-y-3" onSubmit={props.onRotateRecoveryCodes}>
+          <Field label="Authenticator code">
+            <input className={inputClass} value={props.recoveryRotateCode} onChange={(event) => props.setRecoveryRotateCode(event.target.value)} inputMode="numeric" placeholder="6-digit code required" />
+          </Field>
+          <button className={secondaryButtonClass} disabled={props.loading || !props.mfaEnabled} type="submit">Rotate Recovery Codes</button>
+        </form>
+        {props.newRecoveryCodes ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <p className="text-sm font-medium text-primary">{props.newRecoveryCodes.warning}</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {props.newRecoveryCodes.recoveryCodes.map((code) => <code key={code} className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-primary">{code}</code>)}
+            </div>
+            <button className={`${primarySmallButtonClass} mt-3`} onClick={() => props.setNewRecoveryCodes(null)} type="button">I have saved them</button>
+          </div>
+        ) : null}
       </Card>
       <Card>
         <SectionTitle title="Security Operations" subtitle="Login history and session management endpoints pending." />

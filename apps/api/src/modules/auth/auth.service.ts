@@ -1,6 +1,8 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { UserRole } from "@prisma/client";
 import { PrismaService } from "../platform/services/prisma.service.js";
+import { AuditService } from "../platform/services/audit.service.js";
 import { PasswordService } from "./password.service.js";
 import { TokenService } from "./token.service.js";
 import { TotpService } from "./totp.service.js";
@@ -12,10 +14,11 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
-    private readonly totpService: TotpService
+    private readonly totpService: TotpService,
+    private readonly audit: AuditService
   ) {}
 
-  async login(email: string, password: string, totpCode?: string) {
+  async login(email: string, password: string, totpCode?: string, recoveryCode?: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -36,12 +39,13 @@ export class AuthService {
     }
 
     if (user.mfaEnabled) {
-      if (!user.totpSecretEncrypted || !totpCode) {
+      if (!user.totpSecretEncrypted) {
         throw new UnauthorizedException("Authenticator code is required.");
       }
 
-      const secret = this.totpService.decryptSecret(user.totpSecretEncrypted);
-      if (!this.totpService.verifyCode(secret, totpCode)) {
+      const verifiedTotp = totpCode ? this.totpService.verifyCode(this.totpService.decryptSecret(user.totpSecretEncrypted), totpCode) : false;
+      const consumedRecoveryCode = verifiedTotp ? false : await this.consumeRecoveryCode(user.uuid, recoveryCode);
+      if (!verifiedTotp && !consumedRecoveryCode) {
         throw new UnauthorizedException("Invalid authenticator code.");
       }
     }
@@ -130,6 +134,74 @@ export class AuthService {
     };
   }
 
+  async recoveryCodeStatus(auth: AuthTokenPayload) {
+    await this.assertFounderAuth(auth);
+    const [remaining, latest] = await Promise.all([
+      this.prisma.mfaRecoveryCode.count({
+        where: {
+          userId: auth.sub,
+          usedAt: null
+        }
+      }),
+      this.prisma.mfaRecoveryCode.findFirst({
+        where: { userId: auth.sub },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true }
+      })
+    ]);
+
+    return {
+      remaining,
+      generatedAt: latest?.createdAt ?? null
+    };
+  }
+
+  async rotateRecoveryCodes(auth: AuthTokenPayload, code?: string) {
+    await this.assertFounderAuth(auth);
+    const user = await this.prisma.user.findUnique({
+      where: { uuid: auth.sub },
+      select: {
+        uuid: true,
+        mfaEnabled: true,
+        totpSecretEncrypted: true
+      }
+    });
+    if (!user?.mfaEnabled || !user.totpSecretEncrypted) {
+      throw new UnauthorizedException("Enable founder TOTP before generating recovery codes.");
+    }
+    if (!code || !this.totpService.verifyCode(this.totpService.decryptSecret(user.totpSecretEncrypted), code)) {
+      throw new UnauthorizedException("Valid authenticator code is required to rotate recovery codes.");
+    }
+
+    const recoveryCodes = Array.from({ length: 10 }, () => this.createRecoveryCode());
+    await this.prisma.$transaction([
+      this.prisma.mfaRecoveryCode.deleteMany({ where: { userId: user.uuid } }),
+      this.prisma.mfaRecoveryCode.createMany({
+        data: recoveryCodes.map((recoveryCode) => ({
+          userId: user.uuid,
+          codeHash: this.passwordService.hash(this.normalizeRecoveryCode(recoveryCode))
+        }))
+      })
+    ]);
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "founder_mfa.recovery_codes.rotate",
+      targetType: "User",
+      targetId: auth.sub,
+      outcome: "SUCCESS",
+      metadata: {
+        count: recoveryCodes.length
+      }
+    });
+
+    return {
+      recoveryCodes,
+      warning: "Save these recovery codes now. AcadID stores only hashed one-time versions and cannot show them again."
+    };
+  }
+
   async issueApiToken(input: { client_id?: string; clientId?: string; client_secret?: string; clientSecret?: string }) {
     const clientId = input.client_id ?? input.clientId;
     const clientSecret = input.client_secret ?? input.clientSecret;
@@ -201,5 +273,63 @@ export class AuthService {
         rateLimitPerMinute: apiKey.rateLimitPerMinute
       }
     };
+  }
+
+  private async assertFounderAuth(auth: AuthTokenPayload) {
+    if (auth.kind === "API_KEY" || auth.role !== UserRole.ACADID_SUPER_ADMIN) {
+      throw new UnauthorizedException("Only the AcadID founder admin can manage founder MFA.");
+    }
+  }
+
+  private async consumeRecoveryCode(userId: string, recoveryCode?: string) {
+    const normalized = this.normalizeRecoveryCode(recoveryCode);
+    if (!normalized) return false;
+
+    const candidates = await this.prisma.mfaRecoveryCode.findMany({
+      where: {
+        userId,
+        usedAt: null
+      },
+      select: {
+        uuid: true,
+        codeHash: true
+      },
+      take: 20
+    });
+
+    const matched = candidates.find((candidate) => this.passwordService.verify(normalized, candidate.codeHash));
+    if (!matched) {
+      return false;
+    }
+
+    await this.prisma.mfaRecoveryCode.updateMany({
+      where: {
+        uuid: matched.uuid,
+        usedAt: null
+      },
+      data: {
+        usedAt: new Date()
+      }
+    });
+
+    await this.audit.write({
+      actorId: userId,
+      actorRole: UserRole.ACADID_SUPER_ADMIN,
+      action: "founder_mfa.recovery_code.consume",
+      targetType: "User",
+      targetId: userId,
+      outcome: "SUCCESS"
+    });
+
+    return true;
+  }
+
+  private createRecoveryCode() {
+    const value = randomBytes(10).toString("base64url").replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 12);
+    return `${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+  }
+
+  private normalizeRecoveryCode(code?: string) {
+    return code?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") ?? "";
   }
 }
