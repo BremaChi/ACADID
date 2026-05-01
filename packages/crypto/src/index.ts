@@ -27,6 +27,19 @@ export interface Ed25519CredentialSignerOptions {
   privateKeyPem?: string;
   publicKeyPem?: string;
   verificationMethod?: string;
+  requireConfiguredKeys?: boolean;
+}
+
+export interface CredentialSignerReadiness {
+  proofProfile: "JOSE_JWS";
+  algorithm: "EdDSA";
+  curve: "Ed25519";
+  verificationMethod: string;
+  keySource: "CONFIGURED" | "EPHEMERAL_DEV";
+  configured: boolean;
+  productionReady: boolean;
+  publicJwk: JsonWebKey;
+  warning?: string;
 }
 
 interface JwsHeader {
@@ -43,12 +56,15 @@ export class Ed25519CredentialSigner implements CredentialSigner {
   private readonly privateKey;
   private readonly publicKey;
   private readonly verificationMethod: string;
+  private readonly keySource: "CONFIGURED" | "EPHEMERAL_DEV";
 
   constructor(private readonly options: Ed25519CredentialSignerOptions = {}) {
     const keyMaterial = this.resolveKeyMaterial();
     this.privateKey = createPrivateKey(keyMaterial.privateKeyPem);
     this.publicKey = createPublicKey(keyMaterial.publicKeyPem);
     this.verificationMethod = options.verificationMethod ?? defaultVerificationMethod;
+    this.keySource = keyMaterial.keySource;
+    this.assertKeyPairMatches();
   }
 
   async sign(payload: unknown): Promise<SignedCredentialPayload> {
@@ -103,12 +119,38 @@ export class Ed25519CredentialSigner implements CredentialSigner {
     return this.publicKey.export({ format: "jwk" }) as JsonWebKey;
   }
 
+  readiness(): CredentialSignerReadiness {
+    const configured = this.keySource === "CONFIGURED";
+    return {
+      proofProfile: "JOSE_JWS",
+      algorithm: "EdDSA",
+      curve: "Ed25519",
+      verificationMethod: this.verificationMethod,
+      keySource: this.keySource,
+      configured,
+      productionReady: configured,
+      publicJwk: this.publicJwk(),
+      warning: configured ? undefined : "Using an ephemeral development signing key. Configure CREDENTIAL_SIGNING_PRIVATE_KEY_PEM and CREDENTIAL_SIGNING_PUBLIC_KEY_PEM before production."
+    };
+  }
+
   private resolveKeyMaterial() {
+    const hasPrivateKey = Boolean(this.options.privateKeyPem);
+    const hasPublicKey = Boolean(this.options.publicKeyPem);
+    if (hasPrivateKey !== hasPublicKey) {
+      throw new Error("Credential signing requires both private and public PEM keys.");
+    }
+
     if (this.options.privateKeyPem && this.options.publicKeyPem) {
       return {
         privateKeyPem: this.options.privateKeyPem,
-        publicKeyPem: this.options.publicKeyPem
+        publicKeyPem: this.options.publicKeyPem,
+        keySource: "CONFIGURED" as const
       };
+    }
+
+    if (this.options.requireConfiguredKeys) {
+      throw new Error("Configured credential signing keys are required in this environment.");
     }
 
     const generated = generateKeyPairSync("ed25519", {
@@ -118,8 +160,17 @@ export class Ed25519CredentialSigner implements CredentialSigner {
 
     return {
       privateKeyPem: generated.privateKey,
-      publicKeyPem: generated.publicKey
+      publicKeyPem: generated.publicKey,
+      keySource: "EPHEMERAL_DEV" as const
     };
+  }
+
+  private assertKeyPairMatches() {
+    const probe = Buffer.from("acadid-signing-key-self-test");
+    const signature = sign(null, probe, this.privateKey);
+    if (!verify(null, probe, this.publicKey, signature)) {
+      throw new Error("Credential signing private and public keys do not match.");
+    }
   }
 }
 

@@ -7,7 +7,8 @@ export class CredentialSigningService extends Ed25519CredentialSigner {
     super({
       privateKeyPem: readPemFromEnv("CREDENTIAL_SIGNING_PRIVATE_KEY_PEM"),
       publicKeyPem: readPemFromEnv("CREDENTIAL_SIGNING_PUBLIC_KEY_PEM"),
-      verificationMethod: process.env.CREDENTIAL_SIGNING_VERIFICATION_METHOD
+      verificationMethod: process.env.CREDENTIAL_SIGNING_VERIFICATION_METHOD,
+      requireConfiguredKeys: requiresConfiguredSigningKeys()
     });
   }
 }
@@ -23,4 +24,8 @@ function readPemFromEnv(name: string): string | undefined {
   }
 
   return value.replaceAll("\\n", "\n");
+}
+
+function requiresConfiguredSigningKeys() {
+  return process.env.NODE_ENV === "production" || process.env.ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS === "true";
 }

@@ -17,6 +17,7 @@ import type { AuthTokenPayload } from "../auth/types.js";
 import { PasswordService } from "../auth/password.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
+import { CredentialSigningService } from "../platform/services/credential-signing.service.js";
 
 const allowedApiKeyScopes = new Set([
   "institution:apply",
@@ -65,7 +66,8 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly passwordService: PasswordService
+    private readonly passwordService: PasswordService,
+    private readonly credentialSigning?: CredentialSigningService
   ) {}
 
   async createInstitution(input: unknown) {
@@ -615,12 +617,13 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, webhook, metrics] = await Promise.all([
+    const [database, auth, storage, email, webhook, signing, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService("Storage Service", Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.STORAGE_BUCKET)),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
       this.checkWebhookDelivery(),
+      this.checkCredentialSigning(),
       this.readGatewayMetrics()
     ]);
 
@@ -635,7 +638,8 @@ export class AdminService {
       auth,
       storage,
       email,
-      webhook
+      webhook,
+      signing
     ];
     const incidents = this.deriveIncidents(services, metrics);
     const overallStatus = services.some((service) => service.status === "DOWN")
@@ -1315,6 +1319,43 @@ export class AdminService {
         status: "DEGRADED" as HealthStatus,
         responseTimeMs: Date.now() - startedAt,
         message: this.safeErrorMessage(error, "Webhook delivery check failed.")
+      };
+    }
+  }
+
+  private async checkCredentialSigning() {
+    try {
+      const readiness = this.credentialSigning?.readiness();
+      if (!readiness) {
+        return {
+          name: "Credential Signing",
+          status: "PENDING_CONFIGURATION" as HealthStatus,
+          responseTimeMs: 0,
+          message: "Credential signing service is not available in this context."
+        };
+      }
+      return {
+        name: "Credential Signing",
+        status: readiness.productionReady ? ("OPERATIONAL" as HealthStatus) : ("DEGRADED" as HealthStatus),
+        responseTimeMs: 0,
+        message: readiness.productionReady
+          ? `${readiness.algorithm}/${readiness.curve} ${readiness.proofProfile} signer is using configured deployment keys.`
+          : readiness.warning ?? "Credential signing is not production-ready.",
+        metadata: {
+          proofProfile: readiness.proofProfile,
+          algorithm: readiness.algorithm,
+          curve: readiness.curve,
+          verificationMethod: readiness.verificationMethod,
+          keySource: readiness.keySource,
+          productionReady: readiness.productionReady
+        }
+      };
+    } catch (error) {
+      return {
+        name: "Credential Signing",
+        status: "DOWN" as HealthStatus,
+        responseTimeMs: 0,
+        message: this.safeErrorMessage(error, "Credential signing check failed.")
       };
     }
   }

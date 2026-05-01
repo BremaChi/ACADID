@@ -83,6 +83,7 @@ Current v3 checkpoint:
 - Founder can view live System Health and gateway metrics from the Data Center API.
 - Founder can view Revenue from a real ledger foundation for verification fees, credential exports, and institution subscriptions.
 - Founder can manage persisted platform settings for approval rules, API defaults, notifications, and email template subjects.
+- Credential signing uses JOSE/JWS Ed25519 readiness checks and reports whether stable deployment keys are configured.
 - Founder Console connects to the live API for institution/key workflows.
 - Founder can search, filter, and revoke API keys across all institutions from one global table.
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.

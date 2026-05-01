@@ -29,13 +29,26 @@ test("founder system health returns component and gateway metrics", async () => 
       }
     },
     {},
-    {}
+    {},
+    {
+      readiness: () => ({
+        proofProfile: "JOSE_JWS",
+        algorithm: "EdDSA",
+        curve: "Ed25519",
+        verificationMethod: "did:web:test.acadid#issuer-ed25519",
+        keySource: "CONFIGURED",
+        configured: true,
+        productionReady: true,
+        publicJwk: { kty: "OKP", crv: "Ed25519", x: "test" }
+      })
+    }
   );
 
   const health = await service.readSystemHealth();
 
   assert.equal(health.overallStatus, "OPERATIONAL");
   assert.equal(health.services.some((service) => service.name === "Database" && service.status === "OPERATIONAL"), true);
+  assert.equal(health.services.some((service) => service.name === "Credential Signing" && service.status === "OPERATIONAL"), true);
   assert.equal(health.metrics.gatewayRequestsToday, 32);
   assert.equal(health.metrics.failedAuditEvents, 2);
   assert.equal(health.metrics.publishedCredentialsToday, 7);
@@ -70,7 +83,20 @@ test("founder system health degrades instead of throwing when database ping fail
       }
     },
     {},
-    {}
+    {},
+    {
+      readiness: () => ({
+        proofProfile: "JOSE_JWS",
+        algorithm: "EdDSA",
+        curve: "Ed25519",
+        verificationMethod: "did:web:localhost:acadid#dev-ed25519",
+        keySource: "EPHEMERAL_DEV",
+        configured: false,
+        productionReady: false,
+        publicJwk: { kty: "OKP", crv: "Ed25519", x: "test" },
+        warning: "Using an ephemeral development signing key."
+      })
+    }
   );
 
   const health = await service.readSystemHealth();

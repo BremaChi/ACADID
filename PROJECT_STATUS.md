@@ -64,6 +64,7 @@ The API has these first modules:
 - Founder-level System Health and gateway metrics are exposed through the Data Center API with component status, response timing, gateway counts, error rate, and derived incidents.
 - Founder-level Revenue overview is backed by a ledger model for verification fees, credential export fees, and institution subscriptions.
 - Founder-level Platform Settings are persisted through the Data Center API for approval rules, API defaults, notifications, and email template subjects.
+- Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -140,6 +141,7 @@ Completed successfully:
 - Founder System Health workflow validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health` check.
 - Founder Revenue workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/admin/revenue` check.
 - Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
+- Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -158,6 +160,7 @@ Known validation note:
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
 - On April 30, 2026, local Supabase runtime checks briefly returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. Connectivity later recovered, and authenticated Verification Logs, System Health, Revenue, and Settings checks returned 200.
+- On May 1, 2026, local System Health correctly reports `Credential Signing` as `DEGRADED` because development is using an ephemeral signing key. This is expected until real deployment secrets are provisioned.
 
 ## Local Runtime
 
@@ -171,7 +174,7 @@ API app:
 
 ## Next Engineering Steps
 
-1. Configure stable production signing keys with `npm run crypto:keygen`.
+1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
 2. Add production-grade account recovery rules for founder MFA loss.
 3. Add billing event writers when verification/export/subscription workflows begin charging real fees.
 4. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
