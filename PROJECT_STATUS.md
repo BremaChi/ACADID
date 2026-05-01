@@ -67,6 +67,7 @@ The API has these first modules:
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
+- Engineer 2 Institution Portal handoff is documented with product boundary, API contract, and sandbox verification script.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -148,6 +149,7 @@ Completed successfully:
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
+- Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -182,8 +184,8 @@ API app:
 
 1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
 2. Add credential export and subscription billing event writers when those workflows are implemented.
-3. Start Engineer 2 handoff package for institution portal integration against the Data Center API.
-4. Add login history and session management to the Security page.
+3. Add login history and session management to the Security page.
+4. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
 
 ## GitHub Status
 

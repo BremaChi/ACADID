@@ -12,6 +12,12 @@ Current implementation memory from the v3 brief:
 
 - `docs/architecture-brief-v3-memory.md`
 
+Engineer handoff documents:
+
+- `docs/handoffs/engineer-2-institution-portal.md`
+- `docs/api/institution-portal-contract.md`
+- `docs/handoffs/engineer-2-sandbox-test.md`
+
 Earlier note:
 
 - `C:\Users\HP\Downloads\Acadid Architecture Brief Cleaned.docx` remains useful historical context.
@@ -92,3 +98,4 @@ Current v3 checkpoint:
 - External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
 - Scoped API clients can ingest and govern records through the gateway without direct database access.
 - Founder Console uses the ACAD.ID symbol asset from `apps/web/public/acadid-symbol.png`.
+- Engineer 2 Institution Portal handoff is documented with API contract and sandbox test script.
