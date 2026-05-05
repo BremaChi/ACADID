@@ -1,7 +1,16 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { UserRole } from "@prisma/client";
-import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma, RevenueCategory, RevenueEntryStatus, VerificationOutcome } from "@prisma/client";
+import type {
+  ApiKeyEnvironment,
+  DeveloperAccessRequestStatus,
+  DisputeStatus,
+  Prisma,
+  RecordRequestStatus,
+  RevenueCategory,
+  RevenueEntryStatus,
+  VerificationOutcome
+} from "@prisma/client";
 import {
   assignDisputeSchema,
   closeDisputeSchema,
@@ -761,6 +770,58 @@ export class AdminService {
       accessGrantScope: event.accessGrant?.scope ?? null,
       verifiedAt: event.verifiedAt
     }));
+  }
+
+  async listRecordRequests(options: { status?: RecordRequestStatus; search?: string } = {}) {
+    const search = options.search?.trim();
+    return this.prisma.recordRequest.findMany({
+      where: {
+        ...(options.status ? { status: options.status } : {}),
+        ...(search
+          ? {
+              OR: [
+                { requestId: { contains: search, mode: "insensitive" } },
+                { institutionNameSubmitted: { contains: search, mode: "insensitive" } },
+                { studentNumber: { contains: search, mode: "insensitive" } },
+                { requesterName: { contains: search, mode: "insensitive" } },
+                { requesterEmail: { contains: search, mode: "insensitive" } },
+                { learner: { ain: { contains: search, mode: "insensitive" } } },
+                { learner: { fullName: { contains: search, mode: "insensitive" } } },
+                { institution: { officialName: { contains: search, mode: "insensitive" } } }
+              ]
+            }
+          : {})
+      },
+      include: {
+        learner: {
+          select: {
+            uuid: true,
+            ain: true,
+            fullName: true,
+            identityStatus: true
+          }
+        },
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true,
+            state: true,
+            status: true
+          }
+        },
+        assignedTo: {
+          select: {
+            uuid: true,
+            fullName: true,
+            email: true,
+            role: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 250
+    });
   }
 
   async readDashboardSummary() {

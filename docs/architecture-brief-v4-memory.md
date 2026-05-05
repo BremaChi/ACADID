@@ -100,6 +100,7 @@ Current repo note:
 - `AuthorityService` now enforces active institution workspace membership before human institution users can operate on institution data.
 - `AuthorityService` exposes workspace-scoped query helpers so future services do not hand-roll institution filters.
 - `ScopesGuard` now enforces human permissions as well as API-key scopes.
+- `RecordRequest` now exists in Prisma and Supabase with learner submission/listing, governance review, founder list/search, and audit events.
 
 Roles:
 

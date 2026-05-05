@@ -75,6 +75,7 @@ The API has these first modules:
 - Founder institution approval now creates the institution workspace and a one-time Registrar invite token for the approved institution contact.
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
+- Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
@@ -106,6 +107,7 @@ The Prisma schema includes the core AcadID model:
 - InstitutionSubscription.
 - PlatformSetting.
 - MfaRecoveryCode.
+- RecordRequest.
 
 ### Web
 

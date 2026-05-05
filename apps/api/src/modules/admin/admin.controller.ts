@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { DeveloperAccessRequestStatus, DisputeStatus, UserRole, VerificationOutcome } from "@prisma/client";
+import { DeveloperAccessRequestStatus, DisputeStatus, RecordRequestStatus, UserRole, VerificationOutcome } from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
 import { Roles } from "../auth/roles.decorator.js";
@@ -115,6 +115,11 @@ export class AdminController {
   @Get("verification-logs")
   listVerificationLogs(@Query("outcome") outcome?: VerificationOutcome, @Query("search") search?: string) {
     return this.adminService.listVerificationLogs({ outcome, search });
+  }
+
+  @Get("record-requests")
+  listRecordRequests(@Query("status") status?: RecordRequestStatus, @Query("search") search?: string) {
+    return this.adminService.listRecordRequests({ status, search });
   }
 
   @Get("dashboard-summary")

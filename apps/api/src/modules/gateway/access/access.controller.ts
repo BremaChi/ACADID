@@ -39,4 +39,14 @@ export class AccessController {
   verificationLog(@Req() request: AuthenticatedRequest) {
     return this.accessService.verificationLog(request.auth);
   }
+
+  @Post("record-requests")
+  createRecordRequest(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.accessService.createRecordRequest(request.auth, body);
+  }
+
+  @Get("record-requests")
+  listRecordRequests(@Req() request: AuthenticatedRequest) {
+    return this.accessService.listRecordRequests(request.auth);
+  }
 }

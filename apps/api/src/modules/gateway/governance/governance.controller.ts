@@ -1,5 +1,5 @@
-import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { RecordRequestStatus, UserRole } from "@prisma/client";
 import { AuthGuard } from "../../auth/guards/auth.guard.js";
 import { RolesGuard } from "../../auth/guards/roles.guard.js";
 import { ScopesGuard } from "../../auth/guards/scopes.guard.js";
@@ -48,5 +48,15 @@ export class GovernanceController {
   @Post("revoke")
   revoke(@Body() body: unknown) {
     return this.governanceService.revoke(body);
+  }
+
+  @Get("record-requests")
+  listRecordRequests(@Req() request: AuthenticatedRequest, @Query("status") status?: RecordRequestStatus) {
+    return this.governanceService.listRecordRequests(request.auth, status);
+  }
+
+  @Post("record-requests/:id/review")
+  reviewRecordRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.reviewRecordRequest(request.auth, id, body);
   }
 }

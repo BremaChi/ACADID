@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { createAccessGrantSchema, revokeAccessGrantSchema } from "@acadid/shared";
+import { createAccessGrantSchema, createRecordRequestSchema, revokeAccessGrantSchema } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
@@ -201,6 +201,65 @@ export class AccessService {
     });
   }
 
+  async createRecordRequest(auth: AuthTokenPayload, body: unknown) {
+    const learnerId = this.requireLearner(auth);
+    const parsed = createRecordRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    if (parsed.data.learnerId && parsed.data.learnerId !== learnerId) {
+      throw new BadRequestException("Record request learnerId must match the authenticated learner.");
+    }
+
+    const request = await this.prisma.recordRequest.create({
+      data: {
+        requestId: await this.nextRecordRequestId(),
+        learnerId,
+        institutionId: parsed.data.institutionId,
+        institutionNameSubmitted: parsed.data.institutionNameSubmitted,
+        educationLevel: parsed.data.educationLevel,
+        yearsAttendedFrom: parsed.data.yearsAttendedFrom,
+        yearsAttendedTo: parsed.data.yearsAttendedTo,
+        studentNumber: parsed.data.studentNumber,
+        departmentOrClass: parsed.data.departmentOrClass,
+        recordTypesRequested: parsed.data.recordTypesRequested,
+        proofDocumentUrls: parsed.data.proofDocumentUrls,
+        requesterName: parsed.data.requesterName ?? auth.fullName,
+        requesterEmail: parsed.data.requesterEmail ?? auth.email,
+        status: "SUBMITTED",
+        paymentStatus: "PENDING",
+        notes: []
+      },
+      include: this.recordRequestInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "record_request.create",
+      targetType: "RecordRequest",
+      targetId: request.uuid,
+      institutionId: request.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        requestId: request.requestId,
+        recordTypesRequested: request.recordTypesRequested
+      }
+    });
+
+    return { accepted: true, request };
+  }
+
+  async listRecordRequests(auth: AuthTokenPayload) {
+    const learnerId = this.requireLearner(auth);
+    return this.prisma.recordRequest.findMany({
+      where: { learnerId },
+      include: this.recordRequestInclude(),
+      orderBy: { createdAt: "desc" },
+      take: 100
+    });
+  }
+
   private requireLearner(auth: AuthTokenPayload): string {
     if (!auth.learnerId) {
       throw new BadRequestException("Authenticated account is not linked to a learner passport.");
@@ -211,5 +270,33 @@ export class AccessService {
 
   private hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private async nextRecordRequestId() {
+    const year = new Date().getUTCFullYear();
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const suffix = randomBytes(4).toString("hex").toUpperCase();
+      const requestId = `REQ-${year}-${suffix}`;
+      const existing = await this.prisma.recordRequest.findUnique({ where: { requestId }, select: { uuid: true } });
+      if (!existing) {
+        return requestId;
+      }
+    }
+
+    throw new BadRequestException("Could not allocate a record request ID.");
+  }
+
+  private recordRequestInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      }
+    };
   }
 }

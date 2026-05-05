@@ -145,6 +145,57 @@ export const revokeAccessGrantSchema = z.object({
   accessGrantId: z.string().uuid()
 });
 
+export const recordRequestStatuses = [
+  "SUBMITTED",
+  "AWAITING_PAYMENT",
+  "ASSIGNED",
+  "INSTITUTION_REVIEW",
+  "NEEDS_MORE_INFORMATION",
+  "APPROVED",
+  "REJECTED",
+  "FULFILLED",
+  "DISPUTED",
+  "ESCALATED",
+  "CANCELLED"
+] as const;
+
+export const recordRequestPaymentStatuses = ["NOT_REQUIRED", "PENDING", "PAID", "WAIVED", "REFUNDED"] as const;
+
+export const createRecordRequestSchema = z
+  .object({
+    learnerId: z.string().uuid().optional(),
+    institutionId: z.string().uuid().optional(),
+    institutionNameSubmitted: z.string().min(2).max(180),
+    educationLevel: z.string().min(2).max(80),
+    yearsAttendedFrom: z.number().int().min(1900).max(2100).optional(),
+    yearsAttendedTo: z.number().int().min(1900).max(2100).optional(),
+    studentNumber: z.string().min(1).max(80).optional(),
+    departmentOrClass: z.string().min(1).max(120).optional(),
+    recordTypesRequested: z.array(z.string().min(2).max(80)).min(1).max(12),
+    proofDocumentUrls: z.array(z.string().min(3).max(500)).max(20).default([]),
+    requesterName: z.string().min(2).max(120).optional(),
+    requesterEmail: z.string().email().max(254).optional()
+  })
+  .refine(
+    (value) =>
+      value.yearsAttendedFrom === undefined ||
+      value.yearsAttendedTo === undefined ||
+      value.yearsAttendedFrom <= value.yearsAttendedTo,
+    {
+      message: "yearsAttendedFrom must be before or equal to yearsAttendedTo.",
+      path: ["yearsAttendedTo"]
+    }
+  );
+
+export const reviewRecordRequestSchema = z.object({
+  status: z.enum(recordRequestStatuses),
+  note: z.string().max(2000).optional(),
+  assignedToId: z.string().uuid().optional(),
+  rejectionReason: z.string().max(1000).optional(),
+  escalationReason: z.string().max(1000).optional(),
+  resolutionNote: z.string().max(2000).optional()
+});
+
 export const platformSettingsSchema = z.object({
   approval: z.object({
     requireMou: z.boolean(),
@@ -189,4 +240,6 @@ export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSch
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
 export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
 export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
+export type CreateRecordRequestInput = z.infer<typeof createRecordRequestSchema>;
+export type ReviewRecordRequestInput = z.infer<typeof reviewRecordRequestSchema>;
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;

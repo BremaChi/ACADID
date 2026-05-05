@@ -114,4 +114,5 @@ Current v4 architecture update:
 - Normal institution dashboard actions must be attributed to human staff users, not only to a shared product API key.
 - Workspace scoping utilities and active human membership checks are now implemented in the Data Center API.
 - Human institution permissions are enforced through gateway scope guards for protected actions.
-- The next build priority is RecordRequest schema/API, expanded audit fields, and updating Engineer 2 handoff docs for product-key plus human institution sessions.
+- RecordRequest schema/API foundation is implemented for learner submission, institution/founder governance review, founder search, audit events, and Supabase migration.
+- The next build priority is Founder Console Record Request UI, expanded audit fields, and updating Engineer 2 handoff docs for product-key plus human institution sessions.

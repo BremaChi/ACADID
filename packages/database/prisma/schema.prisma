@@ -45,6 +45,28 @@ enum DeveloperAccessRequestStatus {
   SUSPENDED
 }
 
+enum RecordRequestStatus {
+  SUBMITTED
+  AWAITING_PAYMENT
+  ASSIGNED
+  INSTITUTION_REVIEW
+  NEEDS_MORE_INFORMATION
+  APPROVED
+  REJECTED
+  FULFILLED
+  DISPUTED
+  ESCALATED
+  CANCELLED
+}
+
+enum RecordRequestPaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  WAIVED
+  REFUNDED
+}
+
 enum DisputeStatus {
   OPEN
   RESOLVED
@@ -194,6 +216,7 @@ model Learner {
   accessGrants       AccessGrant[]
   studentUserProfile User?
   disputes           Dispute[]
+  recordRequests     RecordRequest[]
 
   @@index([fullName, dateOfBirth])
 }
@@ -220,6 +243,7 @@ model Institution {
   apiKeys         ApiKey[]
   applications    InstitutionApplication[]
   developerAccessRequests DeveloperAccessRequest[]
+  recordRequests RecordRequest[]
   disputes       Dispute[]
   revenueEntries RevenueLedgerEntry[]
   subscriptions  InstitutionSubscription[]
@@ -294,6 +318,7 @@ model User {
   invitedInstitutionUsers InstitutionUser[] @relation("InstitutionUserInviter")
   auditEvents  AuditEvent[]
   assignedDisputes Dispute[] @relation("DisputeAssignee")
+  assignedRecordRequests RecordRequest[] @relation("RecordRequestAssignee")
   platformSettings PlatformSetting[]
   mfaRecoveryCodes MfaRecoveryCode[]
 }
@@ -618,6 +643,51 @@ model Dispute {
   @@index([learnerId])
   @@index([credentialId])
   @@index([assignedToId])
+}
+
+model RecordRequest {
+  uuid                     String                     @id @default(uuid()) @db.Uuid
+  requestId                String                     @unique
+  learnerId                String?                    @db.Uuid
+  institutionId            String?                    @db.Uuid
+  institutionNameSubmitted String
+  educationLevel           String
+  yearsAttendedFrom        Int?
+  yearsAttendedTo          Int?
+  studentNumber            String?
+  departmentOrClass        String?
+  recordTypesRequested     String[]
+  proofDocumentUrls        String[]
+  status                   RecordRequestStatus        @default(SUBMITTED)
+  paymentStatus            RecordRequestPaymentStatus @default(PENDING)
+  paymentReference         String?
+  amountMinor              Int?
+  currency                 String                     @default("NGN")
+  deadlineAt               DateTime?
+  assignedToId             String?                    @db.Uuid
+  requesterName            String?
+  requesterEmail           String?
+  rejectionReason          String?
+  escalationReason         String?
+  resolutionNote           String?
+  notes                    Json?
+  submittedAt              DateTime                   @default(now())
+  assignedAt               DateTime?
+  fulfilledAt              DateTime?
+  rejectedAt               DateTime?
+  escalatedAt              DateTime?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  learner     Learner?     @relation(fields: [learnerId], references: [uuid])
+  institution Institution? @relation(fields: [institutionId], references: [uuid])
+  assignedTo  User?        @relation("RecordRequestAssignee", fields: [assignedToId], references: [uuid])
+
+  @@index([status, createdAt])
+  @@index([institutionId, status])
+  @@index([learnerId, createdAt])
+  @@index([requestId])
+  @@index([assignedToId, status])
 }
 
 model ImportFile {

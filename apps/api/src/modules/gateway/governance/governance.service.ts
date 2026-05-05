@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { RecordRequestStatus, UserRole, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { reviewRecordRequestSchema } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
@@ -207,6 +208,83 @@ export class GovernanceService {
     };
   }
 
+  async listRecordRequests(auth: AuthTokenPayload, status?: RecordRequestStatus) {
+    const institutionWhere = await this.authority.institutionWhereForActor(auth);
+    return this.prisma.recordRequest.findMany({
+      where: {
+        ...(institutionWhere ?? {}),
+        ...(status ? { status } : {})
+      },
+      include: this.recordRequestInclude(),
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
+
+  async reviewRecordRequest(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = reviewRecordRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.recordRequest.findUnique({
+      where: { uuid: id },
+      include: this.recordRequestInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Record request not found.");
+    }
+
+    if (existing.institutionId) {
+      await this.authority.assertActorCanOperateInstitution(auth, existing.institutionId);
+    } else if (auth.role !== UserRole.ACADID_SUPER_ADMIN) {
+      throw new ForbiddenException("Only founder operations can review unassigned record requests.");
+    }
+
+    const status = parsed.data.status;
+    const now = new Date();
+    const notes = this.appendRecordRequestNote(existing.notes, {
+      at: now.toISOString(),
+      by: auth.sub,
+      role: auth.role,
+      status,
+      note: parsed.data.note
+    });
+    const request = await this.prisma.recordRequest.update({
+      where: { uuid: id },
+      data: {
+        status,
+        notes,
+        assignedToId: parsed.data.assignedToId,
+        assignedAt: parsed.data.assignedToId ? now : undefined,
+        rejectionReason: status === "REJECTED" ? parsed.data.rejectionReason ?? parsed.data.note : existing.rejectionReason,
+        rejectedAt: status === "REJECTED" ? now : undefined,
+        escalationReason: status === "ESCALATED" ? parsed.data.escalationReason ?? parsed.data.note : existing.escalationReason,
+        escalatedAt: status === "ESCALATED" ? now : undefined,
+        resolutionNote: status === "FULFILLED" ? parsed.data.resolutionNote ?? parsed.data.note : existing.resolutionNote,
+        fulfilledAt: status === "FULFILLED" ? now : undefined
+      },
+      include: this.recordRequestInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
+      action: "record_request.review",
+      targetType: "RecordRequest",
+      targetId: request.uuid,
+      institutionId: request.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        requestId: request.requestId,
+        status,
+        apiKeyId: auth.apiKeyId
+      }
+    });
+
+    return { accepted: true, request };
+  }
+
   private transitionData(status: BatchTransition) {
     const timestamp = new Date();
     if (status === "SUBMITTED") {
@@ -216,5 +294,40 @@ export class GovernanceService {
       return { status, reviewedAt: timestamp };
     }
     return { status, approvedAt: timestamp };
+  }
+
+  private recordRequestInclude() {
+    return {
+      learner: {
+        select: {
+          uuid: true,
+          ain: true,
+          fullName: true,
+          identityStatus: true
+        }
+      },
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      },
+      assignedTo: {
+        select: {
+          uuid: true,
+          fullName: true,
+          email: true,
+          role: true
+        }
+      }
+    };
+  }
+
+  private appendRecordRequestNote(existing: Prisma.JsonValue, note: Record<string, unknown>) {
+    const notes = Array.isArray(existing) ? existing : [];
+    return [...notes, note] as Prisma.InputJsonValue;
   }
 }
