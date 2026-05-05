@@ -76,6 +76,7 @@ The API has these first modules:
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
 - Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
+- Founder Console now has a dedicated Record Requests section with search, status filters, open/escalated/fulfilled metrics, request detail review, and governance status updates connected to `/govern/record-requests/:id/review`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
@@ -124,6 +125,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live institution application approval queue for Founder review.
 - Live Developer Access Request queue backed by the Data Center API, including approve, reject, and suspend actions.
 - Institution Live Results API key form now lists only institutions with approved Developer Access.
+- Live Record Requests workflow for Founder review, including filtered registry, learner/institution context, proof-document count, payment status, and status transition notes.
 - Live Disputes page backed by the Data Center API, with status filters, detail panel, founder assignment, institution notice text, escalation, and resolution notes.
 - Live Verification Logs page backed by the Data Center API, with cross-institution search, outcome filters, metrics, and CSV export.
 - Live System Health page backed by the Data Center API, with service status, gateway metrics, and recent incidents.

@@ -115,4 +115,5 @@ Current v4 architecture update:
 - Workspace scoping utilities and active human membership checks are now implemented in the Data Center API.
 - Human institution permissions are enforced through gateway scope guards for protected actions.
 - RecordRequest schema/API foundation is implemented for learner submission, institution/founder governance review, founder search, audit events, and Supabase migration.
-- The next build priority is Founder Console Record Request UI, expanded audit fields, and updating Engineer 2 handoff docs for product-key plus human institution sessions.
+- Founder Console Record Request UI is implemented with a dedicated sidebar section, search/filter, detail review, and governance status updates.
+- The next build priority is expanded audit fields and updating Engineer 2 handoff docs for product-key plus human institution sessions.

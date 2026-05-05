@@ -101,6 +101,7 @@ Current repo note:
 - `AuthorityService` exposes workspace-scoped query helpers so future services do not hand-roll institution filters.
 - `ScopesGuard` now enforces human permissions as well as API-key scopes.
 - `RecordRequest` now exists in Prisma and Supabase with learner submission/listing, governance review, founder list/search, and audit events.
+- Founder Console now exposes Record Requests as its own section for review, search, status filtering, and governance transitions.
 
 Roles:
 

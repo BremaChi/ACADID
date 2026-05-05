@@ -11,6 +11,7 @@ const navItems = [
   "API Keys",
   "Developer Access Requests",
   "Disputes",
+  "Record Requests",
   "Verification Logs",
   "Revenue",
   "System Health",
@@ -205,6 +206,53 @@ type Dispute = {
   learner: { uuid: string; ain: string; fullName: string; identityStatus: string } | null;
   credential: { uuid: string; credentialRef: string; type: string; status: string } | null;
   assignedTo: { uuid: string; fullName: string; email: string } | null;
+};
+
+type RecordRequestStatus =
+  | "SUBMITTED"
+  | "AWAITING_PAYMENT"
+  | "ASSIGNED"
+  | "INSTITUTION_REVIEW"
+  | "NEEDS_MORE_INFORMATION"
+  | "APPROVED"
+  | "REJECTED"
+  | "FULFILLED"
+  | "DISPUTED"
+  | "ESCALATED"
+  | "CANCELLED";
+
+type RecordRequest = {
+  uuid: string;
+  requestId: string;
+  learnerId: string | null;
+  institutionId: string | null;
+  institutionNameSubmitted: string;
+  educationLevel: string;
+  yearsAttendedFrom: number | null;
+  yearsAttendedTo: number | null;
+  studentNumber: string | null;
+  departmentOrClass: string | null;
+  recordTypesRequested: string[];
+  proofDocumentUrls: string[];
+  status: RecordRequestStatus;
+  paymentStatus: "NOT_REQUIRED" | "PENDING" | "PAID" | "WAIVED" | "REFUNDED";
+  paymentReference: string | null;
+  amountMinor: number | null;
+  currency: string;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  rejectionReason: string | null;
+  escalationReason: string | null;
+  resolutionNote: string | null;
+  submittedAt: string;
+  assignedAt: string | null;
+  fulfilledAt: string | null;
+  rejectedAt: string | null;
+  escalatedAt: string | null;
+  createdAt: string;
+  learner: { uuid: string; ain: string; fullName: string; identityStatus: string } | null;
+  institution: { uuid: string; institutionId: string; officialName: string; state: string; status: string } | null;
+  assignedTo: { uuid: string; fullName: string; email: string; role: string } | null;
 };
 
 type VerificationLog = {
@@ -470,6 +518,10 @@ async function loadVerificationLogs(token: string): Promise<VerificationLog[]> {
   return apiRequest<VerificationLog[]>("/admin/verification-logs", token);
 }
 
+async function loadRecordRequests(token: string): Promise<RecordRequest[]> {
+  return apiRequest<RecordRequest[]>("/admin/record-requests", token);
+}
+
 async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
@@ -508,6 +560,7 @@ export function FounderConsole() {
   const [globalApiKeys, setGlobalApiKeys] = useState<GlobalApiKey[]>([]);
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccessRequest[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [recordRequests, setRecordRequests] = useState<RecordRequest[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
@@ -517,6 +570,7 @@ export function FounderConsole() {
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
+  const [selectedRecordRequestId, setSelectedRecordRequestId] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -543,6 +597,10 @@ export function FounderConsole() {
   const [disputeStatusFilter, setDisputeStatusFilter] = useState("ALL");
   const [disputeNoticeText, setDisputeNoticeText] = useState("Please review this dispute and provide supporting evidence through the institution dashboard.");
   const [disputeResolutionNote, setDisputeResolutionNote] = useState("");
+  const [recordRequestSearch, setRecordRequestSearch] = useState("");
+  const [recordRequestStatusFilter, setRecordRequestStatusFilter] = useState("ALL");
+  const [recordRequestReviewStatus, setRecordRequestReviewStatus] = useState<RecordRequestStatus>("INSTITUTION_REVIEW");
+  const [recordRequestNote, setRecordRequestNote] = useState("Reviewed from Founder Console.");
   const [verificationSearch, setVerificationSearch] = useState("");
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
   const [institutionForm, setInstitutionForm] = useState({
@@ -570,6 +628,7 @@ export function FounderConsole() {
   const selectedInstitution = institutions.find((institution) => institution.uuid === selectedInstitutionId);
   const selectedApplication = institutionApplications.find((application) => application.uuid === selectedApplicationId);
   const selectedDispute = disputes.find((dispute) => dispute.uuid === selectedDisputeId) ?? disputes[0] ?? null;
+  const selectedRecordRequest = recordRequests.find((request) => request.uuid === selectedRecordRequestId) ?? recordRequests[0] ?? null;
   const activeKeys = globalApiKeys.filter((key) => key.status === "ACTIVE");
   const productApiKeys = globalApiKeys.filter((key) => key.ownerType === "PRODUCT");
   const institutionApiKeys = globalApiKeys.filter((key) => key.ownerType === "INSTITUTION");
@@ -636,6 +695,23 @@ export function FounderConsole() {
 
   const filteredDeveloperRequests = developerRequests.filter((request) => developerStatusFilter === "ALL" || request.status === developerStatusFilter);
   const filteredDisputes = disputes.filter((dispute) => disputeStatusFilter === "ALL" || dispute.status === disputeStatusFilter);
+  const filteredRecordRequests = useMemo(() => {
+    const term = recordRequestSearch.trim().toLowerCase();
+    return recordRequests.filter((request) => {
+      const matchesTerm =
+        !term ||
+        request.requestId.toLowerCase().includes(term) ||
+        request.institutionNameSubmitted.toLowerCase().includes(term) ||
+        (request.studentNumber ?? "").toLowerCase().includes(term) ||
+        (request.departmentOrClass ?? "").toLowerCase().includes(term) ||
+        (request.requesterName ?? "").toLowerCase().includes(term) ||
+        (request.requesterEmail ?? "").toLowerCase().includes(term) ||
+        (request.learner?.ain ?? "").toLowerCase().includes(term) ||
+        (request.learner?.fullName ?? "").toLowerCase().includes(term) ||
+        (request.institution?.officialName ?? "").toLowerCase().includes(term);
+      return matchesTerm && (recordRequestStatusFilter === "ALL" || request.status === recordRequestStatusFilter);
+    });
+  }, [recordRequestSearch, recordRequestStatusFilter, recordRequests]);
   const filteredVerificationLogs = useMemo(() => {
     const term = verificationSearch.trim().toLowerCase();
     return verificationLogs.filter((log) => {
@@ -677,6 +753,7 @@ export function FounderConsole() {
         nextApplications,
         nextDeveloperRequests,
         nextDisputes,
+        nextRecordRequests,
         nextVerificationLogs,
         nextSystemHealth,
         nextDashboardSummary,
@@ -690,6 +767,7 @@ export function FounderConsole() {
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
         loadDeveloperAccessRequests(activeToken),
         loadDisputes(activeToken),
+        loadRecordRequests(activeToken),
         loadVerificationLogs(activeToken),
         loadSystemHealth(activeToken),
         loadDashboardSummary(activeToken),
@@ -703,6 +781,7 @@ export function FounderConsole() {
       setInstitutionApplications(nextApplications);
       setDeveloperRequests(nextDeveloperRequests);
       setDisputes(nextDisputes);
+      setRecordRequests(nextRecordRequests);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
       setDashboardSummary(nextDashboardSummary);
@@ -714,6 +793,7 @@ export function FounderConsole() {
       setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
       setSelectedDisputeId((current) => current || nextDisputes[0]?.uuid || "");
+      setSelectedRecordRequestId((current) => current || nextRecordRequests[0]?.uuid || "");
     } catch (error) {
       handleAuthenticatedError(error, "Could not load console data.");
     } finally {
@@ -759,6 +839,8 @@ export function FounderConsole() {
     setDeveloperRequests([]);
     setDisputes([]);
     setSelectedDisputeId("");
+    setRecordRequests([]);
+    setSelectedRecordRequestId("");
     setVerificationLogs([]);
     setSystemHealth(null);
     setDashboardSummary(null);
@@ -981,6 +1063,31 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Dispute closure failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reviewRecordRequest(id: string, status: RecordRequestStatus) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ accepted: boolean; request: RecordRequest }>(`/govern/record-requests/${id}/review`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          status,
+          note: recordRequestNote || `Marked ${titleCase(status)} from Founder Console.`,
+          ...(status === "REJECTED" ? { rejectionReason: recordRequestNote || "Rejected from Founder Console." } : {}),
+          ...(status === "ESCALATED" ? { escalationReason: recordRequestNote || "Escalated from Founder Console." } : {}),
+          ...(status === "FULFILLED" ? { resolutionNote: recordRequestNote || "Fulfilled from Founder Console." } : {})
+        })
+      });
+      setRecordRequests((current) => current.map((request) => (request.uuid === response.request.uuid ? response.request : request)));
+      setSelectedRecordRequestId(response.request.uuid);
+      setNotice({ tone: "success", text: `Record request ${response.request.requestId} moved to ${titleCase(status)}.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Record request review failed.");
     } finally {
       setLoading(false);
     }
@@ -1219,6 +1326,7 @@ export function FounderConsole() {
                 {sidebarCollapsed ? null : <span className="min-w-0 flex-1 truncate">{item}</span>}
                 {!sidebarCollapsed && item === "Institution Applications" && pendingApplications.length ? <Badge>{pendingApplications.length}</Badge> : null}
                 {!sidebarCollapsed && item === "Developer Access Requests" && developerRequests.length ? <Badge>{developerRequests.length}</Badge> : null}
+                {!sidebarCollapsed && item === "Record Requests" && recordRequests.filter((request) => ["SUBMITTED", "NEEDS_MORE_INFORMATION", "ESCALATED"].includes(request.status)).length ? <Badge>{recordRequests.filter((request) => ["SUBMITTED", "NEEDS_MORE_INFORMATION", "ESCALATED"].includes(request.status)).length}</Badge> : null}
               </button>
             ))}
           </nav>
@@ -1402,6 +1510,26 @@ export function FounderConsole() {
           resolutionNote={disputeResolutionNote}
           selectedDispute={selectedDispute}
           statusFilter={disputeStatusFilter}
+        />
+      );
+    }
+    if (activePage === "Record Requests") {
+      return (
+        <RecordRequestsPage
+          loading={loading}
+          note={recordRequestNote}
+          onNote={setRecordRequestNote}
+          onReview={reviewRecordRequest}
+          onSearch={setRecordRequestSearch}
+          onSelectRequest={setSelectedRecordRequestId}
+          onStatusFilter={setRecordRequestStatusFilter}
+          onReviewStatus={setRecordRequestReviewStatus}
+          requests={filteredRecordRequests}
+          reviewStatus={recordRequestReviewStatus}
+          search={recordRequestSearch}
+          selectedRequest={selectedRecordRequest}
+          statusFilter={recordRequestStatusFilter}
+          totalRequests={recordRequests}
         />
       );
     }
@@ -1924,6 +2052,149 @@ function DisputesPage({
           </div>
         ) : (
           <EmptyState text="Select a dispute to review its details." />
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function RecordRequestsPage({
+  loading,
+  note,
+  onNote,
+  onReview,
+  onReviewStatus,
+  onSearch,
+  onSelectRequest,
+  onStatusFilter,
+  requests,
+  reviewStatus,
+  search,
+  selectedRequest,
+  statusFilter,
+  totalRequests
+}: {
+  loading: boolean;
+  note: string;
+  onNote: (value: string) => void;
+  onReview: (id: string, status: RecordRequestStatus) => void;
+  onReviewStatus: (value: RecordRequestStatus) => void;
+  onSearch: (value: string) => void;
+  onSelectRequest: (id: string) => void;
+  onStatusFilter: (value: string) => void;
+  requests: RecordRequest[];
+  reviewStatus: RecordRequestStatus;
+  search: string;
+  selectedRequest: RecordRequest | null;
+  statusFilter: string;
+  totalRequests: RecordRequest[];
+}) {
+  const openCount = totalRequests.filter((request) => ["SUBMITTED", "AWAITING_PAYMENT", "ASSIGNED", "INSTITUTION_REVIEW", "NEEDS_MORE_INFORMATION"].includes(request.status)).length;
+  const escalatedCount = totalRequests.filter((request) => request.status === "ESCALATED").length;
+  const fulfilledCount = totalRequests.filter((request) => request.status === "FULFILLED").length;
+  const canReview = selectedRequest && !["FULFILLED", "CANCELLED"].includes(selectedRequest.status);
+  const statusOptions: RecordRequestStatus[] = [
+    "ASSIGNED",
+    "INSTITUTION_REVIEW",
+    "NEEDS_MORE_INFORMATION",
+    "APPROVED",
+    "REJECTED",
+    "FULFILLED",
+    "DISPUTED",
+    "ESCALATED",
+    "CANCELLED"
+  ];
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1fr_0.82fr]">
+      <Card>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Record Requests" subtitle="Graduate and learner requests for old records, archive recovery, and institution follow-up." />
+          <div className="grid gap-2 text-sm sm:grid-cols-3 md:min-w-[360px]">
+            <MetricLine label="Open" value={String(openCount)} />
+            <MetricLine label="Escalated" value={String(escalatedCount)} />
+            <MetricLine label="Fulfilled" value={String(fulfilledCount)} />
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
+          <input className={inputClass} placeholder="Search request ID, AIN, learner, institution, student number..." value={search} onChange={(event) => onSearch(event.target.value)} />
+          <FilterSelect
+            value={statusFilter}
+            onChange={onStatusFilter}
+            options={["ALL", "SUBMITTED", "AWAITING_PAYMENT", "ASSIGNED", "INSTITUTION_REVIEW", "NEEDS_MORE_INFORMATION", "APPROVED", "REJECTED", "FULFILLED", "DISPUTED", "ESCALATED", "CANCELLED"]}
+          />
+        </div>
+        <ResponsiveTable
+          empty="No record requests match this search or status filter."
+          headers={["Request", "Learner", "Institution", "Records", "Status", "Submitted", "Action"]}
+          rows={requests.map((request) => [
+            <div key="request">
+              <p className="font-mono text-xs font-semibold text-primary">{request.requestId}</p>
+              <p className="text-xs text-textSecondary">{request.educationLevel}{formatYears(request) ? ` / ${formatYears(request)}` : ""}</p>
+            </div>,
+            <div key="learner">
+              <p className="font-medium text-primary">{request.learner?.fullName ?? request.requesterName ?? "Unlinked learner"}</p>
+              <p className="text-xs text-textSecondary">{request.learner?.ain ?? request.requesterEmail ?? "No AIN yet"}</p>
+            </div>,
+            <div key="institution">
+              <p>{request.institution?.officialName ?? request.institutionNameSubmitted}</p>
+              <p className="text-xs text-textSecondary">{request.institution?.institutionId ?? "Submitted by learner"}{request.studentNumber ? ` / ${request.studentNumber}` : ""}</p>
+            </div>,
+            <span key="types" className="text-xs">{request.recordTypesRequested.join(", ")}</span>,
+            <StatusBadge key="status" status={request.status} />,
+            formatDate(request.submittedAt),
+            <button key="action" className={secondaryButtonClass} onClick={() => onSelectRequest(request.uuid)} type="button">Review</button>
+          ])}
+        />
+      </Card>
+      <Card>
+        <SectionTitle title="Request Detail" subtitle="Review learner proof, institution context, and move the request through governance." />
+        {selectedRequest ? (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-borderLight bg-soft p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-sm font-semibold text-primary">{selectedRequest.requestId}</p>
+                  <p className="mt-1 text-xs text-textSecondary">{selectedRequest.learner?.fullName ?? selectedRequest.requesterName ?? "Unlinked learner"}{selectedRequest.learner?.ain ? ` / ${selectedRequest.learner.ain}` : ""}</p>
+                </div>
+                <StatusBadge status={selectedRequest.status} />
+              </div>
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                <MetricLine label="Institution" value={selectedRequest.institution?.officialName ?? selectedRequest.institutionNameSubmitted} />
+                <MetricLine label="Education level" value={selectedRequest.educationLevel} />
+                <MetricLine label="Years attended" value={formatYears(selectedRequest) || "Not provided"} />
+                <MetricLine label="Student number" value={selectedRequest.studentNumber ?? "Not provided"} />
+                <MetricLine label="Department/class" value={selectedRequest.departmentOrClass ?? "Not provided"} />
+                <MetricLine label="Payment" value={titleCase(selectedRequest.paymentStatus)} />
+                <MetricLine label="Assigned to" value={selectedRequest.assignedTo?.fullName ?? "Unassigned"} />
+                <MetricLine label="Proof documents" value={String(selectedRequest.proofDocumentUrls.length)} />
+              </div>
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase text-textSecondary">Requested records</p>
+                <p className="mt-1 text-sm text-primary">{selectedRequest.recordTypesRequested.join(", ")}</p>
+              </div>
+              {selectedRequest.rejectionReason || selectedRequest.escalationReason || selectedRequest.resolutionNote ? (
+                <div className="mt-4 rounded-md border border-borderLight bg-white p-3 text-sm text-textSecondary">
+                  {selectedRequest.rejectionReason ? <p><span className="font-medium text-primary">Rejection:</span> {selectedRequest.rejectionReason}</p> : null}
+                  {selectedRequest.escalationReason ? <p><span className="font-medium text-primary">Escalation:</span> {selectedRequest.escalationReason}</p> : null}
+                  {selectedRequest.resolutionNote ? <p><span className="font-medium text-primary">Resolution:</span> {selectedRequest.resolutionNote}</p> : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="grid gap-3">
+              <Field label="Next status">
+                <FilterSelect value={reviewStatus} onChange={(value) => onReviewStatus(value as RecordRequestStatus)} options={statusOptions} />
+              </Field>
+              <Field label="Founder note">
+                <textarea className={`${inputClass} min-h-24 py-2`} value={note} onChange={(event) => onNote(event.target.value)} />
+              </Field>
+              <button className={primaryButtonClass} disabled={loading || !canReview} onClick={() => onReview(selectedRequest.uuid, reviewStatus)} type="button">
+                Update Record Request
+              </button>
+            </div>
+          </div>
+        ) : (
+          <EmptyState text="Select a record request to review its details." />
         )}
       </Card>
     </div>
@@ -2694,6 +2965,7 @@ function SideIcon({ label, active = false, inverse = false }: { label: string; a
 function iconPath(label: string) {
   if (label.includes("Institution")) return "M5 21V7l7-4 7 4v14M8 10h2m4 0h2M8 14h2m4 0h2M8 18h8";
   if (label.includes("API") || label.includes("Developer")) return "M15 7a4 4 0 1 1-1.4 7.75L9 19.35H6.5v-2.5l4.75-4.75A4 4 0 0 1 15 7Z";
+  if (label.includes("Record")) return "M7 4h7l3 3v13H7V4Zm7 0v4h4M9 12h6M9 16h6";
   if (label.includes("Security")) return "M12 3 19 6v5c0 4.5-2.9 8.1-7 10-4.1-1.9-7-5.5-7-10V6l7-3Z";
   if (label.includes("Revenue")) return "M4 17h16M7 17V9m5 8V5m5 12v-6";
   if (label.includes("Health")) return "M4 12h4l2-5 4 10 2-5h4";
@@ -2803,6 +3075,13 @@ function titleCase(value: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatYears(request: Pick<RecordRequest, "yearsAttendedFrom" | "yearsAttendedTo">) {
+  if (request.yearsAttendedFrom && request.yearsAttendedTo) return `${request.yearsAttendedFrom}-${request.yearsAttendedTo}`;
+  if (request.yearsAttendedFrom) return `From ${request.yearsAttendedFrom}`;
+  if (request.yearsAttendedTo) return `Until ${request.yearsAttendedTo}`;
+  return "";
 }
 
 function formatMoney(amountMinor: number, currency = "NGN") {
