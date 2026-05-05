@@ -227,9 +227,9 @@ export class IngestionService {
   }
 
   async listBatches(auth: AuthTokenPayload) {
-    const institutionIds = await this.authority.institutionIdsForActor(auth);
+    const institutionWhere = await this.authority.institutionWhereForActor(auth);
     return this.prisma.resultBatch.findMany({
-      where: institutionIds ? { institutionId: { in: institutionIds } } : undefined,
+      where: institutionWhere,
       orderBy: { createdAt: "desc" }
     });
   }

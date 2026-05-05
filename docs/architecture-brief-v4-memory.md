@@ -79,8 +79,8 @@ API key endpoints required by v4:
 Current repo note:
 
 - Founder login and machine API key auth exist.
-- Institution staff human sessions are not complete yet.
-- `InstitutionUser` exists as a join model, but v4 needs it expanded into a proper invited/active staff account model with status, permissions, last login, and 2FA posture.
+- Institution staff human sessions now exist through `/auth/user/*`.
+- `InstitutionUser` has been expanded into an invited/active staff account model with status, permissions, invite token lifecycle, last-login tracking, and institution-scoped login claims.
 
 ## Institution Workspace Isolation
 
@@ -93,6 +93,13 @@ Founder approval must create an isolated institution workspace:
 - Optional signing key setup.
 - Public directory status.
 - Audit event.
+
+Current repo note:
+
+- Founder approval now creates the institution workspace and one-time Registrar invite token.
+- `AuthorityService` now enforces active institution workspace membership before human institution users can operate on institution data.
+- `AuthorityService` exposes workspace-scoped query helpers so future services do not hand-roll institution filters.
+- `ScopesGuard` now enforces human permissions as well as API-key scopes.
 
 Roles:
 

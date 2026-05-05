@@ -8,7 +8,9 @@ Latest architecture source:
 
 - `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
 - `C:\Users\HP\Downloads\ACADID_Full_Updated_Architecture_v2_1.docx`
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v4_Updated.docx`
 - Persistent project memory: `docs/architecture-brief-v3-memory.md`
+- Active v4 project memory: `docs/architecture-brief-v4-memory.md`
 
 Created:
 
@@ -71,6 +73,8 @@ The API has these first modules:
 - Institution application request-more-information and email-record actions are implemented with founder audit events.
 - Architecture v4 InstitutionUser foundation is implemented with staff invitation status, permissions, invite tokens, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
 - Founder institution approval now creates the institution workspace and a one-time Registrar invite token for the approved institution contact.
+- Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
+- Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.

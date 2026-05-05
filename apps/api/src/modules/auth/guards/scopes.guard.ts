@@ -18,14 +18,14 @@ export class ScopesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    if (request.auth.role === UserRole.ACADID_SUPER_ADMIN || request.auth.kind !== "API_KEY") {
+    if (request.auth.role === UserRole.ACADID_SUPER_ADMIN) {
       return true;
     }
 
-    const grantedScopes = new Set(request.auth.scopes ?? []);
+    const grantedScopes = new Set(request.auth.kind === "API_KEY" ? request.auth.scopes ?? [] : request.auth.permissions ?? []);
     const allowed = requiredScopes.every((scope) => grantedScopes.has(scope) || grantedScopes.has("*"));
     if (!allowed) {
-      throw new ForbiddenException("API key scope does not allow this operation.");
+      throw new ForbiddenException("Authenticated actor scope does not allow this operation.");
     }
 
     return true;

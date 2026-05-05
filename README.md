@@ -6,11 +6,11 @@ AcadID is a permanent academic identity infrastructure for Nigeria. It gives eve
 
 The current authoritative source is:
 
-- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v4_Updated.docx`
 
-Current implementation memory from the v3 brief:
+Current implementation memory from the v4 brief:
 
-- `docs/architecture-brief-v3-memory.md`
+- `docs/architecture-brief-v4-memory.md`
 
 Engineer handoff documents:
 
@@ -112,4 +112,6 @@ Current v4 architecture update:
 - v4 keeps the four-layer Data Center/Gateway/Product/Partner model and Supabase PostgreSQL path.
 - v4 adds mandatory institution workspace isolation, human InstitutionUser sessions, expanded audit logging, and Graduate Record Requests.
 - Normal institution dashboard actions must be attributed to human staff users, not only to a shared product API key.
-- The next build priority is workspace scoping middleware/utilities, RecordRequest schema/API, and updating Engineer 2 handoff docs for product-key plus human institution sessions.
+- Workspace scoping utilities and active human membership checks are now implemented in the Data Center API.
+- Human institution permissions are enforced through gateway scope guards for protected actions.
+- The next build priority is RecordRequest schema/API, expanded audit fields, and updating Engineer 2 handoff docs for product-key plus human institution sessions.

@@ -60,3 +60,64 @@ test("institution staff are denied when they are not assigned to the institution
     ForbiddenException
   );
 });
+
+test("institution staff must have an active workspace membership", async () => {
+  const service = new AuthorityService({
+    institutionUser: {
+      findFirst: async ({ where }) => {
+        assert.equal(where.status, "ACTIVE");
+        assert.deepEqual(where.institution, { status: "ACTIVE" });
+        return null;
+      }
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      service.assertActorCanOperateInstitution(
+        {
+          sub: "registrar-user",
+          email: "registrar@school.test",
+          fullName: "Registrar",
+          role: "REGISTRAR",
+          institutionUserId: "membership-1",
+          iat: 1,
+          exp: 2
+        },
+        "institution-1"
+      ),
+    ForbiddenException
+  );
+});
+
+test("workspace helpers scope institution users to active memberships only", async () => {
+  const service = new AuthorityService({
+    institutionUser: {
+      findMany: async ({ where }) => {
+        assert.equal(where.userId, "registrar-user");
+        assert.equal(where.role, "REGISTRAR");
+        assert.equal(where.status, "ACTIVE");
+        assert.deepEqual(where.institution, { status: "ACTIVE" });
+        return [{ institutionId: "institution-1" }, { institutionId: "institution-2" }];
+      }
+    }
+  });
+
+  const auth = {
+    sub: "registrar-user",
+    email: "registrar@school.test",
+    fullName: "Registrar",
+    role: "REGISTRAR",
+    iat: 1,
+    exp: 2
+  };
+
+  assert.deepEqual(await service.workspaceScopeForActor(auth), {
+    mode: "INSTITUTION",
+    institutionIds: ["institution-1", "institution-2"],
+    primaryInstitutionId: "institution-1"
+  });
+  assert.deepEqual(await service.institutionWhereForActor(auth), {
+    institutionId: { in: ["institution-1", "institution-2"] }
+  });
+});

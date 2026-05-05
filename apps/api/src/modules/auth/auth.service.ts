@@ -610,16 +610,28 @@ export class AuthService {
       return ["*"];
     }
     if (role === UserRole.REGISTRAR) {
-      return ["staff:manage", "ingest:write", "govern:review", "govern:publish", "records:amend", "developer_tools:manage", "record_requests:approve"];
+      return [
+        "staff:manage",
+        "ingest:write",
+        "govern:write",
+        "govern:review",
+        "govern:publish",
+        "records:amend",
+        "developer_tools:manage",
+        "record_requests:approve"
+      ];
     }
     if (role === UserRole.EXAM_OFFICER) {
-      return ["students:read", "results:read", "govern:review", "record_requests:verify"];
+      return ["students:read", "results:read", "govern:write", "govern:review", "record_requests:verify"];
     }
     if (role === UserRole.DATA_ENTRY_OFFICER) {
       return ["students:write", "ingest:write", "results:draft", "govern:submit", "record_requests:upload"];
     }
     if (role === UserRole.READ_ONLY) {
       return ["students:read", "results:read", "credentials:read", "reports:read"];
+    }
+    if (role === UserRole.STUDENT) {
+      return ["access:read"];
     }
     return [];
   }

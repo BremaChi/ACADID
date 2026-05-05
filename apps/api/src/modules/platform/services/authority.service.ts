@@ -5,6 +5,12 @@ import { PrismaService } from "./prisma.service.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export interface WorkspaceScope {
+  mode: "PLATFORM" | "INSTITUTION";
+  institutionIds?: string[];
+  primaryInstitutionId?: string;
+}
+
 @Injectable()
 export class AuthorityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -66,9 +72,12 @@ export class AuthorityService {
 
     const membership = await this.prisma.institutionUser.findFirst({
       where: {
+        ...(actor.institutionUserId ? { uuid: actor.institutionUserId } : {}),
         userId: actor.sub,
         institutionId,
-        role: actor.role
+        role: actor.role,
+        status: "ACTIVE",
+        institution: { status: "ACTIVE" }
       },
       select: { uuid: true }
     });
@@ -76,6 +85,31 @@ export class AuthorityService {
     if (!membership) {
       throw new ForbiddenException("User is not assigned to this institution.");
     }
+  }
+
+  async workspaceScopeForActor(actor: AuthTokenPayload): Promise<WorkspaceScope> {
+    if (actor.role === UserRole.ACADID_SUPER_ADMIN) {
+      return { mode: "PLATFORM" };
+    }
+
+    const institutionIds = (await this.institutionIdsForActor(actor)) ?? [];
+    return {
+      mode: "INSTITUTION",
+      institutionIds,
+      primaryInstitutionId: institutionIds[0]
+    };
+  }
+
+  async institutionWhereForActor(
+    actor: AuthTokenPayload,
+    institutionField: string = "institutionId"
+  ): Promise<Record<string, unknown> | undefined> {
+    const institutionIds = await this.institutionIdsForActor(actor);
+    if (!institutionIds) {
+      return undefined;
+    }
+
+    return { [institutionField]: { in: institutionIds } };
   }
 
   async institutionIdsForActor(actor: AuthTokenPayload): Promise<string[] | undefined> {
@@ -90,7 +124,9 @@ export class AuthorityService {
     const memberships = await this.prisma.institutionUser.findMany({
       where: {
         userId: actor.sub,
-        role: actor.role
+        role: actor.role,
+        status: "ACTIVE",
+        institution: { status: "ACTIVE" }
       },
       select: { institutionId: true }
     });
