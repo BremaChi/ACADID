@@ -122,9 +122,17 @@ enum UserRole {
   REGISTRAR
   EXAM_OFFICER
   DATA_ENTRY_OFFICER
+  READ_ONLY
   STUDENT
   GUARDIAN
   VERIFIER
+}
+
+enum InstitutionUserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
 }
 
 enum ApiKeyEnvironment {
@@ -272,6 +280,7 @@ model User {
   email        String    @unique
   passwordHash String
   fullName     String
+  phone        String?
   role         UserRole
   learnerId    String?   @unique @db.Uuid
   learner      Learner?  @relation(fields: [learnerId], references: [uuid])
@@ -282,6 +291,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   institutions InstitutionUser[]
+  invitedInstitutionUsers InstitutionUser[] @relation("InstitutionUserInviter")
   auditEvents  AuditEvent[]
   assignedDisputes Dispute[] @relation("DisputeAssignee")
   platformSettings PlatformSetting[]
@@ -289,16 +299,31 @@ model User {
 }
 
 model InstitutionUser {
-  uuid          String      @id @default(uuid()) @db.Uuid
-  userId        String      @db.Uuid
-  institutionId String      @db.Uuid
-  role          UserRole
-  createdAt     DateTime    @default(now())
+  uuid             String                @id @default(uuid()) @db.Uuid
+  userId           String                @db.Uuid
+  institutionId    String                @db.Uuid
+  role             UserRole
+  status           InstitutionUserStatus @default(ACTIVE)
+  permissions      String[]              @default([])
+  invitedById      String?               @db.Uuid
+  inviteTokenHash  String?               @unique
+  invitedAt        DateTime?
+  inviteExpiresAt  DateTime?
+  inviteAcceptedAt DateTime?
+  lastLoginAt      DateTime?
+  twoFactorRequired Boolean              @default(false)
+  suspendedAt      DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   user        User        @relation(fields: [userId], references: [uuid])
   institution Institution @relation(fields: [institutionId], references: [uuid])
+  invitedBy   User?       @relation("InstitutionUserInviter", fields: [invitedById], references: [uuid])
 
   @@unique([userId, institutionId, role])
+  @@index([institutionId, status])
+  @@index([userId, status])
+  @@index([inviteTokenHash])
 }
 
 model AuthorityGrant {

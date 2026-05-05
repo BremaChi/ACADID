@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { UserRole } from "@prisma/client";
 import type { ApiKeyEnvironment, DeveloperAccessRequestStatus, DisputeStatus, Prisma, RevenueCategory, RevenueEntryStatus, VerificationOutcome } from "@prisma/client";
 import {
   assignDisputeSchema,
@@ -172,7 +173,11 @@ export class AdminService {
       throw new BadRequestException("Only pending institution applications can be approved.");
     }
 
-    const institution = await this.prisma.$transaction(async (tx) => {
+    const registrarInviteToken = this.createInviteToken();
+    const registrarInviteTokenHash = this.hashInviteToken(registrarInviteToken);
+    const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const { institution, registrarInvite } = await this.prisma.$transaction(async (tx) => {
       const createdInstitution = await tx.institution.create({
         data: {
           institutionId: await this.nextInstitutionDisplayId(tx),
@@ -195,7 +200,64 @@ export class AdminService {
         }
       });
 
-      return createdInstitution;
+      const registrarUser = await tx.user.upsert({
+        where: { email: application.contactEmail.trim().toLowerCase() },
+        update: {
+          fullName: application.contactPersonName.trim(),
+          role: UserRole.REGISTRAR
+        },
+        create: {
+          email: application.contactEmail.trim().toLowerCase(),
+          fullName: application.contactPersonName.trim(),
+          role: UserRole.REGISTRAR,
+          passwordHash: this.passwordService.hash(randomBytes(32).toString("base64url"))
+        }
+      });
+
+      const createdRegistrarInvite = await tx.institutionUser.upsert({
+        where: {
+          userId_institutionId_role: {
+            userId: registrarUser.uuid,
+            institutionId: createdInstitution.uuid,
+            role: UserRole.REGISTRAR
+          }
+        },
+        update: {
+          status: "INVITED",
+          permissions: this.defaultPermissionsForRole(UserRole.REGISTRAR),
+          invitedById: auth.sub,
+          inviteTokenHash: registrarInviteTokenHash,
+          invitedAt: new Date(),
+          inviteExpiresAt,
+          inviteAcceptedAt: null,
+          suspendedAt: null
+        },
+        create: {
+          userId: registrarUser.uuid,
+          institutionId: createdInstitution.uuid,
+          role: UserRole.REGISTRAR,
+          status: "INVITED",
+          permissions: this.defaultPermissionsForRole(UserRole.REGISTRAR),
+          invitedById: auth.sub,
+          inviteTokenHash: registrarInviteTokenHash,
+          invitedAt: new Date(),
+          inviteExpiresAt
+        },
+        include: {
+          user: {
+            select: {
+              uuid: true,
+              email: true,
+              fullName: true
+            }
+          }
+        }
+      });
+
+      return {
+        institution: createdInstitution,
+        registrarInvite: createdRegistrarInvite
+      };
     });
 
     await this.audit.write({
@@ -208,14 +270,23 @@ export class AdminService {
       outcome: "SUCCESS",
       metadata: {
         institutionId: institution.institutionId,
-        applicationType: application.type
+        applicationType: application.type,
+        registrarInviteId: registrarInvite.uuid
       }
     });
 
     return {
       accepted: true,
       applicationId: id,
-      institution
+      institution,
+      registrarInvite: {
+        id: registrarInvite.uuid,
+        status: registrarInvite.status,
+        inviteExpiresAt: registrarInvite.inviteExpiresAt,
+        user: registrarInvite.user
+      },
+      inviteToken: registrarInviteToken,
+      warning: "Registrar invite token is shown once for sandbox delivery. Route it through the email provider before pilot use."
     };
   }
 
@@ -1395,6 +1466,30 @@ export class AdminService {
   private createClientSecret(environment: "SANDBOX" | "PRODUCTION") {
     const prefix = environment === "PRODUCTION" ? "sk_live" : "sk_sandbox";
     return `${prefix}_${randomBytes(32).toString("base64url")}`;
+  }
+
+  private createInviteToken() {
+    return `inv_${randomBytes(32).toString("base64url")}`;
+  }
+
+  private hashInviteToken(token: string) {
+    return createHash("sha256").update(token).digest("hex");
+  }
+
+  private defaultPermissionsForRole(role: UserRole) {
+    if (role === UserRole.REGISTRAR) {
+      return ["staff:manage", "ingest:write", "govern:review", "govern:publish", "records:amend", "developer_tools:manage", "record_requests:approve"];
+    }
+    if (role === UserRole.EXAM_OFFICER) {
+      return ["students:read", "results:read", "govern:review", "record_requests:verify"];
+    }
+    if (role === UserRole.DATA_ENTRY_OFFICER) {
+      return ["students:write", "ingest:write", "results:draft", "govern:submit", "record_requests:upload"];
+    }
+    if (role === UserRole.READ_ONLY) {
+      return ["students:read", "results:read", "credentials:read", "reports:read"];
+    }
+    return [];
   }
 
   private safeApiKeySelect() {

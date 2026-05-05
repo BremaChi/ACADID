@@ -125,6 +125,22 @@ type CreatedApiKey = ApiKey & {
   warning: string;
 };
 
+type CreatedRegistrarInvite = {
+  institution: Institution;
+  registrarInvite: {
+    id: string;
+    status: string;
+    inviteExpiresAt: string;
+    user: {
+      uuid: string;
+      email: string;
+      fullName: string;
+    };
+  };
+  inviteToken: string;
+  warning: string;
+};
+
 type LoginResponse = {
   accessToken: string;
   user: {
@@ -506,6 +522,7 @@ export function FounderConsole() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<CreatedRegistrarInvite | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
   const [totpEnableCode, setTotpEnableCode] = useState("");
   const [recoveryRotateCode, setRecoveryRotateCode] = useState("");
@@ -751,8 +768,9 @@ export function FounderConsole() {
     setNotice(nextNotice);
     setTotpSetup(null);
     setRecoveryCodeStatus(null);
-    setNewRecoveryCodes(null);
-    setRecoveryRotateCode("");
+      setNewRecoveryCodes(null);
+      setCreatedInvite(null);
+      setRecoveryRotateCode("");
     setMfaEnabled(false);
   }
 
@@ -810,8 +828,9 @@ export function FounderConsole() {
     if (!token) return;
     setLoading(true);
     try {
-      await apiRequest(`/admin/institution-applications/${applicationId}/approve`, token, { method: "POST" });
-      setNotice({ tone: "success", text: "Institution application approved and partner record created." });
+      const response = await apiRequest<CreatedRegistrarInvite>(`/admin/institution-applications/${applicationId}/approve`, token, { method: "POST" });
+      setCreatedInvite(response);
+      setNotice({ tone: "success", text: "Institution application approved, workspace created, and Registrar invite generated." });
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Application approval failed.");
@@ -1267,6 +1286,7 @@ export function FounderConsole() {
         </section>
       </div>
       {createdKey ? <SecretModal apiKey={createdKey} onClose={() => setCreatedKey(null)} /> : null}
+      {createdInvite ? <RegistrarInviteModal invite={createdInvite} onClose={() => setCreatedInvite(null)} /> : null}
     </main>
   );
 
@@ -2735,6 +2755,24 @@ function SecretModal({ apiKey, onClose }: { apiKey: CreatedApiKey; onClose: () =
         <h2 className="text-xl font-semibold text-primary">API Key Generated</h2>
         <p className="mt-2 text-sm leading-6 text-textSecondary">{apiKey.warning}</p>
         <div className="mt-4 space-y-3"><SecretRow label="Client ID" value={apiKey.clientId} /><SecretRow label="Client Secret" value={apiKey.clientSecret} /></div>
+        <button className={`${primaryButtonClass} mt-5`} onClick={onClose}>I have saved it</button>
+      </section>
+    </div>
+  );
+}
+
+function RegistrarInviteModal({ invite, onClose }: { invite: CreatedRegistrarInvite; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4">
+      <section className="w-full max-w-lg rounded-xl border border-borderLight bg-white p-5 shadow-sm">
+        <h2 className="text-xl font-semibold text-primary">Registrar Invite Created</h2>
+        <p className="mt-2 text-sm leading-6 text-textSecondary">{invite.warning}</p>
+        <div className="mt-4 space-y-3">
+          <MetricLine label="Institution" value={invite.institution.officialName} />
+          <MetricLine label="Registrar" value={`${invite.registrarInvite.user.fullName} / ${invite.registrarInvite.user.email}`} />
+          <MetricLine label="Expires" value={formatDate(invite.registrarInvite.inviteExpiresAt)} />
+          <SecretRow label="Invite Token" value={invite.inviteToken} />
+        </div>
         <button className={`${primaryButtonClass} mt-5`} onClick={onClose}>I have saved it</button>
       </section>
     </div>

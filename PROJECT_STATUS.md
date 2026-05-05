@@ -69,6 +69,8 @@ The API has these first modules:
 - Founder API key regeneration is implemented with one-time secret display, audit logging, and status reset for rotated keys.
 - Founder emergency lockdown is implemented as a guarded API-key revocation workflow that records an audit event.
 - Institution application request-more-information and email-record actions are implemented with founder audit events.
+- Architecture v4 InstitutionUser foundation is implemented with staff invitation status, permissions, invite tokens, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
+- Founder institution approval now creates the institution workspace and a one-time Registrar invite token for the approved institution contact.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
@@ -126,6 +128,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Overview page now uses backend aggregate metrics, audit events, gateway usage, institution status distribution, and live system-health data.
 - Live API Keys page can regenerate existing keys and show the new secret once.
 - Institution Applications page can request more information and record application email actions.
+- Institution application approval now surfaces a one-time Registrar invite token so sandbox onboarding can move into the v4 human-session Institution Portal model.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -159,6 +162,7 @@ Completed successfully:
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
+- v4 InstitutionUser auth/invite foundation validates with `npm run typecheck`, `npm test`, and `npm run db:deploy`; Supabase migration `20260505000000_v4_institution_user_auth` is applied.
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
@@ -193,13 +197,12 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add the v4 InstitutionUser human staff auth/invitation lifecycle so institution dashboard actions are attributed to a human user, role, permissions, and institution scope.
-2. Add workspace isolation utilities/middleware so institution-scoped service queries derive `institution_id` from the verified session/token, not request body input.
-3. Add the v4 RecordRequest model, enums, indexes, payment/escrow status fields, and student/institution/founder API surfaces.
-4. Update founder approval to create the institution workspace, AuthorityGrant, Registrar InstitutionUser invite, public directory status, and audit event.
-5. Upgrade AuditEvent schema/writer toward the v4 minimum fields: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, IP/user-agent, timestamp.
-6. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-7. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
+1. Add workspace isolation utilities/middleware so institution-scoped service queries derive `institution_id` from the verified session/token, not request body input.
+2. Add the v4 RecordRequest model, enums, indexes, payment/escrow status fields, and student/institution/founder API surfaces.
+3. Update Engineer 2 handoff docs from v3.1 product-key-only onboarding to the v4 product-key plus human institution-session model.
+4. Upgrade AuditEvent schema/writer toward the v4 minimum fields: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, IP/user-agent, timestamp.
+5. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
+6. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
 
 ## GitHub Status
 

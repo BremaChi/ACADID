@@ -9,6 +9,10 @@ export interface AuthTokenPayload {
   learnerId?: string;
   institutionId?: string;
   institutionUuid?: string;
+  institutionName?: string;
+  institutionUserId?: string;
+  permissions?: string[];
+  sessionId?: string;
   apiKeyId?: string;
   apiKeyOwnerType?: "PRODUCT" | "INSTITUTION";
   productCode?: string;

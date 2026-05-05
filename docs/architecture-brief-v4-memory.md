@@ -396,16 +396,14 @@ Already present:
 - Supabase PostgreSQL active workflow.
 - Machine API key auth.
 - Founder login and TOTP/recovery-code foundation.
+- v4 institution staff invitation foundation: expanded InstitutionUser fields, staff invite token, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
+- Founder approval creates the institution workspace and a one-time Registrar invite token for sandbox delivery.
 - Founder Console overview, applications, API keys, disputes, verification logs, revenue, health, settings, and security foundations.
 - AuthorityGrant, Institution, Learner, Enrolment, AcademicRecord, Credential, AccessGrant, VerificationEvent, AuditEvent.
-- Existing `InstitutionUser` join model.
 
 Still needed:
 
-- Expand human auth beyond founder into institution staff sessions and invitation lifecycle.
-- Expand `InstitutionUser` into v4 staff account/invite/role/permission/security model or add an equivalent staff profile model.
 - Add `RecordRequest` model, enums, indexes, and payment/escrow lifecycle.
-- Add institution workspace creation on founder approval, including Registrar invite.
 - Add strict workspace isolation utilities for every institution-scoped service.
 - Upgrade AuditEvent schema and writer to capture v4 minimum fields.
 - Add record request queues and intelligence to Founder Console.

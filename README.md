@@ -93,6 +93,8 @@ Current v3 checkpoint:
 - Founder can regenerate API keys with one-time secret display and audit logging.
 - Founder can request more information from institution applications and record application email actions for provider delivery.
 - Founder Security includes login/audit history plus guarded emergency lockdown that revokes active API keys.
+- Institution staff human auth foundation is available through `/auth/user/login`, `/auth/user/invite`, `/auth/user/accept-invite`, `/auth/user/me`, and `/auth/user/logout`.
+- Founder institution approval now creates a Registrar invitation so approved schools can move into the v4 human-session workspace model.
 - Credential signing uses JOSE/JWS Ed25519 readiness checks and reports whether stable deployment keys are configured.
 - Founder MFA supports hashed one-time recovery codes with TOTP-protected rotation and recovery-code login fallback.
 - Successful credential-reference verification can write billable revenue ledger events when `ACADID_VERIFICATION_FEE_MINOR` is configured.
@@ -110,4 +112,4 @@ Current v4 architecture update:
 - v4 keeps the four-layer Data Center/Gateway/Product/Partner model and Supabase PostgreSQL path.
 - v4 adds mandatory institution workspace isolation, human InstitutionUser sessions, expanded audit logging, and Graduate Record Requests.
 - Normal institution dashboard actions must be attributed to human staff users, not only to a shared product API key.
-- The next build priority is InstitutionUser auth/invites, workspace scoping, RecordRequest schema/API, and founder approval creating a registrar invite.
+- The next build priority is workspace scoping middleware/utilities, RecordRequest schema/API, and updating Engineer 2 handoff docs for product-key plus human institution sessions.

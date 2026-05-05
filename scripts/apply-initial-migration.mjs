@@ -50,20 +50,41 @@ function splitSqlStatements(sql) {
   let statement = "";
   let inSingleQuote = false;
   let inDoubleQuote = false;
+  let dollarQuoteTag = null;
 
   for (let index = 0; index < sql.length; index += 1) {
     const current = sql[index];
     const previous = sql[index - 1];
+    const remaining = sql.slice(index);
 
-    if (current === "'" && !inDoubleQuote && previous !== "\\") {
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (dollarQuoteTag) {
+        if (remaining.startsWith(dollarQuoteTag)) {
+          statement += dollarQuoteTag;
+          index += dollarQuoteTag.length - 1;
+          dollarQuoteTag = null;
+          continue;
+        }
+      } else {
+        const match = remaining.match(/^\$[A-Za-z0-9_]*\$/);
+        if (match) {
+          dollarQuoteTag = match[0];
+          statement += dollarQuoteTag;
+          index += dollarQuoteTag.length - 1;
+          continue;
+        }
+      }
+    }
+
+    if (current === "'" && !inDoubleQuote && !dollarQuoteTag && previous !== "\\") {
       inSingleQuote = !inSingleQuote;
     }
 
-    if (current === '"' && !inSingleQuote) {
+    if (current === '"' && !inSingleQuote && !dollarQuoteTag) {
       inDoubleQuote = !inDoubleQuote;
     }
 
-    if (current === ";" && !inSingleQuote && !inDoubleQuote) {
+    if (current === ";" && !inSingleQuote && !inDoubleQuote && !dollarQuoteTag) {
       const trimmed = statement.trim();
       if (trimmed) {
         statements.push(trimmed);
