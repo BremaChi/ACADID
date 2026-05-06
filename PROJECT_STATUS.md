@@ -82,6 +82,9 @@ The API has these first modules:
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
 - Engineer 2 Institution Portal handoff is documented with product boundary, API contract, and sandbox verification script.
+- Cross-engineer coordination is documented through `docs/handoffs/engineering-coordination.md` and `docs/handoffs/engineer-1-api-requests.md` so product engineers can request Data Center API roots without creating shadow schemas.
+- Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
+- Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -181,6 +184,8 @@ Completed successfully:
 - Founder password recovery command validates with `npm run typecheck`, `npm test`, and missing-password guard checks; the command writes `founder.password.reset` audit events when executed.
 - Institution Portal MOU/upload-ticket endpoints validate with `npm run typecheck`, `npm test`, public `/api/portal/mou-version`, and scoped `/api/portal/upload-urls` checks.
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
+- Engineer coordination and operation runbook docs are in place for cross-team API requests, founder recovery, API key rotation, emergency lockdown, and signing key readiness.
+- Portal storage/MOU config docs and environment placeholders are in place; API health recognizes `SUPABASE_STORAGE_BUCKET`, `OBJECT_STORAGE_BUCKET`, or `STORAGE_BUCKET`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -216,8 +221,8 @@ API app:
 
 1. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 2. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-3. Add production operational runbooks for founder recovery, API key rotation, and emergency lockdown.
-4. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum before pilot.
+3. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
+4. Review dependency vulnerabilities before production without using blind force upgrades.
 
 ## GitHub Status
 

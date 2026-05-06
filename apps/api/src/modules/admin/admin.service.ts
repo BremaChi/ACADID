@@ -892,7 +892,10 @@ export class AdminService {
     const [database, auth, storage, email, webhook, signing, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
-      this.checkConfiguredService("Storage Service", Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.STORAGE_BUCKET)),
+      this.checkConfiguredService(
+        "Storage Service",
+        Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.OBJECT_STORAGE_BUCKET || process.env.STORAGE_BUCKET)
+      ),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
       this.checkWebhookDelivery(),
       this.checkCredentialSigning(),

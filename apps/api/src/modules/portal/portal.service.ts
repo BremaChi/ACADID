@@ -32,7 +32,7 @@ export class PortalService {
 
     const uploadId = randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? process.env.STORAGE_BUCKET ?? "acadid-portal-intake";
+    const bucket = this.storageBucket();
     const storageKey = this.buildStorageKey(uploadId, parsed.data.fileName);
     const storageUrl = `storage://${bucket}/${storageKey}`;
     const configuredUploadBaseUrl = process.env.ACADID_PORTAL_UPLOAD_BASE_URL;
@@ -141,6 +141,15 @@ export class PortalService {
       .slice(0, 120);
     const today = new Date().toISOString().slice(0, 10);
     return `portal-applications/${today}/${uploadId}-${safeName || "document"}`;
+  }
+
+  private storageBucket() {
+    return (
+      process.env.SUPABASE_STORAGE_BUCKET ??
+      process.env.OBJECT_STORAGE_BUCKET ??
+      process.env.STORAGE_BUCKET ??
+      "acadid-portal-intake"
+    );
   }
 
   private documentLabel(purpose: string) {

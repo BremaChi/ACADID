@@ -79,6 +79,18 @@ Credential signing:
 - Pilot/production must configure `CREDENTIAL_SIGNING_PRIVATE_KEY_PEM`, `CREDENTIAL_SIGNING_PUBLIC_KEY_PEM`, `CREDENTIAL_SIGNING_VERIFICATION_METHOD`, and `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true`.
 - See `docs/runbooks/credential-signing-keys.md`.
 
+Engineering coordination:
+
+- Product engineers should build against the Data Center API, not direct Supabase tables.
+- Use `docs/handoffs/engineering-coordination.md` for cross-engineer rules.
+- Use `docs/handoffs/engineer-1-api-requests.md` when another product needs a new backend root, field, scope, or route.
+
+Portal storage and MOU:
+
+- Institution Portal document upload metadata is controlled through the Data Center API.
+- Preferred pilot bucket env is `SUPABASE_STORAGE_BUCKET`.
+- See `docs/runbooks/portal-storage-and-mou.md`.
+
 Founder sign-in:
 
 - Open `http://localhost:3000`.

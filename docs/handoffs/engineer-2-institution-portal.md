@@ -294,3 +294,8 @@ Engineer 2 is done with MVP integration when:
 ## Engineer 1 Contact Surface
 
 If Engineer 2 needs a new field or route, request it through the Data Center API contract. Do not add a separate data store or shadow schema in the Institution Portal.
+
+Use:
+
+- `docs/handoffs/engineering-coordination.md` for the working agreement.
+- `docs/handoffs/engineer-1-api-requests.md` to record missing Data Center API needs.
