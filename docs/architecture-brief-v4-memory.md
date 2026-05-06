@@ -408,12 +408,14 @@ Already present:
 - v4 institution staff invitation foundation: expanded InstitutionUser fields, staff invite token, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
 - Founder approval creates the institution workspace and a one-time Registrar invite token for sandbox delivery.
 - Founder Console overview, applications, API keys, disputes, verification logs, revenue, health, settings, and security foundations.
+- RecordRequest model, payment/status fields, student/founder/institution API surfaces, and Founder Console review queue.
+- Workspace isolation helpers for institution-scoped service access.
+- AuditEvent v4 trace context: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, hashed IP/user-agent, and timestamp.
 - AuthorityGrant, Institution, Learner, Enrolment, AcademicRecord, Credential, AccessGrant, VerificationEvent, AuditEvent.
 
 Still needed:
 
-- Add `RecordRequest` model, enums, indexes, and payment/escrow lifecycle.
-- Add strict workspace isolation utilities for every institution-scoped service.
-- Upgrade AuditEvent schema and writer to capture v4 minimum fields.
-- Add record request queues and intelligence to Founder Console.
-- Update Engineer 2 handoff docs to v4 human-session model.
+- Provision stable production signing keys and require configured keys outside local development.
+- Add upload URL issuance and MOU version endpoints for Institution Portal file workflows.
+- Add database-backed integration tests for live Supabase founder/gateway workflows.
+- Add founder password reset/admin recovery command for local development and pilot operations.

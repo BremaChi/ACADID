@@ -14,6 +14,7 @@ export interface AuthTokenPayload {
   permissions?: string[];
   sessionId?: string;
   apiKeyId?: string;
+  clientId?: string;
   apiKeyOwnerType?: "PRODUCT" | "INSTITUTION";
   productCode?: string;
   productName?: string;

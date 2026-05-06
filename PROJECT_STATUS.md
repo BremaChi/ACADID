@@ -133,6 +133,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
 - Live Security page includes founder recovery-code status and TOTP-protected rotation with one-time display.
 - Live Security page includes login history, API key security logs, founder audit trail, and guarded emergency lockdown.
+- Audit events now include v4 gateway trace context: request ID, actor type, actor user ID, API client ID, role, endpoint, HTTP method, entity alias, hashed IP, and hashed user-agent signals.
 - Live Overview page now uses backend aggregate metrics, audit events, gateway usage, institution status distribution, and live system-health data.
 - Live API Keys page can regenerate existing keys and show the new secret once.
 - Institution Applications page can request more information and record application email actions.
@@ -171,6 +172,7 @@ Completed successfully:
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
 - v4 InstitutionUser auth/invite foundation validates with `npm run typecheck`, `npm test`, and `npm run db:deploy`; Supabase migration `20260505000000_v4_institution_user_auth` is applied.
+- v4 audit trace context validates with `npm run db:generate`, `npm run typecheck`, `npm run db:deploy`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/audit-events?search=acadid-local-audit-check-2`; Supabase migration `20260505020000_v4_audit_event_context` is applied.
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
@@ -205,12 +207,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add workspace isolation utilities/middleware so institution-scoped service queries derive `institution_id` from the verified session/token, not request body input.
-2. Add the v4 RecordRequest model, enums, indexes, payment/escrow status fields, and student/institution/founder API surfaces.
-3. Update Engineer 2 handoff docs from v3.1 product-key-only onboarding to the v4 product-key plus human institution-session model.
-4. Upgrade AuditEvent schema/writer toward the v4 minimum fields: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, IP/user-agent, timestamp.
-5. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-6. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
+1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
+2. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
+3. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+4. Add a founder password reset/admin recovery command for local development and pilot operations.
 
 ## GitHub Status
 

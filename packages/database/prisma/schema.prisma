@@ -712,21 +712,37 @@ model MouDocument {
 
 model AuditEvent {
   uuid          String   @id @default(uuid()) @db.Uuid
+  requestId     String?
+  actorType     String?
+  actorUserId   String?  @db.Uuid
+  clientId      String?
   actorId       String?  @db.Uuid
   actorRole     UserRole?
   institutionId String?  @db.Uuid
+  role          String?
+  endpoint      String?
+  httpMethod    String?
   action        String
   targetType    String
   targetId      String?
+  entityType    String?
+  entityId      String?
   outcome       String
   reason        String?
   ipAddressHash String?
+  userAgentHash String?
   metadata      Json?
   createdAt     DateTime @default(now())
 
   actor       User?        @relation(fields: [actorId], references: [uuid])
   institution Institution? @relation(fields: [institutionId], references: [uuid])
 
+  @@index([requestId])
+  @@index([actorType, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([clientId, createdAt])
   @@index([institutionId, createdAt])
+  @@index([endpoint, createdAt])
   @@index([targetType, targetId])
+  @@index([entityType, entityId])
 }

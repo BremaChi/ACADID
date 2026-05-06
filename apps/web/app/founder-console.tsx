@@ -310,13 +310,24 @@ type SystemHealth = {
 
 type AuditEvent = {
   id: string;
+  requestId: string | null;
+  actorType: string | null;
+  actorUserId: string | null;
+  clientId: string | null;
   action: string;
   label: string;
   targetType: string;
   targetId: string | null;
+  entityType: string | null;
+  entityId: string | null;
   outcome: string;
   reason: string | null;
   actorRole: string | null;
+  role: string | null;
+  endpoint: string | null;
+  httpMethod: string | null;
+  hasIpAddressHash: boolean;
+  hasUserAgentHash: boolean;
   actorName: string;
   actorEmail: string | null;
   institutionId: string | null;
@@ -2526,11 +2537,12 @@ function SecurityPage(props: {
           </div>
           <ResponsiveTable
             empty="No founder audit events recorded yet."
-            headers={["Action", "Actor", "Target", "Outcome", "When"]}
+            headers={["Action", "Actor", "Endpoint", "Trace", "Outcome", "When"]}
             rows={props.auditEvents.slice(0, 12).map((event) => [
               event.label,
-              event.actorName,
-              `${event.targetType}${event.institutionName ? ` / ${event.institutionName}` : ""}`,
+              `${event.actorName}${event.actorType ? ` / ${event.actorType}` : ""}`,
+              event.endpoint ? `${event.httpMethod ?? ""} ${event.endpoint}`.trim() : `${event.targetType}${event.institutionName ? ` / ${event.institutionName}` : ""}`,
+              event.requestId ? event.requestId.slice(0, 8) : "No request ID",
               <StatusBadge key="outcome" status={event.outcome} />,
               formatDate(event.createdAt)
             ])}

@@ -538,6 +538,7 @@ export class AuthService {
       institutionId: apiKey.institution?.institutionId,
       institutionUuid: apiKey.institution?.uuid,
       apiKeyId: apiKey.uuid,
+      clientId: apiKey.clientId,
       apiKeyOwnerType: apiKey.ownerType,
       productCode: apiKey.productCode ?? undefined,
       productName: apiKey.productName ?? undefined,
