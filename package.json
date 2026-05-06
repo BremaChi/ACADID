@@ -17,6 +17,7 @@
     "db:migrate": "node scripts/prisma-with-root-env.mjs migrate dev",
     "db:seed": "node scripts/prisma-with-root-env.mjs db seed",
     "db:studio": "node scripts/prisma-with-root-env.mjs studio",
+    "founder:reset-password": "node scripts/reset-founder-password.mjs",
     "smoke:api": "node scripts/smoke-api-supabase.mjs",
     "crypto:keygen": "node scripts/generate-credential-keypair.mjs"
   },

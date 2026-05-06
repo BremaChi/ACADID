@@ -78,6 +78,14 @@ Founder sign-in:
 - Use `SEED_SUPER_ADMIN_PASSWORD` from your local `.env`; the default example value is `ChangeMe123!`.
 - Leave the authenticator-code field empty until TOTP is enabled from the Founder Security panel.
 
+Founder password recovery for local development/pilot ops:
+
+- Generate a one-time replacement password with `npm run founder:reset-password -- --generate`.
+- If authenticator access is lost, add `--clear-mfa`.
+- To set a specific password without printing it in command output, set `FOUNDER_NEW_PASSWORD` in the current shell and run `npm run founder:reset-password`.
+- The recovery command uses `DIRECT_URL` when available, because it is an operator task rather than normal API runtime traffic.
+- The command refuses to reset non-founder users and writes a `founder.password.reset` audit event.
+
 Current v3 checkpoint:
 
 - Founder can create an institution and Authority Grant.
