@@ -139,6 +139,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live API Keys page can regenerate existing keys and show the new secret once.
 - Institution Applications page can request more information and record application email actions.
 - Institution application approval now surfaces a one-time Registrar invite token so sandbox onboarding can move into the v4 human-session Institution Portal model.
+- Institution Portal API now exposes current MOU version metadata and scoped upload-ticket issuance for registration documents, signed MOU files, and supporting documents.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -175,6 +176,7 @@ Completed successfully:
 - v4 InstitutionUser auth/invite foundation validates with `npm run typecheck`, `npm test`, and `npm run db:deploy`; Supabase migration `20260505000000_v4_institution_user_auth` is applied.
 - v4 audit trace context validates with `npm run db:generate`, `npm run typecheck`, `npm run db:deploy`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/audit-events?search=acadid-local-audit-check-2`; Supabase migration `20260505020000_v4_audit_event_context` is applied.
 - Founder password recovery command validates with `npm run typecheck`, `npm test`, and missing-password guard checks; the command writes `founder.password.reset` audit events when executed.
+- Institution Portal MOU/upload-ticket endpoints validate with `npm run typecheck`, `npm test`, public `/api/portal/mou-version`, and scoped `/api/portal/upload-urls` checks.
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
@@ -210,9 +212,9 @@ API app:
 ## Next Engineering Steps
 
 1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
-2. Add upload URL issuance and MOU version endpoints for Institution Portal when Engineer 2 starts file upload work.
-3. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-4. Add production operational runbooks for founder recovery, key rotation, and emergency lockdown.
+2. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+3. Add production operational runbooks for founder recovery, key rotation, and emergency lockdown.
+4. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum before pilot.
 
 ## GitHub Status
 

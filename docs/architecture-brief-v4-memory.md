@@ -412,11 +412,12 @@ Already present:
 - Workspace isolation helpers for institution-scoped service access.
 - AuditEvent v4 trace context: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, hashed IP/user-agent, and timestamp.
 - Founder password recovery command with super-admin guardrails, optional MFA clearing, generated one-time password support, and audit logging.
+- Institution Portal MOU version endpoint and upload-ticket endpoint for document intake handoff.
 - AuthorityGrant, Institution, Learner, Enrolment, AcademicRecord, Credential, AccessGrant, VerificationEvent, AuditEvent.
 
 Still needed:
 
 - Provision stable production signing keys and require configured keys outside local development.
-- Add upload URL issuance and MOU version endpoints for Institution Portal file workflows.
 - Add database-backed integration tests for live Supabase founder/gateway workflows.
 - Add production operational runbooks for founder recovery, key rotation, and emergency lockdown.
+- Configure real storage signing/provider values and MOU template URL/checksum before pilot.

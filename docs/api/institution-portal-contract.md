@@ -51,6 +51,102 @@ Response:
 }
 ```
 
+## MOU Version
+
+```http
+GET /portal/mou-version
+```
+
+This endpoint is public and lets the Institution Portal display the current MOU version before the school accepts it.
+
+Example response:
+
+```json
+{
+  "version": "2026.1",
+  "title": "ACAD.ID Institution Authority MOU",
+  "effectiveFrom": "2026-05-01",
+  "templateUrl": null,
+  "acceptanceRequired": true,
+  "acceptanceField": "mouAccepted",
+  "checksum": null
+}
+```
+
+## Issue Upload URL
+
+```http
+POST /portal/upload-urls
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+Required scope:
+
+```text
+institution:apply
+```
+
+Body:
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `fileName` | string | yes | 3-180 chars |
+| `contentType` | enum | yes | `application/pdf`, `image/jpeg`, `image/png`, `image/webp` |
+| `sizeBytes` | integer | yes | up to 15 MB |
+| `checksum` | string | no | 8-160 chars |
+| `purpose` | enum | yes | see supported upload purposes |
+
+Supported upload purposes:
+
+```text
+REGISTRATION_CERTIFICATE
+ACCREDITATION_LETTER
+SIGNED_MOU
+OTHER_SUPPORTING_DOCUMENT
+```
+
+Example request:
+
+```json
+{
+  "fileName": "registration-certificate.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 120000,
+  "checksum": "sha256-example",
+  "purpose": "REGISTRATION_CERTIFICATE"
+}
+```
+
+Example response:
+
+```json
+{
+  "uploadId": "uuid",
+  "status": "PROVIDER_CONFIGURATION_REQUIRED",
+  "method": "PUT",
+  "uploadUrl": null,
+  "storageUrl": "storage://acadid-portal-intake/portal-applications/2026-05-06/uuid-registration-certificate.pdf",
+  "storageKey": "portal-applications/2026-05-06/uuid-registration-certificate.pdf",
+  "expiresAt": "2026-05-06T09:15:00.000Z",
+  "maxBytes": 15728640,
+  "requiredHeaders": {
+    "content-type": "application/pdf"
+  },
+  "document": {
+    "label": "Registration Certificate",
+    "purpose": "REGISTRATION_CERTIFICATE",
+    "fileName": "registration-certificate.pdf",
+    "contentType": "application/pdf",
+    "sizeBytes": 120000,
+    "checksum": "sha256-example"
+  },
+  "warning": "Storage signing is not configured in this environment. Use storageUrl as a metadata placeholder for sandbox application submission."
+}
+```
+
+When `ACADID_PORTAL_UPLOAD_BASE_URL` is configured, `status` becomes `ISSUED` and `uploadUrl` contains the provider upload URL. Until then, Engineer 2 should use the returned `storageUrl` as sandbox metadata in `documentUploads`.
+
 ## Create Institution Application
 
 ```http
@@ -165,8 +261,6 @@ Founder can:
 
 This route is safe for Engineer 2 MVP work. Future additions should be additive where possible:
 
-- Upload URL issuance endpoint.
-- MOU template/version endpoint.
 - Application status lookup endpoint.
 - Approved institution login bootstrap endpoint.
 

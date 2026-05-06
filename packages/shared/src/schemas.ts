@@ -43,6 +43,16 @@ export const createInstitutionApplicationSchema = z.object({
   mouAccepted: z.literal(true)
 });
 
+export const portalUploadPurposes = ["REGISTRATION_CERTIFICATE", "ACCREDITATION_LETTER", "SIGNED_MOU", "OTHER_SUPPORTING_DOCUMENT"] as const;
+
+export const createPortalUploadUrlSchema = z.object({
+  fileName: z.string().min(3).max(180),
+  contentType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]),
+  sizeBytes: z.number().int().positive().max(15 * 1024 * 1024),
+  checksum: z.string().min(8).max(160).optional(),
+  purpose: z.enum(portalUploadPurposes)
+});
+
 export const developerAccessRequestScopes = ["ingest:write", "govern:write", "verify:read", "webhook:manage"] as const;
 
 export const createDeveloperAccessRequestSchema = z.object({
@@ -226,6 +236,7 @@ export const platformSettingsSchema = z.object({
 
 export type CreateInstitutionInput = z.infer<typeof createInstitutionSchema>;
 export type CreateInstitutionApplicationInput = z.infer<typeof createInstitutionApplicationSchema>;
+export type CreatePortalUploadUrlInput = z.infer<typeof createPortalUploadUrlSchema>;
 export type CreateDeveloperAccessRequestInput = z.infer<typeof createDeveloperAccessRequestSchema>;
 export type ReviewDeveloperAccessRequestInput = z.infer<typeof reviewDeveloperAccessRequestSchema>;
 export type CreateDisputeInput = z.infer<typeof createDisputeSchema>;

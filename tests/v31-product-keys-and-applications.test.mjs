@@ -76,3 +76,57 @@ test("portal institution application creates a pending founder-review item", asy
   assert.equal(application.applicationId, "application-1");
   assert.equal(application.institutionType, "SECONDARY_JSS");
 });
+
+test("portal exposes current MOU version for application acceptance", () => {
+  const service = new PortalService({ institutionApplication: {} });
+
+  const mou = service.readMouVersion();
+
+  assert.equal(mou.version, "2026.1");
+  assert.equal(mou.acceptanceRequired, true);
+  assert.equal(mou.acceptanceField, "mouAccepted");
+});
+
+test("portal upload URL issuance validates document metadata and audits the request", async () => {
+  const auditEvents = [];
+  const service = new PortalService(
+    { institutionApplication: {} },
+    {
+      write: async (event) => {
+        auditEvents.push(event);
+      }
+    }
+  );
+
+  const ticket = await service.issueUploadUrl(
+    {
+      sub: "api-key-1",
+      email: "ak_sandbox_product@api-key.acadid.local",
+      fullName: "Institution Portal Backend",
+      role: "REGISTRAR",
+      kind: "API_KEY",
+      clientId: "ak_sandbox_product",
+      productCode: "INSTITUTION_PORTAL",
+      scopes: ["institution:apply"],
+      environment: "SANDBOX",
+      iat: 1,
+      exp: 2
+    },
+    {
+      fileName: "CAC Certificate.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 120000,
+      checksum: "sha256-example",
+      purpose: "REGISTRATION_CERTIFICATE"
+    }
+  );
+
+  assert.equal(ticket.method, "PUT");
+  assert.equal(ticket.status, "PROVIDER_CONFIGURATION_REQUIRED");
+  assert.equal(ticket.uploadUrl, null);
+  assert.equal(ticket.document.label, "Registration Certificate");
+  assert.equal(ticket.storageUrl.startsWith("storage://acadid-portal-intake/portal-applications/"), true);
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "portal.upload_url.issue");
+  assert.equal(auditEvents[0].clientId, "ak_sandbox_product");
+});

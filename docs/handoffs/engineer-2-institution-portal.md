@@ -89,6 +89,61 @@ Success response:
 
 Use this token server-side when submitting applications. Do not expose the token to the browser.
 
+## MOU Version Endpoint
+
+Endpoint:
+
+```http
+GET /api/portal/mou-version
+```
+
+Use this before the MOU acceptance step so the user accepts the current version. The response includes:
+
+- `version`
+- `title`
+- `effectiveFrom`
+- `templateUrl`
+- `acceptanceRequired`
+- `acceptanceField`
+- `checksum`
+
+## Upload Ticket Endpoint
+
+Endpoint:
+
+```http
+POST /api/portal/upload-urls
+Authorization: Bearer <token from /api/auth/token>
+Content-Type: application/json
+```
+
+Required scope:
+
+```text
+institution:apply
+```
+
+Request:
+
+```json
+{
+  "fileName": "registration-certificate.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 120000,
+  "checksum": "sha256-example",
+  "purpose": "REGISTRATION_CERTIFICATE"
+}
+```
+
+Supported purposes:
+
+- `REGISTRATION_CERTIFICATE`
+- `ACCREDITATION_LETTER`
+- `SIGNED_MOU`
+- `OTHER_SUPPORTING_DOCUMENT`
+
+Use the returned `storageUrl` in the `documentUploads` array when submitting the application. If `uploadUrl` is `null`, the Data Center storage provider is not configured in that environment yet; for sandbox, keep using the returned `storageUrl` as metadata.
+
 ## Institution Application Endpoint
 
 Endpoint:
@@ -164,7 +219,7 @@ Build these first:
 
 1. Public landing page
 2. Institution registration form
-3. Document metadata step
+3. Document metadata/upload-ticket step
 4. MOU acceptance step
 5. Review and submit step
 6. Submission success page
