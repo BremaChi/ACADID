@@ -172,6 +172,7 @@ Completed successfully:
 - Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Credential signing operator tooling validates with `npm run crypto:keygen` shape checks and `npm run crypto:validate` failure checks when configured keys are missing.
+- Live Supabase smoke validation passes with `npm run smoke:api`: founder login, institution creation, developer access approval, API key auth, learner ingestion, result publishing, credential issuance, and credential verification.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
