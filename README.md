@@ -70,6 +70,14 @@ Useful commands:
 - `npm run db:deploy`
 - `npm run db:seed`
 - `npm run smoke:api`
+- `npm run crypto:keygen`
+- `npm run crypto:validate`
+
+Credential signing:
+
+- Local development may run with an ephemeral Ed25519 key and will show Credential Signing as degraded.
+- Pilot/production must configure `CREDENTIAL_SIGNING_PRIVATE_KEY_PEM`, `CREDENTIAL_SIGNING_PUBLIC_KEY_PEM`, `CREDENTIAL_SIGNING_VERIFICATION_METHOD`, and `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true`.
+- See `docs/runbooks/credential-signing-keys.md`.
 
 Founder sign-in:
 

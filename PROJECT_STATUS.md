@@ -78,6 +78,7 @@ The API has these first modules:
 - Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
 - Founder Console now has a dedicated Record Requests section with search, status filters, open/escalated/fulfilled metrics, request detail review, and governance status updates connected to `/govern/record-requests/:id/review`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
+- Credential signing operator tooling now includes `npm run crypto:keygen`, `npm run crypto:validate`, and `docs/runbooks/credential-signing-keys.md`.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
 - Engineer 2 Institution Portal handoff is documented with product boundary, API contract, and sandbox verification script.
@@ -170,6 +171,7 @@ Completed successfully:
 - Founder Revenue workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/admin/revenue` check.
 - Founder Settings workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/settings` read/save checks, and browser verification in the Founder Console.
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
+- Credential signing operator tooling validates with `npm run crypto:keygen` shape checks and `npm run crypto:validate` failure checks when configured keys are missing.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
@@ -211,9 +213,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Provision stable production signing keys in the deployment secret store using `npm run crypto:keygen`, then enable `ACADID_REQUIRE_CONFIGURED_SIGNING_KEYS=true` outside local dev.
+1. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 2. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-3. Add production operational runbooks for founder recovery, key rotation, and emergency lockdown.
+3. Add production operational runbooks for founder recovery, API key rotation, and emergency lockdown.
 4. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum before pilot.
 
 ## GitHub Status

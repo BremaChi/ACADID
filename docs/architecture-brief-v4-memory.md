@@ -413,11 +413,12 @@ Already present:
 - AuditEvent v4 trace context: request id, actor type, actor user id, client id, institution id, role, endpoint, action, entity, outcome, hashed IP/user-agent, and timestamp.
 - Founder password recovery command with super-admin guardrails, optional MFA clearing, generated one-time password support, and audit logging.
 - Institution Portal MOU version endpoint and upload-ticket endpoint for document intake handoff.
+- Credential signing key generation/validation tooling and runbook for stable Ed25519 JOSE/JWS deployment keys.
 - AuthorityGrant, Institution, Learner, Enrolment, AcademicRecord, Credential, AccessGrant, VerificationEvent, AuditEvent.
 
 Still needed:
 
-- Provision stable production signing keys and require configured keys outside local development.
+- Actually provision stable production signing keys in the deployment secret store and validate that environment.
 - Add database-backed integration tests for live Supabase founder/gateway workflows.
 - Add production operational runbooks for founder recovery, key rotation, and emergency lockdown.
 - Configure real storage signing/provider values and MOU template URL/checksum before pilot.
