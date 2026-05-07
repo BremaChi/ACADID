@@ -883,6 +883,183 @@ export class AdminService {
     };
   }
 
+  async readAcademicOperations() {
+    const generatedAt = new Date();
+    const [
+      institutions,
+      sessionGroups,
+      structureGroups,
+      structureTypeGroups,
+      enrolmentGroups,
+      batchGroups,
+      rolloverGroups,
+      sealedSessions,
+      recentRollovers,
+      reopenEvents
+    ] = await Promise.all([
+      this.prisma.institution.findMany({
+        where: { status: { in: ["ACTIVE", "SUSPENDED"] } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true,
+          tier: true
+        }
+      }),
+      this.prisma.academicSession.groupBy({
+        by: ["institutionId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.academicStructure.groupBy({
+        by: ["institutionId"],
+        _count: { _all: true }
+      }),
+      this.prisma.academicStructure.groupBy({
+        by: ["type"],
+        _count: { _all: true }
+      }),
+      this.prisma.enrolment.groupBy({
+        by: ["institutionId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.resultBatch.groupBy({
+        by: ["institutionId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.rolloverRecord.groupBy({
+        by: ["institutionId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.academicSession.findMany({
+        where: { status: "SEALED" },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+        include: {
+          institution: {
+            select: {
+              uuid: true,
+              institutionId: true,
+              officialName: true,
+              state: true
+            }
+          }
+        }
+      }),
+      this.prisma.rolloverRecord.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        include: {
+          institution: { select: { uuid: true, institutionId: true, officialName: true } },
+          learner: { select: { uuid: true, ain: true, fullName: true } },
+          fromSession: { select: { uuid: true, sessionLabel: true, periodLabel: true, status: true } },
+          toSession: { select: { uuid: true, sessionLabel: true, periodLabel: true, status: true } },
+          fromStructure: { select: { uuid: true, type: true, name: true, code: true } },
+          toStructure: { select: { uuid: true, type: true, name: true, code: true } }
+        }
+      }),
+      this.readAuditEvents({ action: "academic_session.reopen", targetType: "AcademicSession", take: 12 })
+    ]);
+
+    const totalByStatus = <Row extends { status: string; _count: { _all: number } }>(rows: Row[], status: string) =>
+      rows.filter((row) => row.status === status).reduce((sum, row) => sum + row._count._all, 0);
+    const countForInstitution = <Row extends { institutionId: string; _count: { _all: number } }>(
+      rows: Row[],
+      institutionId: string,
+      status?: string
+    ) => rows.filter((row) => row.institutionId === institutionId && (!status || ("status" in row && row.status === status))).reduce((sum, row) => sum + row._count._all, 0);
+
+    const institutionHealth = institutions.map((institution) => {
+      const activeSessions = countForInstitution(sessionGroups, institution.uuid, "ACTIVE");
+      const sealedSessionCount = countForInstitution(sessionGroups, institution.uuid, "SEALED");
+      const structureNodes = countForInstitution(structureGroups, institution.uuid);
+      const activeEnrolments = countForInstitution(enrolmentGroups, institution.uuid, "ACTIVE");
+      const pendingRollovers = countForInstitution(rolloverGroups, institution.uuid, "PENDING_ROLLOVER");
+      const publishedBatches = countForInstitution(batchGroups, institution.uuid, "PUBLISHED");
+      const rejectedBatches = countForInstitution(batchGroups, institution.uuid, "REJECTED");
+      const completionScore =
+        (activeSessions > 0 ? 25 : 0) +
+        (structureNodes > 0 ? 25 : 0) +
+        (activeEnrolments > 0 ? 25 : 0) +
+        (publishedBatches > 0 ? 25 : 0);
+      const flags = [
+        activeSessions === 0 ? "Missing active session" : null,
+        structureNodes === 0 ? "No academic structure" : null,
+        activeEnrolments === 0 ? "No active learners" : null,
+        sealedSessionCount > 0 ? `${sealedSessionCount} sealed session(s)` : null,
+        pendingRollovers > 0 ? `${pendingRollovers} pending rollover(s)` : null,
+        rejectedBatches > 0 ? `${rejectedBatches} rejected batch(es)` : null
+      ].filter((flag): flag is string => Boolean(flag));
+
+      return {
+        institutionUuid: institution.uuid,
+        institutionId: institution.institutionId,
+        institutionName: institution.officialName,
+        state: institution.state,
+        status: institution.status,
+        tier: institution.tier,
+        activeSessions,
+        sealedSessions: sealedSessionCount,
+        structureNodes,
+        activeEnrolments,
+        pendingRollovers,
+        publishedBatches,
+        rejectedBatches,
+        completionScore,
+        flags
+      };
+    });
+
+    return {
+      generatedAt,
+      metrics: {
+        activeSessions: totalByStatus(sessionGroups, "ACTIVE"),
+        sealedSessions: totalByStatus(sessionGroups, "SEALED"),
+        structureNodes: structureGroups.reduce((sum, row) => sum + row._count._all, 0),
+        activeEnrolments: totalByStatus(enrolmentGroups, "ACTIVE"),
+        pendingRollovers: totalByStatus(rolloverGroups, "PENDING_ROLLOVER"),
+        approvedRollovers: totalByStatus(rolloverGroups, "APPROVED"),
+        publishedBatches: totalByStatus(batchGroups, "PUBLISHED"),
+        rejectedBatches: totalByStatus(batchGroups, "REJECTED"),
+        reopenEscalations: reopenEvents.filter((event) => event.action === "academic_session.reopen_requested").length
+      },
+      sessionStatus: this.countRowsByStatus(sessionGroups),
+      batchStatus: this.countRowsByStatus(batchGroups),
+      rolloverStatus: this.countRowsByStatus(rolloverGroups),
+      structureTypes: structureTypeGroups.map((row) => ({ type: row.type, count: row._count._all })),
+      institutionHealth,
+      sealedSessions: sealedSessions.map((session) => ({
+        id: session.uuid,
+        institutionId: session.institution.institutionId,
+        institutionName: session.institution.officialName,
+        state: session.institution.state,
+        sessionLabel: session.sessionLabel,
+        periodType: session.periodType,
+        periodLabel: session.periodLabel,
+        isCurrent: session.isCurrent,
+        updatedAt: session.updatedAt
+      })),
+      recentRollovers: recentRollovers.map((rollover) => ({
+        id: rollover.uuid,
+        institutionId: rollover.institution.institutionId,
+        institutionName: rollover.institution.officialName,
+        learnerAin: rollover.learner.ain,
+        learnerName: rollover.learner.fullName,
+        decision: rollover.decision,
+        status: rollover.status,
+        fromSession: `${rollover.fromSession.sessionLabel} / ${rollover.fromSession.periodLabel}`,
+        toSession: rollover.toSession ? `${rollover.toSession.sessionLabel} / ${rollover.toSession.periodLabel}` : "No target session",
+        fromStructure: rollover.fromStructure ? this.describeAcademicStructure(rollover.fromStructure) : "No source structure",
+        toStructure: rollover.toStructure ? this.describeAcademicStructure(rollover.toStructure) : "No target structure",
+        createdAt: rollover.createdAt
+      })),
+      sealedSessionEscalations: reopenEvents
+    };
+  }
+
   async listAuditEvents(options: { search?: string; targetType?: string; action?: string; outcome?: string } = {}) {
     return this.readAuditEvents({ ...options, take: 250 });
   }
@@ -1632,6 +1809,20 @@ export class AdminService {
     }
 
     return Object.keys(viewed).slice(0, 5).join(", ") || "Summary";
+  }
+
+  private countRowsByStatus<Row extends { status: string; _count: { _all: number } }>(rows: Row[]) {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      counts.set(row.status, (counts.get(row.status) ?? 0) + row._count._all);
+    }
+    return Array.from(counts.entries())
+      .map(([status, count]) => ({ status, count }))
+      .sort((left, right) => left.status.localeCompare(right.status));
+  }
+
+  private describeAcademicStructure(structure: { type: string; name: string; code: string | null }) {
+    return `${this.humanizeAuditAction(structure.type)} / ${structure.name}${structure.code ? ` (${structure.code})` : ""}`;
   }
 
   private async readAuditEvents(options: { search?: string; targetType?: string; action?: string; outcome?: string; take?: number } = {}) {

@@ -296,6 +296,24 @@ Rules:
 - Rejection leaves the session sealed.
 - Request and review both write audit events with reason, actor, role, institution, and session metadata.
 
+## Founder Academic Operations Summary
+
+```http
+GET /admin/academic-operations
+```
+
+Founder-only endpoint for the Founder Console. It returns:
+
+- active/sealed session counts,
+- academic structure node counts and type mix,
+- active enrolment count,
+- pending/approved rollover counts,
+- published/rejected result batch counts,
+- sealed-session reopen escalation audit events,
+- institution-level academic setup health and flags.
+
+Product teams should use this endpoint for Founder Console visibility instead of creating direct product-to-database dashboards.
+
 ## Engineer 2 Notes
 
 - Do not hardcode Nigerian academic structures.

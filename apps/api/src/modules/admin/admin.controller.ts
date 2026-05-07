@@ -127,6 +127,11 @@ export class AdminController {
     return this.adminService.readDashboardSummary();
   }
 
+  @Get("academic-operations")
+  readAcademicOperations() {
+    return this.adminService.readAcademicOperations();
+  }
+
   @Get("audit-events")
   listAuditEvents(
     @Query("search") search?: string,

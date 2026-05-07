@@ -7,6 +7,7 @@ const apiBase = process.env.NEXT_PUBLIC_ACADID_API_URL ?? "http://localhost:4000
 const navItems = [
   "Overview",
   "Institutions",
+  "Academic Operations",
   "Institution Applications",
   "API Keys",
   "Developer Access Requests",
@@ -364,6 +365,68 @@ type DashboardSummary = {
   latestAuditEvents: AuditEvent[];
 };
 
+type AcademicOperations = {
+  generatedAt: string;
+  metrics: {
+    activeSessions: number;
+    sealedSessions: number;
+    structureNodes: number;
+    activeEnrolments: number;
+    pendingRollovers: number;
+    approvedRollovers: number;
+    publishedBatches: number;
+    rejectedBatches: number;
+    reopenEscalations: number;
+  };
+  sessionStatus: Array<{ status: string; count: number }>;
+  batchStatus: Array<{ status: string; count: number }>;
+  rolloverStatus: Array<{ status: string; count: number }>;
+  structureTypes: Array<{ type: string; count: number }>;
+  institutionHealth: Array<{
+    institutionUuid: string;
+    institutionId: string;
+    institutionName: string;
+    state: string;
+    status: string;
+    tier: string;
+    activeSessions: number;
+    sealedSessions: number;
+    structureNodes: number;
+    activeEnrolments: number;
+    pendingRollovers: number;
+    publishedBatches: number;
+    rejectedBatches: number;
+    completionScore: number;
+    flags: string[];
+  }>;
+  sealedSessions: Array<{
+    id: string;
+    institutionId: string;
+    institutionName: string;
+    state: string;
+    sessionLabel: string;
+    periodType: string;
+    periodLabel: string;
+    isCurrent: boolean;
+    updatedAt: string;
+  }>;
+  recentRollovers: Array<{
+    id: string;
+    institutionId: string;
+    institutionName: string;
+    learnerAin: string;
+    learnerName: string;
+    decision: string;
+    status: string;
+    fromSession: string;
+    toSession: string;
+    fromStructure: string;
+    toStructure: string;
+    createdAt: string;
+  }>;
+  sealedSessionEscalations: AuditEvent[];
+};
+
 type RevenueOverview = {
   generatedAt: string;
   currency: string;
@@ -541,6 +604,10 @@ async function loadDashboardSummary(token: string): Promise<DashboardSummary> {
   return apiRequest<DashboardSummary>("/admin/dashboard-summary", token);
 }
 
+async function loadAcademicOperations(token: string): Promise<AcademicOperations> {
+  return apiRequest<AcademicOperations>("/admin/academic-operations", token);
+}
+
 async function loadAuditEvents(token: string): Promise<AuditEvent[]> {
   return apiRequest<AuditEvent[]>("/admin/audit-events", token);
 }
@@ -575,6 +642,7 @@ export function FounderConsole() {
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+  const [academicOperations, setAcademicOperations] = useState<AcademicOperations | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingsResponse | null>(null);
@@ -768,6 +836,7 @@ export function FounderConsole() {
         nextVerificationLogs,
         nextSystemHealth,
         nextDashboardSummary,
+        nextAcademicOperations,
         nextAuditEvents,
         nextRevenueOverview,
         nextPlatformSettings,
@@ -782,6 +851,7 @@ export function FounderConsole() {
         loadVerificationLogs(activeToken),
         loadSystemHealth(activeToken),
         loadDashboardSummary(activeToken),
+        loadAcademicOperations(activeToken),
         loadAuditEvents(activeToken),
         loadRevenueOverview(activeToken),
         loadPlatformSettings(activeToken),
@@ -796,6 +866,7 @@ export function FounderConsole() {
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
       setDashboardSummary(nextDashboardSummary);
+      setAcademicOperations(nextAcademicOperations);
       setAuditEvents(nextAuditEvents);
       setRevenueOverview(nextRevenueOverview);
       setPlatformSettings(nextPlatformSettings);
@@ -855,6 +926,7 @@ export function FounderConsole() {
     setVerificationLogs([]);
     setSystemHealth(null);
     setDashboardSummary(null);
+    setAcademicOperations(null);
     setAuditEvents([]);
     setRevenueOverview(null);
     setPlatformSettings(null);
@@ -1453,6 +1525,9 @@ export function FounderConsole() {
         />
       );
     }
+    if (activePage === "Academic Operations") {
+      return <AcademicOperationsPage operations={academicOperations} onViewHealth={() => setActivePage("System Health")} />;
+    }
     if (activePage === "Institution Applications") {
       return (
         <ApplicationsPage
@@ -1750,6 +1825,118 @@ function InstitutionsPage(props: {
         </Card>
         <InstitutionDetail apiKeys={props.apiKeys} auditEvents={props.auditEvents} developerRequests={props.developerRequests} institution={props.selectedInstitution} verificationLogs={props.verificationLogs} />
       </div>
+    </div>
+  );
+}
+
+function AcademicOperationsPage({ operations, onViewHealth }: { operations: AcademicOperations | null; onViewHealth: () => void }) {
+  const metrics = operations?.metrics;
+  const institutionHealth = operations?.institutionHealth ?? [];
+  const atRiskInstitutions = institutionHealth.filter((institution) => institution.flags.length > 0).slice(0, 12);
+  const completionAverage = institutionHealth.length
+    ? Math.round(institutionHealth.reduce((sum, institution) => sum + institution.completionScore, 0) / institutionHealth.length)
+    : 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Active Sessions" value={metrics?.activeSessions ?? "--"} helper="Open academic periods" tone="success" icon="Academic Operations" />
+        <MetricCard label="Structure Nodes" value={metrics?.structureNodes ?? "--"} helper="Classes, subjects, departments, courses" tone="accent" icon="Institutions" />
+        <MetricCard label="Pending Rollovers" value={metrics?.pendingRollovers ?? "--"} helper="Manual progression queue" tone={metrics?.pendingRollovers ? "warning" : "success"} icon="Record Requests" />
+        <MetricCard label="Sealed Sessions" value={metrics?.sealedSessions ?? "--"} helper="Locked academic periods" tone={metrics?.sealedSessions ? "warning" : "accent"} icon="Security" />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <SectionTitle title="Institution Academic Health" subtitle={operations ? `Updated ${formatDate(operations.generatedAt)}` : "Waiting for Data Center summary."} />
+            <button className={secondaryButtonClass} onClick={onViewHealth} type="button">View System Health</button>
+          </div>
+          <ResponsiveTable
+            empty="No institution academic health data yet."
+            headers={["Institution", "Setup", "Sessions", "Structure", "Learners", "Rollovers", "Flags"]}
+            rows={institutionHealth.map((institution) => [
+              <div key="institution"><p className="font-medium text-primary">{institution.institutionName}</p><p className="text-xs text-textSecondary">{institution.institutionId} / {institution.state}</p></div>,
+              <StatusBadge key="setup" status={`${institution.completionScore}% Ready`} />,
+              `${institution.activeSessions} active / ${institution.sealedSessions} sealed`,
+              institution.structureNodes.toLocaleString(),
+              institution.activeEnrolments.toLocaleString(),
+              String(institution.pendingRollovers),
+              institution.flags.length ? institution.flags.slice(0, 3).join(", ") : "Clear"
+            ])}
+          />
+        </Card>
+
+        <div className="space-y-5">
+          <Card>
+            <SectionTitle title="Setup Readiness" subtitle="Academic operations completion across institutions." />
+            <div className="mt-4 grid gap-3">
+              <MetricLine label="Average setup completion" value={`${completionAverage}%`} />
+              <MetricLine label="Published result batches" value={String(metrics?.publishedBatches ?? "--")} />
+              <MetricLine label="Rejected result batches" value={String(metrics?.rejectedBatches ?? "--")} />
+              <MetricLine label="Reopen escalations" value={String(metrics?.reopenEscalations ?? "--")} />
+            </div>
+          </Card>
+          <Card>
+            <SectionTitle title="Structure Mix" subtitle="Institution-defined academic tree." />
+            <ListBlock
+              empty="No academic structures have been configured yet."
+              items={(operations?.structureTypes ?? []).slice(0, 8).map((item) => ({
+                title: titleCase(item.type),
+                meta: `${item.count.toLocaleString()} node${item.count === 1 ? "" : "s"}`,
+                status: "Configured"
+              }))}
+            />
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <SectionTitle title="Recent Rollovers" subtitle="Manual learner progression decisions." />
+          <ResponsiveTable
+            empty="No rollover records have been created yet."
+            headers={["Learner", "Institution", "Decision", "From", "To", "Status"]}
+            rows={(operations?.recentRollovers ?? []).map((rollover) => [
+              <div key="learner"><p className="font-medium text-primary">{rollover.learnerName}</p><p className="text-xs text-textSecondary">{rollover.learnerAin}</p></div>,
+              rollover.institutionName,
+              titleCase(rollover.decision),
+              <div key="from"><p>{rollover.fromSession}</p><p className="text-xs text-textSecondary">{rollover.fromStructure}</p></div>,
+              <div key="to"><p>{rollover.toSession}</p><p className="text-xs text-textSecondary">{rollover.toStructure}</p></div>,
+              <StatusBadge key="status" status={rollover.status} />
+            ])}
+          />
+        </Card>
+        <Card>
+          <SectionTitle title="Sealed Session Escalations" subtitle="Audited requests to reopen locked periods." />
+          <ResponsiveTable
+            empty="No sealed-session reopen escalations recorded."
+            headers={["Action", "Institution", "Reason", "Actor", "When"]}
+            rows={(operations?.sealedSessionEscalations ?? []).map((event) => [
+              event.label,
+              event.institutionName ?? event.institutionId ?? "No institution",
+              event.reason ?? "No reason recorded",
+              event.actorName,
+              formatDate(event.createdAt)
+            ])}
+          />
+        </Card>
+      </div>
+
+      <Card>
+        <SectionTitle title="Institutions Needing Attention" subtitle="Academic setup, rollover, and sealed-session signals." />
+        <ResponsiveTable
+          empty="No academic operations issues detected."
+          headers={["Institution", "Status", "Completion", "Primary Flags", "Batches"]}
+          rows={atRiskInstitutions.map((institution) => [
+            <div key="institution"><p className="font-medium text-primary">{institution.institutionName}</p><p className="text-xs text-textSecondary">{institution.institutionId}</p></div>,
+            <StatusBadge key="status" status={institution.status} />,
+            `${institution.completionScore}%`,
+            institution.flags.join(", "),
+            `${institution.publishedBatches} published / ${institution.rejectedBatches} rejected`
+          ])}
+        />
+      </Card>
     </div>
   );
 }

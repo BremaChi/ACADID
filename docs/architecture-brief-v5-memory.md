@@ -453,6 +453,7 @@ Already present:
 - Assigned-scope matching now exists in `AuthorityService` and result ingestion calls it when a v5 structure scope is supplied.
 - Rollover preview/confirm now exists in `GovernanceService`, with human-session-only enforcement, active enrolment selection, `RolloverRecord` writes, old enrolment state updates, new active enrolment creation for promoted/repeated learners, and audit events.
 - Sealed-session reopen escalation now exists in `GovernanceService`, with institution request, Founder-only approve/reject, session status update on approval, and audit events.
+- Founder Console v5 Academic Operations visibility now exists through `/admin/academic-operations` and the `Academic Operations` console page.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -470,5 +471,5 @@ Still needed:
 - Add GPA/CGPA/configured grading rule service.
 - Add invitation leads for unregistered institutions with graduate demand.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.
-- Add Founder Console v5 institution health, structure health, rollover escalations, invitation leads, and queue health.
+- Add Founder Console v5 invitation leads and deeper queue health after staff scope management.
 - Add v5 API contracts and handoff tests for Engineer 2.

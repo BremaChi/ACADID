@@ -249,6 +249,11 @@ async function main() {
     throw new Error(`Credential verification failed: ${JSON.stringify(verification)}`);
   }
 
+  const academicOperations = await request("/admin/academic-operations", { token });
+  if (!academicOperations.metrics || academicOperations.metrics.activeSessions < 1 || academicOperations.metrics.structureNodes < 1) {
+    throw new Error(`Academic operations summary failed: ${JSON.stringify(academicOperations)}`);
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -262,7 +267,8 @@ async function main() {
         learnerRows: students.rows.length,
         batchStatus: published.status,
         credentialStatus: credential.status,
-        verification: verification.cryptographicStatus
+        verification: verification.cryptographicStatus,
+        academicOperations: "READY"
       },
       null,
       2
