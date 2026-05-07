@@ -9,8 +9,10 @@ Latest architecture source:
 - `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
 - `C:\Users\HP\Downloads\ACADID_Full_Updated_Architecture_v2_1.docx`
 - `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v4_Updated.docx`
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v5 (1).docx`
 - Persistent project memory: `docs/architecture-brief-v3-memory.md`
 - Active v4 project memory: `docs/architecture-brief-v4-memory.md`
+- Active v5 project memory: `docs/architecture-brief-v5-memory.md`
 
 Created:
 
@@ -31,6 +33,7 @@ Created:
 - Architecture v3 memory note in `docs/architecture-brief-v3-memory.md`.
 - Architecture v3.1 MVP update memory covering product-level API keys, Institution Portal onboarding, founder approval, and optional institution API access.
 - Architecture v4 memory note in `docs/architecture-brief-v4-memory.md`, making Institution Workspace isolation, human institution sessions, expanded audit logging, and Graduate Record Requests the active next planning source.
+- Architecture v5 memory note in `docs/architecture-brief-v5-memory.md`, making AcademicSession, AcademicStructure, scoped staff assignment, modular result engines, manual rollover, and premium trust identity the active next planning source.
 - Founder authenticator-code security for the Founder Console.
 
 ## Implemented Foundation
@@ -85,6 +88,7 @@ The API has these first modules:
 - Cross-engineer coordination is documented through `docs/handoffs/engineering-coordination.md` and `docs/handoffs/engineer-1-api-requests.md` so product engineers can request Data Center API roots without creating shadow schemas.
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
+- Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -186,6 +190,7 @@ Completed successfully:
 - Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Engineer coordination and operation runbook docs are in place for cross-team API requests, founder recovery, API key rotation, emergency lockdown, and signing key readiness.
 - Portal storage/MOU config docs and environment placeholders are in place; API health recognizes `SUPABASE_STORAGE_BUCKET`, `OBJECT_STORAGE_BUCKET`, or `STORAGE_BUCKET`.
+- Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -219,10 +224,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
-2. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-3. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-4. Review dependency vulnerabilities before production without using blind force upgrades.
+1. Implement the v5 academic operations schema foundation: AcademicSession, AcademicStructure, assigned staff scopes, Departmental Officer role behavior, expanded ResultBatch fields, and RolloverRecord.
+2. Add v5 gateway services and contracts for academic setup, scoped staff assignment, result batch validation, rollover preview/confirm, and sealed-session escalation.
+3. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
+4. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
+5. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+6. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
+7. Review dependency vulnerabilities before production without using blind force upgrades.
 
 ## GitHub Status
 

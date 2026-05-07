@@ -26,7 +26,19 @@ Copy this template into the Open Requests section:
 
 ## Open Requests
 
-No open requests right now.
+### REQ-20260507-001: v5 Academic Operations Data Center Roots
+
+- Product: Institution Portal, Founder Console
+- Requested by: Founder / Architecture Brief v5
+- Blocking level: BLOCKED
+- User story: Engineer 2 needs academic setup, scoped staff assignment, result upload, and rollover APIs before the private Institution Portal dashboard can be built correctly.
+- Proposed endpoint or change: Add Data Center roots for AcademicSession, AcademicStructure, assigned staff scopes, expanded ResultBatch workflow, and RolloverRecord.
+- Required fields: see `docs/architecture-brief-v5-memory.md`.
+- Actor/scope: Registrar, Exam Officer, Data Entry Officer, Departmental Officer, Founder Admin.
+- Audit event: every create/update/submit/review/approve/publish/reject/rollover/reopen action must emit user id, role, institution id, endpoint, action, entity, outcome, and request id.
+- Privacy/security notes: enforce institution id from JWT and assigned scopes in the gateway; do not trust UI hiding; do not let product API keys perform human institution actions.
+- Expected response: API contracts, Prisma migration, service enforcement, tests, and Founder Console visibility.
+- Engineer 1 decision: PENDING
 
 ## Recently Completed
 
@@ -42,4 +54,3 @@ No open requests right now.
   - `POST /api/portal/institution-applications`
   - Founder Console Institution Applications review flow
 - Contract: `docs/api/institution-portal-contract.md`
-
