@@ -38,7 +38,7 @@ Copy this template into the Open Requests section:
 - Audit event: every create/update/submit/review/approve/publish/reject/rollover/reopen action must emit user id, role, institution id, endpoint, action, entity, outcome, and request id.
 - Privacy/security notes: enforce institution id from JWT and assigned scopes in the gateway; do not trust UI hiding; do not let product API keys perform human institution actions.
 - Expected response: API contracts, Prisma migration, service enforcement, tests, and Founder Console visibility.
-- Engineer 1 decision: PARTIAL - v5 schema foundation is implemented and migrated. AcademicSession and AcademicStructure setup endpoints are implemented and documented. Assigned-scope enforcement is implemented for result ingestion. Rollover preview/confirm endpoints are implemented and documented. Sealed-session escalation, staff scope management UI/API, and Founder Console v5 surfaces remain open.
+- Engineer 1 decision: PARTIAL - v5 schema foundation is implemented and migrated. AcademicSession and AcademicStructure setup endpoints are implemented and documented. Assigned-scope enforcement is implemented for result ingestion. Rollover preview/confirm endpoints and sealed-session reopen escalation are implemented and documented. Staff scope management UI/API and Founder Console v5 surfaces remain open.
 
 ## Recently Completed
 

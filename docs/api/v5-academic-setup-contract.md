@@ -257,6 +257,45 @@ Rules:
 - Session and structure IDs must belong to the same institution and must not be sealed/archived.
 - Confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates a new active enrolment for promoted/repeated learners, and writes a governance audit event.
 
+## Sealed Session Reopen Escalation
+
+Normal result uploads to sealed sessions are blocked. If a correction is required, the institution must escalate and Founder Admin must approve.
+
+```http
+POST /govern/sealed-sessions/:id/reopen-request
+```
+
+Body:
+
+```json
+{
+  "reason": "Need approved correction after registrar review.",
+  "requestedStatus": "ACTIVE"
+}
+```
+
+```http
+POST /govern/sealed-sessions/:id/reopen-review
+```
+
+Founder-only body:
+
+```json
+{
+  "decision": "APPROVE",
+  "reason": "Correction window approved for audited amendment.",
+  "newStatus": "ACTIVE"
+}
+```
+
+Rules:
+
+- Machine API keys cannot request sealed-session reopen.
+- Only Founder Admin can approve or reject a reopen request.
+- Approval changes the session from `SEALED` to `ACTIVE` or `CLOSED`.
+- Rejection leaves the session sealed.
+- Request and review both write audit events with reason, actor, role, institution, and session metadata.
+
 ## Engineer 2 Notes
 
 - Do not hardcode Nigerian academic structures.

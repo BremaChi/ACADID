@@ -254,6 +254,17 @@ export const confirmRolloverSchema = z.object({
   decisions: z.array(confirmRolloverDecisionSchema).min(1).max(500)
 });
 
+export const requestSealedSessionReopenSchema = z.object({
+  reason: z.string().min(10).max(2000),
+  requestedStatus: z.enum(["ACTIVE", "CLOSED"]).default("ACTIVE")
+});
+
+export const reviewSealedSessionReopenSchema = z.object({
+  decision: z.enum(["APPROVE", "REJECT"]),
+  reason: z.string().min(10).max(2000),
+  newStatus: z.enum(["ACTIVE", "CLOSED"]).default("ACTIVE")
+});
+
 export const createAccessGrantSchema = z.object({
   credentialRef: z.string().min(1),
   scope: z.enum(["FULL", "GPA", "SEMESTER", "SUBJECT"]).default("FULL"),
@@ -362,6 +373,8 @@ export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSch
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
 export type PreviewRolloverInput = z.infer<typeof previewRolloverSchema>;
 export type ConfirmRolloverInput = z.infer<typeof confirmRolloverSchema>;
+export type RequestSealedSessionReopenInput = z.infer<typeof requestSealedSessionReopenSchema>;
+export type ReviewSealedSessionReopenInput = z.infer<typeof reviewSealedSessionReopenSchema>;
 export type CreateAcademicSessionInput = z.infer<typeof createAcademicSessionSchema>;
 export type UpdateAcademicSessionInput = z.infer<typeof updateAcademicSessionSchema>;
 export type CreateAcademicStructureInput = z.infer<typeof createAcademicStructureSchema>;

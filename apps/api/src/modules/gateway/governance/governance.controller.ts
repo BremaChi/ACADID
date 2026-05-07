@@ -50,6 +50,17 @@ export class GovernanceController {
     return this.governanceService.confirmRollover(request.auth, body);
   }
 
+  @Post("sealed-sessions/:id/reopen-request")
+  requestSealedSessionReopen(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.requestSealedSessionReopen(request.auth, id, body);
+  }
+
+  @Post("sealed-sessions/:id/reopen-review")
+  @Roles(UserRole.ACADID_SUPER_ADMIN)
+  reviewSealedSessionReopen(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.reviewSealedSessionReopen(request.auth, id, body);
+  }
+
   @Post("amend")
   amend(@Body() body: unknown) {
     return this.governanceService.amend(body);

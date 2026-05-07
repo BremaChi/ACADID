@@ -216,3 +216,83 @@ test("machine keys cannot confirm manual rollovers", async () => {
     ForbiddenException
   );
 });
+
+function createSealedSessionHarness() {
+  const auditEvents = [];
+  let sealedSession = {
+    uuid: fromSessionId,
+    institutionId: institution.uuid,
+    sessionLabel: "2025/2026",
+    periodType: "TERM",
+    periodLabel: "Third Term",
+    status: "SEALED",
+    institution
+  };
+  const prisma = {
+    academicSession: {
+      findUnique: async ({ where }) => (where.uuid === sealedSession.uuid ? sealedSession : null),
+      update: async ({ where, data }) => {
+        if (where.uuid !== sealedSession.uuid) return null;
+        sealedSession = { ...sealedSession, ...data };
+        return sealedSession;
+      }
+    }
+  };
+  const service = new GovernanceService(
+    prisma,
+    { write: async (event) => auditEvents.push(event) },
+    { assertActorCanOperateInstitution: async () => undefined, institutionWhereForActor: async () => ({ institutionId: institution.uuid }) },
+    {}
+  );
+  const registrarAuth = {
+    sub: "registrar-user",
+    email: "registrar@example.edu.ng",
+    fullName: "Registrar",
+    role: UserRole.REGISTRAR,
+    institutionUserId: "99999999-9999-4999-8999-999999999999",
+    iat: 1,
+    exp: 2
+  };
+  const founderAuth = {
+    sub: "founder-user",
+    email: "founder@acadid.local",
+    fullName: "Founder",
+    role: UserRole.ACADID_SUPER_ADMIN,
+    iat: 1,
+    exp: 2
+  };
+  return { auditEvents, founderAuth, registrarAuth, service };
+}
+
+test("registrar escalates sealed-session reopen request and founder approves it", async () => {
+  const { auditEvents, founderAuth, registrarAuth, service } = createSealedSessionHarness();
+
+  const requested = await service.requestSealedSessionReopen(registrarAuth, fromSessionId, {
+    reason: "Need approved correction after registrar review.",
+    requestedStatus: "ACTIVE"
+  });
+  const reviewed = await service.reviewSealedSessionReopen(founderAuth, fromSessionId, {
+    decision: "APPROVE",
+    reason: "Correction window approved for audited amendment.",
+    newStatus: "ACTIVE"
+  });
+
+  assert.equal(requested.status, "ESCALATED");
+  assert.equal(reviewed.status, "ACTIVE");
+  assert.equal(auditEvents.some((event) => event.action === "academic_session.reopen_requested"), true);
+  assert.equal(auditEvents.some((event) => event.action === "academic_session.reopen_approved"), true);
+});
+
+test("non-founder cannot review sealed-session reopen requests", async () => {
+  const { registrarAuth, service } = createSealedSessionHarness();
+
+  await assert.rejects(
+    () =>
+      service.reviewSealedSessionReopen(registrarAuth, fromSessionId, {
+        decision: "APPROVE",
+        reason: "Trying to bypass founder review.",
+        newStatus: "ACTIVE"
+      }),
+    ForbiddenException
+  );
+});

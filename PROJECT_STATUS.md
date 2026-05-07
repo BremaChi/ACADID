@@ -93,6 +93,7 @@ The API has these first modules:
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
 - v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
+- v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -199,6 +200,7 @@ Completed successfully:
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
+- v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -232,9 +234,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add sealed-session escalation/reopen endpoints.
-2. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
-3. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+1. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
+2. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+3. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
 4. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 5. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
 6. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.

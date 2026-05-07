@@ -1,7 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { RecordRequestStatus, UserRole, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { confirmRolloverSchema, previewRolloverSchema, reviewRecordRequestSchema } from "@acadid/shared";
+import {
+  confirmRolloverSchema,
+  previewRolloverSchema,
+  requestSealedSessionReopenSchema,
+  reviewRecordRequestSchema,
+  reviewSealedSessionReopenSchema
+} from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
@@ -420,6 +426,108 @@ export class GovernanceService {
       institutionId: institution.institutionId,
       confirmedCount: confirmed.length,
       rollovers: confirmed
+    };
+  }
+
+  async requestSealedSessionReopen(auth: AuthTokenPayload, sessionId: string, body: unknown) {
+    const parsed = requestSealedSessionReopenSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    if (auth.kind === "API_KEY") {
+      throw new ForbiddenException("Human institution session is required for sealed-session escalation.");
+    }
+
+    const session = await this.prisma.academicSession.findUnique({
+      where: { uuid: sessionId },
+      include: { institution: { select: { uuid: true, institutionId: true, officialName: true, status: true } } }
+    });
+    if (!session || session.institution.status !== "ACTIVE") {
+      throw new BadRequestException("Active institution academic session not found.");
+    }
+    await this.authority.assertActorCanOperateInstitution(auth, session.institutionId);
+    if (session.status !== "SEALED") {
+      throw new BadRequestException("Only sealed academic sessions require reopen escalation.");
+    }
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "academic_session.reopen_requested",
+      targetType: "AcademicSession",
+      targetId: session.uuid,
+      institutionId: session.institutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.reason,
+      metadata: {
+        requestedStatus: parsed.data.requestedStatus,
+        sessionLabel: session.sessionLabel,
+        periodType: session.periodType,
+        periodLabel: session.periodLabel
+      }
+    });
+
+    return {
+      accepted: true,
+      status: "ESCALATED",
+      sessionId: session.uuid,
+      institutionId: session.institution.institutionId,
+      requestedStatus: parsed.data.requestedStatus
+    };
+  }
+
+  async reviewSealedSessionReopen(auth: AuthTokenPayload, sessionId: string, body: unknown) {
+    const parsed = reviewSealedSessionReopenSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    if (auth.role !== UserRole.ACADID_SUPER_ADMIN) {
+      throw new ForbiddenException("Only Founder Admin can review sealed-session reopen requests.");
+    }
+
+    const session = await this.prisma.academicSession.findUnique({
+      where: { uuid: sessionId },
+      include: { institution: { select: { uuid: true, institutionId: true, officialName: true, status: true } } }
+    });
+    if (!session || session.institution.status !== "ACTIVE") {
+      throw new BadRequestException("Active institution academic session not found.");
+    }
+    if (session.status !== "SEALED") {
+      throw new BadRequestException("Only sealed academic sessions can be reviewed for reopen.");
+    }
+
+    const reviewed =
+      parsed.data.decision === "APPROVE"
+        ? await this.prisma.academicSession.update({
+            where: { uuid: session.uuid },
+            data: { status: parsed.data.newStatus }
+          })
+        : session;
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: parsed.data.decision === "APPROVE" ? "academic_session.reopen_approved" : "academic_session.reopen_rejected",
+      targetType: "AcademicSession",
+      targetId: session.uuid,
+      institutionId: session.institutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.reason,
+      metadata: {
+        previousStatus: session.status,
+        newStatus: reviewed.status,
+        sessionLabel: session.sessionLabel,
+        periodType: session.periodType,
+        periodLabel: session.periodLabel
+      }
+    });
+
+    return {
+      accepted: true,
+      decision: parsed.data.decision,
+      sessionId: session.uuid,
+      institutionId: session.institution.institutionId,
+      status: reviewed.status
     };
   }
 

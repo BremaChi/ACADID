@@ -452,6 +452,7 @@ Already present:
 - Human auth tokens now carry assigned scopes for later gateway enforcement.
 - Assigned-scope matching now exists in `AuthorityService` and result ingestion calls it when a v5 structure scope is supplied.
 - Rollover preview/confirm now exists in `GovernanceService`, with human-session-only enforcement, active enrolment selection, `RolloverRecord` writes, old enrolment state updates, new active enrolment creation for promoted/repeated learners, and audit events.
+- Sealed-session reopen escalation now exists in `GovernanceService`, with institution request, Founder-only approve/reject, session status update on approval, and audit events.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -465,7 +466,7 @@ Still needed:
 - Add staff assigned-scope management endpoints/UI so Registrars can maintain the scopes now enforced by the gateway.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
-- Add sealed-session reopen/escalation rules.
+- Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
 - Add GPA/CGPA/configured grading rule service.
 - Add invitation leads for unregistered institutions with graduate demand.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.
