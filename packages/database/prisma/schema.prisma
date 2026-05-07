@@ -88,6 +88,14 @@ enum AuthorityGrantStatus {
 
 enum EnrolmentStatus {
   ACTIVE
+  PENDING_ROLLOVER
+  PROMOTED
+  REPEATED
+  TRANSFERRED_OUT
+  WITHDRAWN
+  GRADUATED
+  SUSPENDED
+  SEALED
   CLOSED
 }
 
@@ -102,13 +110,62 @@ enum PeriodType {
   SEMESTER
 }
 
+enum AcademicSessionStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  SEALED
+}
+
+enum AcademicStructureType {
+  LEVEL
+  CLASS
+  ARM
+  STREAM
+  SUBJECT
+  FACULTY
+  DEPARTMENT
+  PROGRAMME
+  COURSE
+}
+
+enum AcademicStructureStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ResultUploadMode {
+  SUBJECT_BY_SUBJECT
+  MASTER_SHEET
+  COURSE_BASED
+  MANUAL_ENTRY
+}
+
 enum AcademicRecordStatus {
   DRAFT
   SUBMITTED
   REVIEWED
   APPROVED
   PUBLISHED
+  REJECTED
+  SEALED
   AMENDED
+}
+
+enum RolloverDecision {
+  PROMOTED
+  REPEATED
+  TRANSFERRED_OUT
+  WITHDRAWN
+  GRADUATED
+  SUSPENDED
+  SEALED
+}
+
+enum RolloverStatus {
+  PENDING_ROLLOVER
+  APPROVED
+  CANCELLED
 }
 
 enum CredentialType {
@@ -144,6 +201,7 @@ enum UserRole {
   REGISTRAR
   EXAM_OFFICER
   DATA_ENTRY_OFFICER
+  DEPARTMENTAL_OFFICER
   READ_ONLY
   STUDENT
   GUARDIAN
@@ -217,36 +275,40 @@ model Learner {
   studentUserProfile User?
   disputes           Dispute[]
   recordRequests     RecordRequest[]
+  rolloverRecords    RolloverRecord[]
 
   @@index([fullName, dateOfBirth])
 }
 
 model Institution {
-  uuid         String            @id @default(uuid()) @db.Uuid
-  institutionId String           @unique
-  officialName String
-  type         InstitutionType
-  state        String
-  tier         InstitutionTier   @default(FOUNDING)
-  signingKeyId String?
-  mouSignedAt  DateTime?
-  status       InstitutionStatus @default(ACTIVE)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  uuid          String            @id @default(uuid()) @db.Uuid
+  institutionId String            @unique
+  officialName  String
+  type          InstitutionType
+  state         String
+  tier          InstitutionTier   @default(FOUNDING)
+  signingKeyId  String?
+  mouSignedAt   DateTime?
+  status        InstitutionStatus @default(ACTIVE)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  authorityGrants AuthorityGrant[]
-  enrolments      Enrolment[]
-  credentials     Credential[]
-  users           InstitutionUser[]
-  resultBatches   ResultBatch[]
-  auditEvents     AuditEvent[]
-  apiKeys         ApiKey[]
-  applications    InstitutionApplication[]
+  authorityGrants         AuthorityGrant[]
+  enrolments              Enrolment[]
+  academicSessions        AcademicSession[]
+  academicStructures      AcademicStructure[]
+  credentials             Credential[]
+  users                   InstitutionUser[]
+  resultBatches           ResultBatch[]
+  rolloverRecords         RolloverRecord[]
+  auditEvents             AuditEvent[]
+  apiKeys                 ApiKey[]
+  applications            InstitutionApplication[]
   developerAccessRequests DeveloperAccessRequest[]
-  recordRequests RecordRequest[]
-  disputes       Dispute[]
-  revenueEntries RevenueLedgerEntry[]
-  subscriptions  InstitutionSubscription[]
+  recordRequests          RecordRequest[]
+  disputes                Dispute[]
+  revenueEntries          RevenueLedgerEntry[]
+  subscriptions           InstitutionSubscription[]
 }
 
 model InstitutionApplication {
@@ -300,50 +362,58 @@ model DeveloperAccessRequest {
 }
 
 model User {
-  uuid         String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  passwordHash String
-  fullName     String
-  phone        String?
-  role         UserRole
-  learnerId    String?   @unique @db.Uuid
-  learner      Learner?  @relation(fields: [learnerId], references: [uuid])
-  mfaEnabled   Boolean   @default(false)
+  uuid                String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  passwordHash        String
+  fullName            String
+  phone               String?
+  role                UserRole
+  learnerId           String?   @unique @db.Uuid
+  learner             Learner?  @relation(fields: [learnerId], references: [uuid])
+  mfaEnabled          Boolean   @default(false)
   totpSecretEncrypted String?
-  totpEnabledAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  totpEnabledAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  institutions InstitutionUser[]
+  institutions            InstitutionUser[]
   invitedInstitutionUsers InstitutionUser[] @relation("InstitutionUserInviter")
-  auditEvents  AuditEvent[]
-  assignedDisputes Dispute[] @relation("DisputeAssignee")
-  assignedRecordRequests RecordRequest[] @relation("RecordRequestAssignee")
-  platformSettings PlatformSetting[]
-  mfaRecoveryCodes MfaRecoveryCode[]
+  auditEvents             AuditEvent[]
+  assignedDisputes        Dispute[]         @relation("DisputeAssignee")
+  assignedRecordRequests  RecordRequest[]   @relation("RecordRequestAssignee")
+  platformSettings        PlatformSetting[]
+  mfaRecoveryCodes        MfaRecoveryCode[]
 }
 
 model InstitutionUser {
-  uuid             String                @id @default(uuid()) @db.Uuid
-  userId           String                @db.Uuid
-  institutionId    String                @db.Uuid
-  role             UserRole
-  status           InstitutionUserStatus @default(ACTIVE)
-  permissions      String[]              @default([])
-  invitedById      String?               @db.Uuid
-  inviteTokenHash  String?               @unique
-  invitedAt        DateTime?
-  inviteExpiresAt  DateTime?
-  inviteAcceptedAt DateTime?
-  lastLoginAt      DateTime?
-  twoFactorRequired Boolean              @default(false)
-  suspendedAt      DateTime?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  uuid              String                @id @default(uuid()) @db.Uuid
+  userId            String                @db.Uuid
+  institutionId     String                @db.Uuid
+  role              UserRole
+  status            InstitutionUserStatus @default(ACTIVE)
+  permissions       String[]              @default([])
+  assignedScopes    Json                  @default("[]")
+  invitedById       String?               @db.Uuid
+  inviteTokenHash   String?               @unique
+  invitedAt         DateTime?
+  inviteExpiresAt   DateTime?
+  inviteAcceptedAt  DateTime?
+  lastLoginAt       DateTime?
+  twoFactorRequired Boolean               @default(false)
+  suspendedAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
-  user        User        @relation(fields: [userId], references: [uuid])
-  institution Institution @relation(fields: [institutionId], references: [uuid])
-  invitedBy   User?       @relation("InstitutionUserInviter", fields: [invitedById], references: [uuid])
+  user                      User                @relation(fields: [userId], references: [uuid])
+  institution               Institution         @relation(fields: [institutionId], references: [uuid])
+  invitedBy                 User?               @relation("InstitutionUserInviter", fields: [invitedById], references: [uuid])
+  createdAcademicSessions   AcademicSession[]   @relation("AcademicSessionCreator")
+  createdAcademicStructures AcademicStructure[] @relation("AcademicStructureCreator")
+  createdResultBatches      ResultBatch[]       @relation("ResultBatchCreator")
+  reviewedResultBatches     ResultBatch[]       @relation("ResultBatchReviewer")
+  approvedResultBatches     ResultBatch[]       @relation("ResultBatchApprover")
+  createdRollovers          RolloverRecord[]    @relation("RolloverCreator")
+  approvedRollovers         RolloverRecord[]    @relation("RolloverApprover")
 
   @@unique([userId, institutionId, role])
   @@index([institutionId, status])
@@ -400,72 +470,202 @@ model ApiKey {
 }
 
 model Enrolment {
-  uuid          String          @id @default(uuid()) @db.Uuid
-  learnerId     String          @db.Uuid
-  institutionId String          @db.Uuid
-  studentNumber String
-  level         String
-  programme     String
-  entryDate     DateTime
-  exitDate      DateTime?
-  exitType      ExitType?
-  status        EnrolmentStatus @default(ACTIVE)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  uuid              String          @id @default(uuid()) @db.Uuid
+  learnerId         String          @db.Uuid
+  institutionId     String          @db.Uuid
+  academicSessionId String?         @db.Uuid
+  structureScopeId  String?         @db.Uuid
+  studentNumber     String
+  level             String
+  programme         String
+  entryDate         DateTime
+  exitDate          DateTime?
+  exitType          ExitType?
+  status            EnrolmentStatus @default(ACTIVE)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  learner         Learner          @relation(fields: [learnerId], references: [uuid])
-  institution     Institution      @relation(fields: [institutionId], references: [uuid])
+  learner         Learner            @relation(fields: [learnerId], references: [uuid])
+  institution     Institution        @relation(fields: [institutionId], references: [uuid])
+  academicSession AcademicSession?   @relation(fields: [academicSessionId], references: [uuid])
+  structureScope  AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
   academicRecords AcademicRecord[]
+  rolloverRecords RolloverRecord[]
 
   @@unique([institutionId, studentNumber, status])
   @@index([learnerId])
+  @@index([institutionId, academicSessionId, status])
+  @@index([structureScopeId, status])
+}
+
+model AcademicSession {
+  uuid          String                @id @default(uuid()) @db.Uuid
+  institutionId String                @db.Uuid
+  sessionLabel  String
+  periodType    PeriodType
+  periodLabel   String
+  startDate     DateTime?
+  endDate       DateTime?
+  status        AcademicSessionStatus @default(DRAFT)
+  isCurrent     Boolean               @default(false)
+  createdById   String?               @db.Uuid
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  institution     Institution      @relation(fields: [institutionId], references: [uuid])
+  createdBy       InstitutionUser? @relation("AcademicSessionCreator", fields: [createdById], references: [uuid])
+  enrolments      Enrolment[]
+  resultBatches   ResultBatch[]
+  academicRecords AcademicRecord[]
+  rolloversFrom   RolloverRecord[] @relation("RolloverFromSession")
+  rolloversTo     RolloverRecord[] @relation("RolloverToSession")
+
+  @@unique([institutionId, sessionLabel, periodType, periodLabel])
+  @@index([institutionId, status])
+  @@index([institutionId, isCurrent])
+  @@index([createdById])
+}
+
+model AcademicStructure {
+  uuid          String                  @id @default(uuid()) @db.Uuid
+  institutionId String                  @db.Uuid
+  parentId      String?                 @db.Uuid
+  type          AcademicStructureType
+  name          String
+  code          String?
+  creditUnits   Int?
+  metadata      Json?
+  status        AcademicStructureStatus @default(ACTIVE)
+  createdById   String?                 @db.Uuid
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  institution     Institution         @relation(fields: [institutionId], references: [uuid])
+  parent          AcademicStructure?  @relation("AcademicStructureTree", fields: [parentId], references: [uuid])
+  children        AcademicStructure[] @relation("AcademicStructureTree")
+  createdBy       InstitutionUser?    @relation("AcademicStructureCreator", fields: [createdById], references: [uuid])
+  enrolments      Enrolment[]
+  resultBatches   ResultBatch[]
+  academicRecords AcademicRecord[]
+  rolloversFrom   RolloverRecord[]    @relation("RolloverFromStructure")
+  rolloversTo     RolloverRecord[]    @relation("RolloverToStructure")
+
+  @@index([institutionId, type, status])
+  @@index([institutionId, parentId])
+  @@index([code])
+  @@index([createdById])
 }
 
 model ResultBatch {
-  uuid          String               @id @default(uuid()) @db.Uuid
-  institutionId String               @db.Uuid
-  title         String
-  status        AcademicRecordStatus @default(DRAFT)
-  rejectionCount Int                 @default(0)
-  createdById   String              @db.Uuid
-  submittedAt   DateTime?
-  reviewedAt    DateTime?
-  approvedAt    DateTime?
-  publishedAt   DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  uuid                        String               @id @default(uuid()) @db.Uuid
+  institutionId               String               @db.Uuid
+  academicSessionId           String?              @db.Uuid
+  structureScopeId            String?              @db.Uuid
+  uploadMode                  ResultUploadMode     @default(MASTER_SHEET)
+  title                       String
+  batchLabel                  String?
+  status                      AcademicRecordStatus @default(DRAFT)
+  rejectionCount              Int                  @default(0)
+  createdById                 String               @db.Uuid
+  createdByInstitutionUserId  String?              @db.Uuid
+  reviewedByInstitutionUserId String?              @db.Uuid
+  approvedByInstitutionUserId String?              @db.Uuid
+  recordCount                 Int                  @default(0)
+  validationSummary           Json?
+  rejectionReason             String?
+  submittedAt                 DateTime?
+  reviewedAt                  DateTime?
+  approvedAt                  DateTime?
+  publishedAt                 DateTime?
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
 
-  institution     Institution      @relation(fields: [institutionId], references: [uuid])
-  academicRecords AcademicRecord[]
+  institution               Institution        @relation(fields: [institutionId], references: [uuid])
+  academicSession           AcademicSession?   @relation(fields: [academicSessionId], references: [uuid])
+  structureScope            AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
+  createdByInstitutionUser  InstitutionUser?   @relation("ResultBatchCreator", fields: [createdByInstitutionUserId], references: [uuid])
+  reviewedByInstitutionUser InstitutionUser?   @relation("ResultBatchReviewer", fields: [reviewedByInstitutionUserId], references: [uuid])
+  approvedByInstitutionUser InstitutionUser?   @relation("ResultBatchApprover", fields: [approvedByInstitutionUserId], references: [uuid])
+  academicRecords           AcademicRecord[]
 
   @@index([institutionId, status])
+  @@index([institutionId, academicSessionId, status])
+  @@index([structureScopeId, status])
+  @@index([createdByInstitutionUserId])
+  @@index([reviewedByInstitutionUserId])
+  @@index([approvedByInstitutionUserId])
 }
 
 model AcademicRecord {
-  uuid          String               @id @default(uuid()) @db.Uuid
-  enrolmentId   String               @db.Uuid
-  resultBatchId String?              @db.Uuid
-  periodType    PeriodType
-  periodLabel   String
-  subjectCode   String
-  subjectName   String
-  caScore       Decimal?
-  examScore     Decimal?
-  totalScore    Decimal
-  grade         String
-  status        AcademicRecordStatus @default(DRAFT)
-  publishedAt   DateTime?
-  version       Int                  @default(1)
-  supersedesId  String?              @db.Uuid
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  uuid              String               @id @default(uuid()) @db.Uuid
+  enrolmentId       String               @db.Uuid
+  resultBatchId     String?              @db.Uuid
+  academicSessionId String?              @db.Uuid
+  structureScopeId  String?              @db.Uuid
+  periodType        PeriodType
+  periodLabel       String
+  subjectCode       String
+  subjectName       String
+  caScore           Decimal?
+  examScore         Decimal?
+  totalScore        Decimal
+  grade             String
+  status            AcademicRecordStatus @default(DRAFT)
+  publishedAt       DateTime?
+  version           Int                  @default(1)
+  supersedesId      String?              @db.Uuid
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  enrolment   Enrolment    @relation(fields: [enrolmentId], references: [uuid])
-  resultBatch ResultBatch? @relation(fields: [resultBatchId], references: [uuid])
-  credentials Credential[]
+  enrolment       Enrolment          @relation(fields: [enrolmentId], references: [uuid])
+  resultBatch     ResultBatch?       @relation(fields: [resultBatchId], references: [uuid])
+  academicSession AcademicSession?   @relation(fields: [academicSessionId], references: [uuid])
+  structureScope  AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
+  credentials     Credential[]
 
   @@index([enrolmentId, periodLabel])
   @@index([status])
+  @@index([academicSessionId, status])
+  @@index([structureScopeId, status])
+  @@index([resultBatchId, status])
+}
+
+model RolloverRecord {
+  uuid            String           @id @default(uuid()) @db.Uuid
+  institutionId   String           @db.Uuid
+  learnerId       String           @db.Uuid
+  enrolmentId     String?          @db.Uuid
+  fromSessionId   String           @db.Uuid
+  toSessionId     String?          @db.Uuid
+  fromStructureId String?          @db.Uuid
+  toStructureId   String?          @db.Uuid
+  decision        RolloverDecision
+  status          RolloverStatus   @default(PENDING_ROLLOVER)
+  reason          String?
+  createdById     String?          @db.Uuid
+  approvedById    String?          @db.Uuid
+  approvedAt      DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  institution   Institution        @relation(fields: [institutionId], references: [uuid])
+  learner       Learner            @relation(fields: [learnerId], references: [uuid])
+  enrolment     Enrolment?         @relation(fields: [enrolmentId], references: [uuid])
+  fromSession   AcademicSession    @relation("RolloverFromSession", fields: [fromSessionId], references: [uuid])
+  toSession     AcademicSession?   @relation("RolloverToSession", fields: [toSessionId], references: [uuid])
+  fromStructure AcademicStructure? @relation("RolloverFromStructure", fields: [fromStructureId], references: [uuid])
+  toStructure   AcademicStructure? @relation("RolloverToStructure", fields: [toStructureId], references: [uuid])
+  createdBy     InstitutionUser?   @relation("RolloverCreator", fields: [createdById], references: [uuid])
+  approvedBy    InstitutionUser?   @relation("RolloverApprover", fields: [approvedById], references: [uuid])
+
+  @@index([institutionId, status])
+  @@index([learnerId, createdAt])
+  @@index([fromSessionId, status])
+  @@index([toSessionId, status])
+  @@index([fromStructureId])
+  @@index([toStructureId])
+  @@index([approvedById])
 }
 
 model Credential {
@@ -484,9 +684,9 @@ model Credential {
   revokedAt        DateTime?
   revocationReason String?
 
-  learner        Learner         @relation(fields: [learnerId], references: [uuid])
-  institution    Institution     @relation(fields: [institutionId], references: [uuid])
-  academicRecord AcademicRecord? @relation(fields: [academicRecordId], references: [uuid])
+  learner        Learner              @relation(fields: [learnerId], references: [uuid])
+  institution    Institution          @relation(fields: [institutionId], references: [uuid])
+  academicRecord AcademicRecord?      @relation(fields: [academicRecordId], references: [uuid])
   accessGrants   AccessGrant[]
   verifications  VerificationEvent[]
   disputes       Dispute[]
@@ -518,19 +718,19 @@ model AccessGrant {
 }
 
 model VerificationEvent {
-  uuid          String              @id @default(uuid()) @db.Uuid
-  credentialId  String              @db.Uuid
-  accessGrantId String?             @db.Uuid
-  verifierType  String
-  verifierName  String?
+  uuid                   String              @id @default(uuid()) @db.Uuid
+  credentialId           String              @db.Uuid
+  accessGrantId          String?             @db.Uuid
+  verifierType           String
+  verifierName           String?
   verifierEmailEncrypted String?
-  ipAddressHash String?
-  outcome       VerificationOutcome
-  verifiedAt    DateTime            @default(now())
-  scopeViewed   Json
+  ipAddressHash          String?
+  outcome                VerificationOutcome
+  verifiedAt             DateTime            @default(now())
+  scopeViewed            Json
 
-  credential  Credential   @relation(fields: [credentialId], references: [uuid])
-  accessGrant AccessGrant? @relation(fields: [accessGrantId], references: [uuid])
+  credential     Credential           @relation(fields: [credentialId], references: [uuid])
+  accessGrant    AccessGrant?         @relation(fields: [accessGrantId], references: [uuid])
   revenueEntries RevenueLedgerEntry[]
 
   @@index([credentialId, verifiedAt])
@@ -613,25 +813,25 @@ model MfaRecoveryCode {
 }
 
 model Dispute {
-  uuid               String          @id @default(uuid()) @db.Uuid
-  title              String
-  description        String
-  category           String          @default("GENERAL")
-  priority           DisputePriority @default(NORMAL)
-  status             DisputeStatus   @default(OPEN)
-  institutionId      String?         @db.Uuid
-  learnerId          String?         @db.Uuid
-  credentialId       String?         @db.Uuid
-  reporterName       String?
-  reporterEmail      String?
-  assignedToId       String?         @db.Uuid
-  institutionNotice  String?
-  noticeSentAt       DateTime?
-  escalatedAt        DateTime?
-  resolvedAt         DateTime?
-  resolutionNote     String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  uuid              String          @id @default(uuid()) @db.Uuid
+  title             String
+  description       String
+  category          String          @default("GENERAL")
+  priority          DisputePriority @default(NORMAL)
+  status            DisputeStatus   @default(OPEN)
+  institutionId     String?         @db.Uuid
+  learnerId         String?         @db.Uuid
+  credentialId      String?         @db.Uuid
+  reporterName      String?
+  reporterEmail     String?
+  assignedToId      String?         @db.Uuid
+  institutionNotice String?
+  noticeSentAt      DateTime?
+  escalatedAt       DateTime?
+  resolvedAt        DateTime?
+  resolutionNote    String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   institution Institution? @relation(fields: [institutionId], references: [uuid])
   learner     Learner?     @relation(fields: [learnerId], references: [uuid])
@@ -711,14 +911,14 @@ model MouDocument {
 }
 
 model AuditEvent {
-  uuid          String   @id @default(uuid()) @db.Uuid
+  uuid          String    @id @default(uuid()) @db.Uuid
   requestId     String?
   actorType     String?
-  actorUserId   String?  @db.Uuid
+  actorUserId   String?   @db.Uuid
   clientId      String?
-  actorId       String?  @db.Uuid
+  actorId       String?   @db.Uuid
   actorRole     UserRole?
-  institutionId String?  @db.Uuid
+  institutionId String?   @db.Uuid
   role          String?
   endpoint      String?
   httpMethod    String?
@@ -732,7 +932,7 @@ model AuditEvent {
   ipAddressHash String?
   userAgentHash String?
   metadata      Json?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   actor       User?        @relation(fields: [actorId], references: [uuid])
   institution Institution? @relation(fields: [institutionId], references: [uuid])

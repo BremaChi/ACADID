@@ -446,7 +446,8 @@ Already present:
 - Machine auth and human institution auth.
 - Founder Console foundations.
 - Institution workspace isolation.
-- Basic ResultBatch model and batch governance.
+- v5 schema foundation for AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, expanded enrolment statuses, richer ResultBatch links, and academic record session/structure links.
+- Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
 - Credential signing foundation and runbook.
@@ -455,15 +456,14 @@ Already present:
 
 Still needed:
 
-- Add AcademicSession model, endpoints, and Founder/Institution visibility.
-- Add AcademicStructure model, endpoints, and no-hardcoding setup workflow.
-- Add assigned scopes to InstitutionUser and enforce them in gateway/service layer.
+- Add AcademicSession endpoints and Founder/Institution visibility.
+- Add AcademicStructure endpoints and no-hardcoding setup workflow.
+- Enforce InstitutionUser assigned scopes in gateway/service layer.
 - Add Departmental Officer role behavior.
-- Expand ResultBatch to v5 fields and validation summary.
-- Add RolloverRecord model, rollover preview/confirm, and sealed-session rules.
+- Add ResultBatch validation summary behavior and v5 upload modes.
+- Add rollover preview/confirm and sealed-session rules.
 - Add GPA/CGPA/configured grading rule service.
 - Add invitation leads for unregistered institutions with graduate demand.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.
 - Add Founder Console v5 institution health, structure health, rollover escalations, invitation leads, and queue health.
 - Add v5 API contracts and handoff tests for Engineer 2.
-

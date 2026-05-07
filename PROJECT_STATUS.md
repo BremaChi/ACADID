@@ -89,6 +89,7 @@ The API has these first modules:
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
+- Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -191,6 +192,7 @@ Completed successfully:
 - Engineer coordination and operation runbook docs are in place for cross-team API requests, founder recovery, API key rotation, emergency lockdown, and signing key readiness.
 - Portal storage/MOU config docs and environment placeholders are in place; API health recognizes `SUPABASE_STORAGE_BUCKET`, `OBJECT_STORAGE_BUCKET`, or `STORAGE_BUCKET`.
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
+- v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -224,8 +226,8 @@ API app:
 
 ## Next Engineering Steps
 
-1. Implement the v5 academic operations schema foundation: AcademicSession, AcademicStructure, assigned staff scopes, Departmental Officer role behavior, expanded ResultBatch fields, and RolloverRecord.
-2. Add v5 gateway services and contracts for academic setup, scoped staff assignment, result batch validation, rollover preview/confirm, and sealed-session escalation.
+1. Add v5 gateway services and contracts for AcademicSession, AcademicStructure, scoped staff assignment, result batch validation, rollover preview/confirm, and sealed-session escalation.
+2. Enforce assigned staff scopes in `AuthorityService` and protected gateway workflows.
 3. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
 4. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 5. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
