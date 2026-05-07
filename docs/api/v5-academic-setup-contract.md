@@ -187,6 +187,8 @@ MANUAL_ENTRY
 
 If session or structure IDs are provided, they must belong to the institution. Sealed sessions are rejected for normal result upload.
 
+For human non-registrar users, `structureScopeId` is checked against `InstitutionUser.assignedScopes`. A staff member assigned to `{"level":"SS1","subject":"Physics"}` can work inside that matching structure path, but a request outside that scope returns `403 Forbidden`.
+
 ## Engineer 2 Notes
 
 - Do not hardcode Nigerian academic structures.
@@ -194,4 +196,3 @@ If session or structure IDs are provided, they must belong to the institution. S
 - Keep destructive actions behind confirmation modals.
 - Do not let browser code call Supabase directly.
 - Rollover endpoints are not exposed yet; request missing needs through `docs/handoffs/engineer-1-api-requests.md`.
-

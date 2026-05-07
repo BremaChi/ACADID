@@ -355,6 +355,17 @@ export class IngestionService {
 
     const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results", auth);
     await this.assertBatchScopeBelongsToInstitution(authority.institutionUuid, parsed.data.academicSessionId, parsed.data.structureScopeId);
+    await this.authority.assertActorAssignedScope(auth, {
+      institutionId: authority.institutionUuid,
+      structureScopeId: parsed.data.structureScopeId,
+      target: {
+        upload_mode: parsed.data.uploadMode,
+        period_type: parsed.data.rows[0]?.periodType,
+        period_label: parsed.data.rows[0]?.periodLabel,
+        subject: parsed.data.rows[0]?.subjectName,
+        subject_code: parsed.data.rows[0]?.subjectCode
+      }
+    });
     if (auth.kind !== "API_KEY" && parsed.data.createdById !== auth.sub) {
       throw new BadRequestException("Result batch creator must match the authenticated user.");
     }

@@ -449,6 +449,7 @@ Already present:
 - v5 schema foundation for AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, expanded enrolment statuses, richer ResultBatch links, and academic record session/structure links.
 - v5 Academic Setup API foundation for AcademicSession and AcademicStructure create/list/update under `/ingest`, documented in `docs/api/v5-academic-setup-contract.md`.
 - Human auth tokens now carry assigned scopes for later gateway enforcement.
+- Assigned-scope matching now exists in `AuthorityService` and result ingestion calls it when a v5 structure scope is supplied.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -459,7 +460,7 @@ Already present:
 Still needed:
 
 - Add Founder/Institution UI visibility for AcademicSession and AcademicStructure setup health.
-- Enforce InstitutionUser assigned scopes in gateway/service layer.
+- Add staff assigned-scope management endpoints/UI so Registrars can maintain the scopes now enforced by the gateway.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
 - Add rollover preview/confirm and sealed-session rules.

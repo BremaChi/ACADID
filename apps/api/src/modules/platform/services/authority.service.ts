@@ -5,11 +5,22 @@ import { PrismaService } from "./prisma.service.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+type AcademicStructureScopeNode = {
+  uuid: string;
+  institutionId: string;
+  parentId: string | null;
+  type: string;
+  name: string;
+  code: string | null;
+};
+
 export interface WorkspaceScope {
   mode: "PLATFORM" | "INSTITUTION";
   institutionIds?: string[];
   primaryInstitutionId?: string;
 }
+
+export type AcademicScopeTarget = Record<string, string | undefined>;
 
 @Injectable()
 export class AuthorityService {
@@ -134,6 +145,36 @@ export class AuthorityService {
     return memberships.map((membership) => membership.institutionId);
   }
 
+  async assertActorAssignedScope(
+    actor: AuthTokenPayload,
+    input: { institutionId: string; structureScopeId?: string; target?: AcademicScopeTarget }
+  ): Promise<void> {
+    await this.assertActorCanOperateInstitution(actor, input.institutionId);
+
+    if (actor.role === UserRole.ACADID_SUPER_ADMIN || actor.role === UserRole.REGISTRAR || actor.kind === "API_KEY") {
+      return;
+    }
+
+    const assignedScopes = await this.assignedScopesForActor(actor, input.institutionId);
+    if (assignedScopes.length === 0) {
+      throw new ForbiddenException("User is not assigned to this academic scope.");
+    }
+
+    const target = {
+      ...(input.target ?? {}),
+      ...(input.structureScopeId ? await this.academicStructureScopeTarget(input.institutionId, input.structureScopeId) : {})
+    };
+
+    if (Object.keys(target).length === 0) {
+      return;
+    }
+
+    const allowed = assignedScopes.some((scope) => scopeMatchesTarget(scope, target));
+    if (!allowed) {
+      throw new ForbiddenException("User is not assigned to this academic scope.");
+    }
+  }
+
   private institutionWhere(institutionRef: string): Prisma.InstitutionWhereInput {
     const refs: Prisma.InstitutionWhereInput[] = [{ institutionId: institutionRef }];
     if (uuidPattern.test(institutionRef)) {
@@ -143,6 +184,81 @@ export class AuthorityService {
     return { OR: refs };
   }
 
+  private async assignedScopesForActor(actor: AuthTokenPayload, institutionId: string) {
+    const tokenScopes = normaliseAssignedScopes(actor.assignedScopes);
+    if (tokenScopes.length > 0) {
+      return tokenScopes;
+    }
+
+    if (!actor.institutionUserId) {
+      return [];
+    }
+
+    const membership = await this.prisma.institutionUser.findFirst({
+      where: {
+        uuid: actor.institutionUserId,
+        userId: actor.sub,
+        institutionId,
+        role: actor.role,
+        status: "ACTIVE",
+        institution: { status: "ACTIVE" }
+      },
+      select: { assignedScopes: true }
+    });
+
+    return normaliseAssignedScopes(membership?.assignedScopes);
+  }
+
+  private async academicStructureScopeTarget(institutionId: string, structureScopeId: string): Promise<AcademicScopeTarget> {
+    const target: AcademicScopeTarget = {
+      structure_scope_id: structureScopeId,
+      structureScopeId
+    };
+    let currentId: string | null = structureScopeId;
+    const visited = new Set<string>();
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const node: AcademicStructureScopeNode | null = await this.prisma.academicStructure.findUnique({
+        where: { uuid: currentId },
+        select: {
+          uuid: true,
+          institutionId: true,
+          parentId: true,
+          type: true,
+          name: true,
+          code: true
+        }
+      });
+
+      if (!node || node.institutionId !== institutionId) {
+        throw new ForbiddenException("Academic scope is outside this institution.");
+      }
+
+      const typeKey = node.type.toLowerCase();
+      target[typeKey] = node.name;
+      target[`${typeKey}_id`] = node.uuid;
+      if (node.code) {
+        target[`${typeKey}_code`] = node.code;
+      }
+      if (node.type === "COURSE" && node.code) {
+        target.course_code = node.code;
+      }
+      if (node.type === "SUBJECT") {
+        target.subject = node.name;
+        if (node.code) {
+          target.subject_code = node.code;
+        }
+      }
+      if (node.type === "ARM") {
+        target.class_arm = node.name;
+      }
+
+      currentId = node.parentId;
+    }
+
+    return target;
+  }
 }
 
 export function permissionAllows(permissions: Prisma.JsonValue, permission: string): boolean {
@@ -157,4 +273,30 @@ export function permissionAllows(permissions: Prisma.JsonValue, permission: stri
 
   const allowed = record.allowed ?? record.permissions;
   return Array.isArray(allowed) && allowed.includes(permission);
+}
+
+export function scopeMatchesTarget(scope: Record<string, unknown>, target: AcademicScopeTarget): boolean {
+  const entries = Object.entries(scope).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+  if (entries.length === 0) {
+    return false;
+  }
+
+  return entries.every(([key, value]) => {
+    const expected = target[normaliseScopeKey(key)];
+    return expected !== undefined && normaliseScopeValue(expected) === normaliseScopeValue(value);
+  });
+}
+
+function normaliseAssignedScopes(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((scope): scope is Record<string, unknown> => Boolean(scope) && typeof scope === "object" && !Array.isArray(scope))
+    : [];
+}
+
+function normaliseScopeKey(key: string) {
+  return key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`).toLowerCase();
+}
+
+function normaliseScopeValue(value: unknown) {
+  return String(value).trim().toLowerCase();
 }

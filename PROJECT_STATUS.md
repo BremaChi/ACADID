@@ -91,6 +91,7 @@ The API has these first modules:
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
+- v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 
 ### Database
@@ -195,6 +196,7 @@ Completed successfully:
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
 - v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
+- Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -228,9 +230,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add assigned staff scope enforcement in `AuthorityService` and protected gateway workflows.
-2. Add rollover preview/confirm and sealed-session escalation endpoints.
-3. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
+1. Add rollover preview/confirm and sealed-session escalation endpoints.
+2. Update Founder Console with v5 institution health, academic setup completion, active/sealed sessions, rollover escalations, invitation leads, and queue health.
+3. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
 4. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 5. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
 6. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.

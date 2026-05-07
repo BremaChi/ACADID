@@ -3,7 +3,8 @@ import test from "node:test";
 import { ForbiddenException } from "@nestjs/common";
 import {
   AuthorityService,
-  permissionAllows
+  permissionAllows,
+  scopeMatchesTarget
 } from "../apps/api/dist/apps/api/src/modules/platform/services/authority.service.js";
 
 test("permissionAllows supports all, named boolean, and permission arrays", () => {
@@ -120,4 +121,140 @@ test("workspace helpers scope institution users to active memberships only", asy
   assert.deepEqual(await service.institutionWhereForActor(auth), {
     institutionId: { in: ["institution-1", "institution-2"] }
   });
+});
+
+test("scope matcher allows exact academic assignments and rejects outside scope", () => {
+  assert.equal(
+    scopeMatchesTarget(
+      { level: "SS1", class_arm: "SS1A", subject: "Physics" },
+      { level: "SS1", class_arm: "SS1A", subject: "Physics", subject_code: "PHY" }
+    ),
+    true
+  );
+  assert.equal(
+    scopeMatchesTarget(
+      { department: "Mechanical Engineering", course_code: "MEE301" },
+      { faculty: "Engineering", department: "Mechanical Engineering", course_code: "MEE301" }
+    ),
+    true
+  );
+  assert.equal(
+    scopeMatchesTarget({ level: "SS1", subject: "Chemistry" }, { level: "SS1", subject: "Physics" }),
+    false
+  );
+});
+
+test("assigned scope enforcement blocks non-registrars outside their structure", async () => {
+  const nodes = new Map([
+    [
+      "level-ss1",
+      {
+        uuid: "level-ss1",
+        institutionId: "institution-1",
+        parentId: null,
+        type: "LEVEL",
+        name: "SS1",
+        code: null
+      }
+    ],
+    [
+      "subject-physics",
+      {
+        uuid: "subject-physics",
+        institutionId: "institution-1",
+        parentId: "level-ss1",
+        type: "SUBJECT",
+        name: "Physics",
+        code: "PHY"
+      }
+    ]
+  ]);
+  const service = new AuthorityService({
+    institutionUser: {
+      findFirst: async ({ select }) => {
+        if (select?.assignedScopes) {
+          return { assignedScopes: [{ level: "SS1", subject: "Chemistry" }] };
+        }
+        return { uuid: "membership-1" };
+      }
+    },
+    academicStructure: {
+      findUnique: async ({ where }) => nodes.get(where.uuid) ?? null
+    }
+  });
+
+  const auth = {
+    sub: "exam-user",
+    email: "exam@school.test",
+    fullName: "Exam Officer",
+    role: "EXAM_OFFICER",
+    institutionUserId: "membership-1",
+    iat: 1,
+    exp: 2
+  };
+
+  await assert.rejects(
+    () =>
+      service.assertActorAssignedScope(auth, {
+        institutionId: "institution-1",
+        structureScopeId: "subject-physics"
+      }),
+    ForbiddenException
+  );
+});
+
+test("assigned scope enforcement allows matching non-registrar structure scope", async () => {
+  const nodes = new Map([
+    [
+      "level-ss1",
+      {
+        uuid: "level-ss1",
+        institutionId: "institution-1",
+        parentId: null,
+        type: "LEVEL",
+        name: "SS1",
+        code: null
+      }
+    ],
+    [
+      "subject-physics",
+      {
+        uuid: "subject-physics",
+        institutionId: "institution-1",
+        parentId: "level-ss1",
+        type: "SUBJECT",
+        name: "Physics",
+        code: "PHY"
+      }
+    ]
+  ]);
+  const service = new AuthorityService({
+    institutionUser: {
+      findFirst: async ({ select }) => {
+        if (select?.assignedScopes) {
+          return { assignedScopes: [{ level: "SS1", subject: "Physics" }] };
+        }
+        return { uuid: "membership-1" };
+      }
+    },
+    academicStructure: {
+      findUnique: async ({ where }) => nodes.get(where.uuid) ?? null
+    }
+  });
+
+  await service.assertActorAssignedScope(
+    {
+      sub: "exam-user",
+      email: "exam@school.test",
+      fullName: "Exam Officer",
+      role: "EXAM_OFFICER",
+      institutionUserId: "membership-1",
+      iat: 1,
+      exp: 2
+    },
+    {
+      institutionId: "institution-1",
+      structureScopeId: "subject-physics"
+    }
+  );
 });
