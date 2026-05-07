@@ -12,6 +12,7 @@ export interface AuthTokenPayload {
   institutionName?: string;
   institutionUserId?: string;
   permissions?: string[];
+  assignedScopes?: unknown[];
   sessionId?: string;
   apiKeyId?: string;
   clientId?: string;

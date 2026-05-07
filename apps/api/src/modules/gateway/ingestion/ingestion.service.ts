@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
-import { formatAin, ingestResultBatchSchema, ingestStudentRegisterSchema } from "@acadid/shared";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { Prisma, UserRole } from "@prisma/client";
+import {
+  createAcademicSessionSchema,
+  createAcademicStructureSchema,
+  formatAin,
+  ingestResultBatchSchema,
+  ingestStudentRegisterSchema,
+  updateAcademicSessionSchema,
+  updateAcademicStructureSchema
+} from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
@@ -125,6 +133,220 @@ export class IngestionService {
     };
   }
 
+  async createAcademicSession(auth: AuthTokenPayload, body: unknown) {
+    const parsed = createAcademicSessionSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    const session = await this.prisma.$transaction(async (tx) => {
+      if (parsed.data.isCurrent) {
+        await tx.academicSession.updateMany({
+          where: { institutionId: institution.uuid, isCurrent: true },
+          data: { isCurrent: false }
+        });
+      }
+
+      return tx.academicSession.create({
+        data: {
+          institutionId: institution.uuid,
+          sessionLabel: parsed.data.sessionLabel.trim(),
+          periodType: parsed.data.periodType,
+          periodLabel: parsed.data.periodLabel.trim(),
+          startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
+          endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
+          status: parsed.data.status,
+          isCurrent: parsed.data.isCurrent,
+          createdById: auth.institutionUserId
+        }
+      });
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "academic_session.create",
+      targetType: "AcademicSession",
+      targetId: session.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        sessionLabel: session.sessionLabel,
+        periodType: session.periodType,
+        periodLabel: session.periodLabel,
+        status: session.status,
+        isCurrent: session.isCurrent
+      }
+    });
+
+    return { accepted: true, session };
+  }
+
+  async listAcademicSessions(auth: AuthTokenPayload, institutionRef?: string) {
+    const where = await this.academicSetupWhere(auth, institutionRef);
+    return this.prisma.academicSession.findMany({
+      where,
+      orderBy: [{ isCurrent: "desc" }, { createdAt: "desc" }],
+      take: 200
+    });
+  }
+
+  async updateAcademicSession(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = updateAcademicSessionSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.academicSession.findUnique({ where: { uuid: id } });
+    if (!existing) {
+      throw new BadRequestException("Academic session not found.");
+    }
+    await this.resolveHumanInstitution(auth, existing.institutionId);
+
+    const session = await this.prisma.$transaction(async (tx) => {
+      if (parsed.data.isCurrent) {
+        await tx.academicSession.updateMany({
+          where: { institutionId: existing.institutionId, isCurrent: true, NOT: { uuid: id } },
+          data: { isCurrent: false }
+        });
+      }
+
+      return tx.academicSession.update({
+        where: { uuid: id },
+        data: {
+          sessionLabel: parsed.data.sessionLabel?.trim(),
+          periodType: parsed.data.periodType,
+          periodLabel: parsed.data.periodLabel?.trim(),
+          startDate: parsed.data.startDate === null ? null : parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
+          endDate: parsed.data.endDate === null ? null : parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
+          status: parsed.data.status,
+          isCurrent: parsed.data.isCurrent
+        }
+      });
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "academic_session.update",
+      targetType: "AcademicSession",
+      targetId: session.uuid,
+      institutionId: session.institutionId,
+      outcome: "SUCCESS",
+      metadata: {
+        status: session.status,
+        isCurrent: session.isCurrent
+      }
+    });
+
+    return { accepted: true, session };
+  }
+
+  async createAcademicStructure(auth: AuthTokenPayload, body: unknown) {
+    const parsed = createAcademicStructureSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    await this.assertParentStructure(institution.uuid, parsed.data.parentId);
+
+    const structure = await this.prisma.academicStructure.create({
+      data: {
+        institutionId: institution.uuid,
+        parentId: parsed.data.parentId,
+        type: parsed.data.type,
+        name: parsed.data.name.trim(),
+        code: parsed.data.code?.trim(),
+        creditUnits: parsed.data.creditUnits,
+        metadata: (parsed.data.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        status: parsed.data.status,
+        createdById: auth.institutionUserId
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "academic_structure.create",
+      targetType: "AcademicStructure",
+      targetId: structure.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        type: structure.type,
+        name: structure.name,
+        parentId: structure.parentId
+      }
+    });
+
+    return { accepted: true, structure };
+  }
+
+  async listAcademicStructures(auth: AuthTokenPayload, filters: { institutionId?: string; parentId?: string; type?: string }) {
+    const where = await this.academicSetupWhere(auth, filters.institutionId);
+    return this.prisma.academicStructure.findMany({
+      where: {
+        ...where,
+        ...(filters.parentId ? { parentId: filters.parentId } : {}),
+        ...(filters.type ? { type: filters.type as Prisma.EnumAcademicStructureTypeFilter<"AcademicStructure"> } : {})
+      },
+      orderBy: [{ parentId: "asc" }, { type: "asc" }, { name: "asc" }],
+      take: 500
+    });
+  }
+
+  async updateAcademicStructure(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = updateAcademicStructureSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.academicStructure.findUnique({ where: { uuid: id } });
+    if (!existing) {
+      throw new BadRequestException("Academic structure not found.");
+    }
+    await this.resolveHumanInstitution(auth, existing.institutionId);
+    if (parsed.data.parentId && parsed.data.parentId === id) {
+      throw new BadRequestException("Academic structure cannot be its own parent.");
+    }
+    await this.assertParentStructure(existing.institutionId, parsed.data.parentId ?? undefined);
+
+    const structure = await this.prisma.academicStructure.update({
+      where: { uuid: id },
+      data: {
+        parentId: parsed.data.parentId,
+        type: parsed.data.type,
+        name: parsed.data.name?.trim(),
+        code: parsed.data.code === null ? null : parsed.data.code?.trim(),
+        creditUnits: parsed.data.creditUnits,
+        metadata:
+          parsed.data.metadata === null
+            ? Prisma.JsonNull
+            : ((parsed.data.metadata ?? undefined) as Prisma.InputJsonValue | undefined),
+        status: parsed.data.status
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "academic_structure.update",
+      targetType: "AcademicStructure",
+      targetId: structure.uuid,
+      institutionId: structure.institutionId,
+      outcome: "SUCCESS",
+      metadata: {
+        type: structure.type,
+        status: structure.status,
+        parentId: structure.parentId
+      }
+    });
+
+    return { accepted: true, structure };
+  }
+
   async ingestResults(auth: AuthTokenPayload, body: unknown) {
     const parsed = ingestResultBatchSchema.safeParse(body);
     if (!parsed.success) {
@@ -132,6 +354,7 @@ export class IngestionService {
     }
 
     const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results", auth);
+    await this.assertBatchScopeBelongsToInstitution(authority.institutionUuid, parsed.data.academicSessionId, parsed.data.structureScopeId);
     if (auth.kind !== "API_KEY" && parsed.data.createdById !== auth.sub) {
       throw new BadRequestException("Result batch creator must match the authenticated user.");
     }
@@ -160,8 +383,19 @@ export class IngestionService {
         const resultBatch = await tx.resultBatch.create({
           data: {
             institutionId: authority.institutionUuid,
+            academicSessionId: parsed.data.academicSessionId,
+            structureScopeId: parsed.data.structureScopeId,
+            uploadMode: parsed.data.uploadMode,
             title: parsed.data.title,
-            createdById
+            batchLabel: parsed.data.batchLabel,
+            createdById,
+            createdByInstitutionUserId: auth.kind === "API_KEY" ? undefined : auth.institutionUserId,
+            recordCount: parsed.data.rows.length,
+            validationSummary: {
+              acceptedRows: parsed.data.rows.length,
+              rejectedRows: 0,
+              warnings: []
+            } as Prisma.InputJsonValue
           }
         });
 
@@ -175,6 +409,8 @@ export class IngestionService {
             return {
               enrolmentId: enrolment.uuid,
               resultBatchId: resultBatch.uuid,
+              academicSessionId: parsed.data.academicSessionId,
+              structureScopeId: parsed.data.structureScopeId,
               periodType: row.periodType,
               periodLabel: row.periodLabel,
               subjectCode: row.subjectCode,
@@ -204,7 +440,10 @@ export class IngestionService {
       metadata: {
         apiKeyId: auth.apiKeyId,
         authorityGrantId: authority.authorityGrantId,
-        rowCount: parsed.data.rows.length
+        rowCount: parsed.data.rows.length,
+        academicSessionId: parsed.data.academicSessionId,
+        structureScopeId: parsed.data.structureScopeId,
+        uploadMode: parsed.data.uploadMode
       }
     });
 
@@ -213,6 +452,9 @@ export class IngestionService {
       institutionId: authority.institutionId,
       batchId: batch.uuid,
       status: batch.status,
+      academicSessionId: batch.academicSessionId,
+      structureScopeId: batch.structureScopeId,
+      uploadMode: batch.uploadMode,
       rowCount: parsed.data.rows.length
     };
   }
@@ -246,5 +488,80 @@ export class IngestionService {
 
     await this.authority.assertActorCanOperateInstitution(auth, batch.institutionId);
     return batch;
+  }
+
+  private async academicSetupWhere(auth: AuthTokenPayload, institutionRef?: string) {
+    if (institutionRef) {
+      const institution = await this.resolveReadableInstitution(auth, institutionRef);
+      return { institutionId: institution.uuid };
+    }
+
+    const scoped = await this.authority.institutionWhereForActor(auth);
+    return scoped ?? {};
+  }
+
+  private async resolveHumanInstitution(auth: AuthTokenPayload, institutionRef: string) {
+    if (auth.kind === "API_KEY") {
+      throw new ForbiddenException("Human institution session is required for academic setup.");
+    }
+
+    const institution = await this.resolveReadableInstitution(auth, institutionRef);
+    await this.authority.assertActorCanOperateInstitution(auth, institution.uuid);
+    return institution;
+  }
+
+  private async resolveReadableInstitution(auth: AuthTokenPayload, institutionRef: string) {
+    const institution = await this.prisma.institution.findFirst({
+      where: this.institutionRefWhere(institutionRef),
+      select: { uuid: true, institutionId: true, officialName: true, status: true }
+    });
+    if (!institution || institution.status !== "ACTIVE") {
+      throw new BadRequestException("Active institution not found.");
+    }
+
+    if (auth.role !== UserRole.ACADID_SUPER_ADMIN) {
+      await this.authority.assertActorCanOperateInstitution(auth, institution.uuid);
+    }
+    return institution;
+  }
+
+  private async assertParentStructure(institutionId: string, parentId?: string | null) {
+    if (!parentId) {
+      return;
+    }
+
+    const parent = await this.prisma.academicStructure.findUnique({
+      where: { uuid: parentId },
+      select: { institutionId: true }
+    });
+    if (!parent || parent.institutionId !== institutionId) {
+      throw new BadRequestException("Parent academic structure must belong to the same institution.");
+    }
+  }
+
+  private async assertBatchScopeBelongsToInstitution(institutionId: string, academicSessionId?: string, structureScopeId?: string) {
+    const [session, structure] = await Promise.all([
+      academicSessionId
+        ? this.prisma.academicSession.findUnique({ where: { uuid: academicSessionId }, select: { institutionId: true, status: true } })
+        : Promise.resolve(null),
+      structureScopeId
+        ? this.prisma.academicStructure.findUnique({ where: { uuid: structureScopeId }, select: { institutionId: true, status: true } })
+        : Promise.resolve(null)
+    ]);
+
+    if (academicSessionId && (!session || session.institutionId !== institutionId || session.status === "SEALED")) {
+      throw new BadRequestException("Academic session must belong to the institution and must not be sealed.");
+    }
+    if (structureScopeId && (!structure || structure.institutionId !== institutionId || structure.status !== "ACTIVE")) {
+      throw new BadRequestException("Academic structure scope must be active and belong to the institution.");
+    }
+  }
+
+  private institutionRefWhere(institutionRef: string): Prisma.InstitutionWhereInput {
+    return this.isUuid(institutionRef) ? { uuid: institutionRef } : { institutionId: institutionRef };
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
   }
 }

@@ -90,6 +90,30 @@ async function main() {
     })
   });
 
+  const academicSession = await request("/ingest/academic-sessions", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      institutionId: institution.institutionId,
+      sessionLabel: `2026/${runId}`,
+      periodType: "TERM",
+      periodLabel: "First Term",
+      status: "ACTIVE",
+      isCurrent: false
+    })
+  });
+
+  const academicStructure = await request("/ingest/academic-structures", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      institutionId: institution.institutionId,
+      type: "LEVEL",
+      name: `SS1 Smoke ${runId}`,
+      code: `SS1-${runId}`
+    })
+  });
+
   const developerAccessRequest = await request("/admin/developer-access-requests", {
     method: "POST",
     token,
@@ -155,6 +179,10 @@ async function main() {
     token: institutionToken,
     body: JSON.stringify({
       institutionId: institution.institutionId,
+      academicSessionId: academicSession.session.uuid,
+      structureScopeId: academicStructure.structure.uuid,
+      uploadMode: "MASTER_SHEET",
+      batchLabel: `Supabase Smoke Batch ${runId}`,
       title: `Supabase Smoke Results ${runId}`,
       rows: [
         {
@@ -227,6 +255,8 @@ async function main() {
         health: health.status,
         founderLogin: login.user.email,
         institution: institution.institutionId,
+        academicSession: academicSession.session.uuid,
+        academicStructure: academicStructure.structure.uuid,
         developerAccess: approvedDeveloperAccess.status,
         apiClient: apiClientLogin.apiClient.clientId,
         learnerRows: students.rows.length,

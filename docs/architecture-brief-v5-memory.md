@@ -447,6 +447,8 @@ Already present:
 - Founder Console foundations.
 - Institution workspace isolation.
 - v5 schema foundation for AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, expanded enrolment statuses, richer ResultBatch links, and academic record session/structure links.
+- v5 Academic Setup API foundation for AcademicSession and AcademicStructure create/list/update under `/ingest`, documented in `docs/api/v5-academic-setup-contract.md`.
+- Human auth tokens now carry assigned scopes for later gateway enforcement.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -456,8 +458,7 @@ Already present:
 
 Still needed:
 
-- Add AcademicSession endpoints and Founder/Institution visibility.
-- Add AcademicStructure endpoints and no-hardcoding setup workflow.
+- Add Founder/Institution UI visibility for AcademicSession and AcademicStructure setup health.
 - Enforce InstitutionUser assigned scopes in gateway/service layer.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.

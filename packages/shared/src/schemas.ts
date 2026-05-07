@@ -136,10 +136,91 @@ export const resultRowSchema = z.object({
   grade: z.string().min(1)
 });
 
+export const academicSessionStatuses = ["DRAFT", "ACTIVE", "CLOSED", "SEALED"] as const;
+export const academicStructureTypes = [
+  "LEVEL",
+  "CLASS",
+  "ARM",
+  "STREAM",
+  "SUBJECT",
+  "FACULTY",
+  "DEPARTMENT",
+  "PROGRAMME",
+  "COURSE"
+] as const;
+export const academicStructureStatuses = ["ACTIVE", "ARCHIVED"] as const;
+
+export const createAcademicSessionSchema = z
+  .object({
+    institutionId: z.string().min(1),
+    sessionLabel: z.string().min(3).max(40),
+    periodType: z.enum(["TERM", "SEMESTER"]),
+    periodLabel: z.string().min(3).max(80),
+    startDate: z.string().date().optional(),
+    endDate: z.string().date().optional(),
+    status: z.enum(academicSessionStatuses).default("DRAFT"),
+    isCurrent: z.boolean().default(false)
+  })
+  .refine(
+    (value) => value.startDate === undefined || value.endDate === undefined || value.startDate <= value.endDate,
+    {
+      message: "startDate must be before or equal to endDate.",
+      path: ["endDate"]
+    }
+  );
+
+export const updateAcademicSessionSchema = z
+  .object({
+    sessionLabel: z.string().min(3).max(40).optional(),
+    periodType: z.enum(["TERM", "SEMESTER"]).optional(),
+    periodLabel: z.string().min(3).max(80).optional(),
+    startDate: z.string().date().nullable().optional(),
+    endDate: z.string().date().nullable().optional(),
+    status: z.enum(academicSessionStatuses).optional(),
+    isCurrent: z.boolean().optional()
+  })
+  .refine(
+    (value) =>
+      value.startDate === undefined ||
+      value.startDate === null ||
+      value.endDate === undefined ||
+      value.endDate === null ||
+      value.startDate <= value.endDate,
+    {
+      message: "startDate must be before or equal to endDate.",
+      path: ["endDate"]
+    }
+  );
+
+export const createAcademicStructureSchema = z.object({
+  institutionId: z.string().min(1),
+  parentId: z.string().uuid().optional(),
+  type: z.enum(academicStructureTypes),
+  name: z.string().min(1).max(160),
+  code: z.string().min(1).max(80).optional(),
+  creditUnits: z.number().int().min(0).max(60).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  status: z.enum(academicStructureStatuses).default("ACTIVE")
+});
+
+export const updateAcademicStructureSchema = z.object({
+  parentId: z.string().uuid().nullable().optional(),
+  type: z.enum(academicStructureTypes).optional(),
+  name: z.string().min(1).max(160).optional(),
+  code: z.string().min(1).max(80).nullable().optional(),
+  creditUnits: z.number().int().min(0).max(60).nullable().optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
+  status: z.enum(academicStructureStatuses).optional()
+});
+
 export const ingestResultBatchSchema = z.object({
   institutionId: z.string().min(1),
   createdById: z.string().uuid().optional(),
   title: z.string().min(2),
+  academicSessionId: z.string().uuid().optional(),
+  structureScopeId: z.string().uuid().optional(),
+  uploadMode: z.enum(["SUBJECT_BY_SUBJECT", "MASTER_SHEET", "COURSE_BASED", "MANUAL_ENTRY"]).default("MASTER_SHEET"),
+  batchLabel: z.string().min(2).max(160).optional(),
   rows: z.array(resultRowSchema).min(1).max(1000)
 });
 
@@ -249,6 +330,10 @@ export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;
 export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSchema>;
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
+export type CreateAcademicSessionInput = z.infer<typeof createAcademicSessionSchema>;
+export type UpdateAcademicSessionInput = z.infer<typeof updateAcademicSessionSchema>;
+export type CreateAcademicStructureInput = z.infer<typeof createAcademicStructureSchema>;
+export type UpdateAcademicStructureInput = z.infer<typeof updateAcademicStructureSchema>;
 export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
 export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
 export type CreateRecordRequestInput = z.infer<typeof createRecordRequestSchema>;

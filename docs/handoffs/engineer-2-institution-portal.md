@@ -299,3 +299,4 @@ Use:
 
 - `docs/handoffs/engineering-coordination.md` for the working agreement.
 - `docs/handoffs/engineer-1-api-requests.md` to record missing Data Center API needs.
+- `docs/api/v5-academic-setup-contract.md` for AcademicSession, AcademicStructure, and v5 ResultBatch setup endpoints.

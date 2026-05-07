@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { InstitutionUserStatus, UserRole } from "@prisma/client";
+import { InstitutionUserStatus, UserRole, type Prisma } from "@prisma/client";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 import { PasswordService } from "./password.service.js";
@@ -44,6 +44,7 @@ export class AuthService {
             role: true,
             status: true,
             permissions: true,
+            assignedScopes: true,
             institution: {
               select: {
                 uuid: true,
@@ -97,6 +98,7 @@ export class AuthService {
       institutionName: membership?.institution.officialName,
       institutionUserId: membership?.uuid,
       permissions,
+      assignedScopes: this.normaliseAssignedScopes(membership?.assignedScopes),
       sessionId: randomUUID()
     });
 
@@ -137,6 +139,7 @@ export class AuthService {
               officialName: membership.institution.officialName,
               role: membership.role,
               permissions,
+              assignedScopes: this.normaliseAssignedScopes(membership.assignedScopes),
               membershipId: membership.uuid
             }
           : null
@@ -146,7 +149,15 @@ export class AuthService {
 
   async inviteInstitutionUser(
     auth: AuthTokenPayload,
-    input: { institutionId?: string; email?: string; fullName?: string; phone?: string; role?: string; permissions?: string[] }
+    input: {
+      institutionId?: string;
+      email?: string;
+      fullName?: string;
+      phone?: string;
+      role?: string;
+      permissions?: string[];
+      assignedScopes?: unknown[];
+    }
   ) {
     if (auth.kind === "API_KEY") {
       throw new ForbiddenException("Human session is required to invite institution staff.");
@@ -178,6 +189,7 @@ export class AuthService {
     const inviteToken = this.createInviteToken();
     const inviteTokenHash = this.hashInviteToken(inviteToken);
     const permissions = input.permissions?.length ? input.permissions : this.defaultPermissionsForRole(role);
+    const assignedScopes = (Array.isArray(input.assignedScopes) ? input.assignedScopes : []) as Prisma.InputJsonValue;
     const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const membership = await this.prisma.$transaction(async (tx) => {
@@ -207,6 +219,7 @@ export class AuthService {
         update: {
           status: "INVITED",
           permissions,
+          assignedScopes,
           invitedById: auth.sub,
           inviteTokenHash,
           invitedAt: new Date(),
@@ -220,6 +233,7 @@ export class AuthService {
           role,
           status: "INVITED",
           permissions,
+          assignedScopes,
           invitedById: auth.sub,
           inviteTokenHash,
           invitedAt: new Date(),
@@ -236,6 +250,11 @@ export class AuthService {
       });
     });
 
+    const membershipWithRelations = membership as typeof membership & {
+      user: { uuid: string; email: string; fullName: string; phone: string | null };
+      institution: { uuid: string; institutionId: string; officialName: string };
+    };
+
     await this.audit.write({
       actorId: auth.sub,
       actorRole: auth.role,
@@ -247,7 +266,8 @@ export class AuthService {
       metadata: {
         invitedEmail: email,
         role,
-        permissions
+        permissions,
+        assignedScopes
       }
     });
 
@@ -258,8 +278,8 @@ export class AuthService {
         role: membership.role,
         permissions: membership.permissions,
         inviteExpiresAt: membership.inviteExpiresAt,
-        user: membership.user,
-        institution: membership.institution
+        user: membershipWithRelations.user,
+        institution: membershipWithRelations.institution
       },
       inviteToken,
       warning: "Invite token is shown once for local/sandbox delivery. Send it only through a secure email/SMS provider."
@@ -357,6 +377,7 @@ export class AuthService {
             }
           : null,
         permissions: auth.permissions ?? auth.scopes ?? [],
+        assignedScopes: auth.assignedScopes ?? [],
         sessionId: auth.sessionId
       }
     };
@@ -574,9 +595,15 @@ export class AuthService {
 
   private parseInstitutionRole(role?: string) {
     const normalized = role?.trim().toUpperCase();
-    const allowed = new Set<UserRole>([UserRole.REGISTRAR, UserRole.EXAM_OFFICER, UserRole.DATA_ENTRY_OFFICER, UserRole.READ_ONLY]);
+    const allowed = new Set<UserRole>([
+      UserRole.REGISTRAR,
+      UserRole.EXAM_OFFICER,
+      UserRole.DATA_ENTRY_OFFICER,
+      UserRole.DEPARTMENTAL_OFFICER,
+      UserRole.READ_ONLY
+    ]);
     if (!normalized || !allowed.has(normalized as UserRole)) {
-      throw new BadRequestException("Role must be REGISTRAR, EXAM_OFFICER, DATA_ENTRY_OFFICER, or READ_ONLY.");
+      throw new BadRequestException("Role must be REGISTRAR, EXAM_OFFICER, DATA_ENTRY_OFFICER, DEPARTMENTAL_OFFICER, or READ_ONLY.");
     }
     return normalized as UserRole;
   }
@@ -613,6 +640,8 @@ export class AuthService {
     if (role === UserRole.REGISTRAR) {
       return [
         "staff:manage",
+        "academic_setup:read",
+        "academic_setup:write",
         "ingest:write",
         "govern:write",
         "govern:review",
@@ -623,13 +652,16 @@ export class AuthService {
       ];
     }
     if (role === UserRole.EXAM_OFFICER) {
-      return ["students:read", "results:read", "govern:write", "govern:review", "record_requests:verify"];
+      return ["academic_setup:read", "students:read", "results:read", "govern:write", "govern:review", "record_requests:verify"];
     }
     if (role === UserRole.DATA_ENTRY_OFFICER) {
       return ["students:write", "ingest:write", "results:draft", "govern:submit", "record_requests:upload"];
     }
+    if (role === UserRole.DEPARTMENTAL_OFFICER) {
+      return ["academic_setup:read", "students:read", "results:read", "ingest:write", "results:draft", "govern:review", "record_requests:verify"];
+    }
     if (role === UserRole.READ_ONLY) {
-      return ["students:read", "results:read", "credentials:read", "reports:read"];
+      return ["academic_setup:read", "students:read", "results:read", "credentials:read", "reports:read"];
     }
     if (role === UserRole.STUDENT) {
       return ["access:read"];
@@ -647,6 +679,10 @@ export class AuthService {
 
   private isUuid(value: string) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  }
+
+  private normaliseAssignedScopes(value: unknown) {
+    return Array.isArray(value) ? value : [];
   }
 
   private async consumeRecoveryCode(userId: string, recoveryCode?: string) {
