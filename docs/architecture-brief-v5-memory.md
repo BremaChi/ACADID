@@ -99,6 +99,7 @@ Current repo note:
 - `ResultBatch` already exists, but must be expanded to include academic session, structure scope, upload mode, validation summary, reviewer/approver, rejection reason, and v5 indexes.
 - `InstitutionUser` already exists, but must add `assigned_scopes` and support departmental officer behavior.
 - `AcademicSession`, `AcademicStructure`, and `RolloverRecord` are not yet implemented.
+- Current implementation note: all three now exist in Prisma/Supabase. AcademicSession and AcademicStructure setup APIs are available under `/ingest`; rollover preview/confirm is available under `/govern`.
 
 ## InstitutionUser v5 Update
 
@@ -450,6 +451,7 @@ Already present:
 - v5 Academic Setup API foundation for AcademicSession and AcademicStructure create/list/update under `/ingest`, documented in `docs/api/v5-academic-setup-contract.md`.
 - Human auth tokens now carry assigned scopes for later gateway enforcement.
 - Assigned-scope matching now exists in `AuthorityService` and result ingestion calls it when a v5 structure scope is supplied.
+- Rollover preview/confirm now exists in `GovernanceService`, with human-session-only enforcement, active enrolment selection, `RolloverRecord` writes, old enrolment state updates, new active enrolment creation for promoted/repeated learners, and audit events.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -463,7 +465,7 @@ Still needed:
 - Add staff assigned-scope management endpoints/UI so Registrars can maintain the scopes now enforced by the gateway.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
-- Add rollover preview/confirm and sealed-session rules.
+- Add sealed-session reopen/escalation rules.
 - Add GPA/CGPA/configured grading rule service.
 - Add invitation leads for unregistered institutions with graduate demand.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.

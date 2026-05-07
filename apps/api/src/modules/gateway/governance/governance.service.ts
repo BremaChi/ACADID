@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { RecordRequestStatus, UserRole, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { reviewRecordRequestSchema } from "@acadid/shared";
+import { confirmRolloverSchema, previewRolloverSchema, reviewRecordRequestSchema } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
@@ -9,6 +9,7 @@ import { AuthorityService } from "../../platform/services/authority.service.js";
 import { CredentialSigningService } from "../../platform/services/credential-signing.service.js";
 
 type BatchTransition = "SUBMITTED" | "REVIEWED" | "APPROVED";
+type RolloverDecision = "PROMOTED" | "REPEATED" | "TRANSFERRED_OUT" | "WITHDRAWN" | "GRADUATED" | "SUSPENDED" | "SEALED";
 
 @Injectable()
 export class GovernanceService {
@@ -190,6 +191,238 @@ export class GovernanceService {
     return batch;
   }
 
+  async previewRollover(auth: AuthTokenPayload, body: unknown) {
+    const parsed = previewRolloverSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    await this.assertRolloverScope(institution.uuid, {
+      fromSessionId: parsed.data.fromSessionId,
+      toSessionId: parsed.data.toSessionId,
+      fromStructureId: parsed.data.fromStructureId,
+      toStructureId: parsed.data.toStructureId
+    });
+
+    const enrolments = await this.prisma.enrolment.findMany({
+      where: {
+        institutionId: institution.uuid,
+        academicSessionId: parsed.data.fromSessionId,
+        status: "ACTIVE",
+        ...(parsed.data.fromStructureId ? { structureScopeId: parsed.data.fromStructureId } : {}),
+        ...(parsed.data.enrolmentIds ? { uuid: { in: parsed.data.enrolmentIds } } : {})
+      },
+      include: {
+        learner: { select: { uuid: true, ain: true, fullName: true, identityStatus: true } },
+        structureScope: { select: { uuid: true, type: true, name: true, code: true } },
+        rolloverRecords: {
+          where: { fromSessionId: parsed.data.fromSessionId, status: { in: ["PENDING_ROLLOVER", "APPROVED"] } },
+          select: { uuid: true, decision: true, status: true, createdAt: true }
+        }
+      },
+      orderBy: [{ level: "asc" }, { studentNumber: "asc" }],
+      take: parsed.data.limit
+    });
+
+    const candidates = enrolments.map((enrolment) => ({
+      enrolmentId: enrolment.uuid,
+      learnerId: enrolment.learnerId,
+      ain: enrolment.learner.ain,
+      learnerName: enrolment.learner.fullName,
+      studentNumber: enrolment.studentNumber,
+      currentLevel: enrolment.level,
+      currentProgramme: enrolment.programme,
+      fromSessionId: enrolment.academicSessionId,
+      fromStructure: enrolment.structureScope
+        ? {
+            id: enrolment.structureScope.uuid,
+            type: enrolment.structureScope.type,
+            name: enrolment.structureScope.name,
+            code: enrolment.structureScope.code
+          }
+        : null,
+      recommendedDecision: parsed.data.decision,
+      toSessionId: parsed.data.toSessionId ?? null,
+      toStructureId: parsed.data.toStructureId ?? null,
+      blockedByExistingRollover: enrolment.rolloverRecords[0] ?? null
+    }));
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "rollover.preview",
+      targetType: "AcademicSession",
+      targetId: parsed.data.fromSessionId,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        candidateCount: candidates.length,
+        fromStructureId: parsed.data.fromStructureId,
+        toSessionId: parsed.data.toSessionId,
+        toStructureId: parsed.data.toStructureId
+      }
+    });
+
+    return {
+      accepted: true,
+      institutionId: institution.institutionId,
+      fromSessionId: parsed.data.fromSessionId,
+      toSessionId: parsed.data.toSessionId ?? null,
+      count: candidates.length,
+      candidates
+    };
+  }
+
+  async confirmRollover(auth: AuthTokenPayload, body: unknown) {
+    const parsed = confirmRolloverSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    await this.assertRolloverScope(institution.uuid, {
+      fromSessionId: parsed.data.fromSessionId,
+      toSessionId: parsed.data.toSessionId,
+      fromStructureId: parsed.data.fromStructureId,
+      toStructureId: parsed.data.toStructureId
+    });
+
+    const enrolmentIds = parsed.data.decisions.map((decision) => decision.enrolmentId);
+    const enrolments = await this.prisma.enrolment.findMany({
+      where: {
+        uuid: { in: enrolmentIds },
+        institutionId: institution.uuid,
+        academicSessionId: parsed.data.fromSessionId,
+        status: "ACTIVE",
+        ...(parsed.data.fromStructureId ? { structureScopeId: parsed.data.fromStructureId } : {})
+      }
+    });
+    const enrolmentById = new Map(enrolments.map((enrolment) => [enrolment.uuid, enrolment]));
+    const missing = enrolmentIds.filter((id) => !enrolmentById.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException({ message: "Some rollover decisions reference inactive or out-of-scope enrolments.", missing });
+    }
+
+    const existingRollovers = await this.prisma.rolloverRecord.findMany({
+      where: {
+        enrolmentId: { in: enrolmentIds },
+        fromSessionId: parsed.data.fromSessionId,
+        status: { in: ["PENDING_ROLLOVER", "APPROVED"] }
+      },
+      select: { enrolmentId: true }
+    });
+    const duplicateIds = existingRollovers.map((record) => record.enrolmentId).filter(Boolean);
+    if (duplicateIds.length > 0) {
+      throw new BadRequestException({ message: "Some enrolments already have pending or approved rollover records.", duplicateIds });
+    }
+
+    for (const decision of parsed.data.decisions) {
+      await this.assertDecisionTarget(institution.uuid, decision.decision, {
+        toSessionId: decision.toSessionId ?? parsed.data.toSessionId,
+        toStructureId: decision.toStructureId ?? parsed.data.toStructureId
+      });
+    }
+
+    const now = new Date();
+    const confirmed = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const rows = [];
+
+        for (const decision of parsed.data.decisions) {
+          const enrolment = enrolmentById.get(decision.enrolmentId);
+          if (!enrolment) {
+            throw new BadRequestException("Rollover decision references an unknown enrolment.");
+          }
+
+          const toSessionId = decision.toSessionId ?? parsed.data.toSessionId;
+          const toStructureId = decision.toStructureId ?? parsed.data.toStructureId ?? (decision.decision === "REPEATED" ? enrolment.structureScopeId : undefined);
+          const nextStatus = enrolmentStatusForDecision(decision.decision);
+
+          await tx.enrolment.update({
+            where: { uuid: enrolment.uuid },
+            data: {
+              status: nextStatus,
+              exitDate: terminalDecision(decision.decision) ? now : undefined,
+              exitType: exitTypeForDecision(decision.decision)
+            }
+          });
+
+          const rollover = await tx.rolloverRecord.create({
+            data: {
+              institutionId: institution.uuid,
+              learnerId: enrolment.learnerId,
+              enrolmentId: enrolment.uuid,
+              fromSessionId: parsed.data.fromSessionId,
+              toSessionId,
+              fromStructureId: enrolment.structureScopeId,
+              toStructureId,
+              decision: decision.decision,
+              status: "APPROVED",
+              reason: decision.reason,
+              createdById: auth.institutionUserId,
+              approvedById: auth.institutionUserId,
+              approvedAt: now
+            }
+          });
+
+          const nextEnrolment =
+            decision.decision === "PROMOTED" || decision.decision === "REPEATED"
+              ? await tx.enrolment.create({
+                  data: {
+                    learnerId: enrolment.learnerId,
+                    institutionId: institution.uuid,
+                    academicSessionId: toSessionId,
+                    structureScopeId: toStructureId,
+                    studentNumber: enrolment.studentNumber,
+                    level: await this.levelForTargetStructure(tx, toStructureId, enrolment.level),
+                    programme: enrolment.programme,
+                    entryDate: now,
+                    status: "ACTIVE"
+                  }
+                })
+              : null;
+
+          rows.push({
+            rolloverId: rollover.uuid,
+            enrolmentId: enrolment.uuid,
+            learnerId: enrolment.learnerId,
+            decision: decision.decision,
+            status: rollover.status,
+            newEnrolmentId: nextEnrolment?.uuid ?? null
+          });
+        }
+
+        return rows;
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "rollover.confirm",
+      targetType: "AcademicSession",
+      targetId: parsed.data.fromSessionId,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        confirmedCount: confirmed.length,
+        decisions: confirmed.reduce<Record<string, number>>((counts, row) => {
+          counts[row.decision] = (counts[row.decision] ?? 0) + 1;
+          return counts;
+        }, {})
+      }
+    });
+
+    return {
+      accepted: true,
+      institutionId: institution.institutionId,
+      confirmedCount: confirmed.length,
+      rollovers: confirmed
+    };
+  }
+
   amend(body: unknown) {
     return {
       accepted: true,
@@ -330,4 +563,103 @@ export class GovernanceService {
     const notes = Array.isArray(existing) ? existing : [];
     return [...notes, note] as Prisma.InputJsonValue;
   }
+
+  private async resolveHumanInstitution(auth: AuthTokenPayload, institutionRef: string) {
+    if (auth.kind === "API_KEY") {
+      throw new ForbiddenException("Human institution session is required for governance actions.");
+    }
+
+    const institution = await this.prisma.institution.findFirst({
+      where: this.institutionRefWhere(institutionRef),
+      select: { uuid: true, institutionId: true, officialName: true, status: true }
+    });
+    if (!institution || institution.status !== "ACTIVE") {
+      throw new BadRequestException("Active institution not found.");
+    }
+
+    await this.authority.assertActorCanOperateInstitution(auth, institution.uuid);
+    return institution;
+  }
+
+  private async assertRolloverScope(
+    institutionId: string,
+    input: { fromSessionId: string; toSessionId?: string; fromStructureId?: string; toStructureId?: string }
+  ) {
+    const [fromSession, toSession, fromStructure, toStructure] = await Promise.all([
+      this.prisma.academicSession.findUnique({ where: { uuid: input.fromSessionId }, select: { institutionId: true, status: true } }),
+      input.toSessionId
+        ? this.prisma.academicSession.findUnique({ where: { uuid: input.toSessionId }, select: { institutionId: true, status: true } })
+        : Promise.resolve(null),
+      input.fromStructureId
+        ? this.prisma.academicStructure.findUnique({ where: { uuid: input.fromStructureId }, select: { institutionId: true, status: true } })
+        : Promise.resolve(null),
+      input.toStructureId
+        ? this.prisma.academicStructure.findUnique({ where: { uuid: input.toStructureId }, select: { institutionId: true, status: true } })
+        : Promise.resolve(null)
+    ]);
+
+    if (!fromSession || fromSession.institutionId !== institutionId || fromSession.status === "SEALED") {
+      throw new BadRequestException("Source academic session must belong to the institution and must not be sealed.");
+    }
+    if (input.toSessionId && (!toSession || toSession.institutionId !== institutionId || toSession.status === "SEALED")) {
+      throw new BadRequestException("Target academic session must belong to the institution and must not be sealed.");
+    }
+    if (input.fromStructureId && (!fromStructure || fromStructure.institutionId !== institutionId || fromStructure.status !== "ACTIVE")) {
+      throw new BadRequestException("Source academic structure must be active and belong to the institution.");
+    }
+    if (input.toStructureId && (!toStructure || toStructure.institutionId !== institutionId || toStructure.status !== "ACTIVE")) {
+      throw new BadRequestException("Target academic structure must be active and belong to the institution.");
+    }
+  }
+
+  private async assertDecisionTarget(institutionId: string, decision: RolloverDecision, input: { toSessionId?: string; toStructureId?: string }) {
+    if (decision !== "PROMOTED" && decision !== "REPEATED") {
+      return;
+    }
+    if (!input.toSessionId) {
+      throw new BadRequestException(`${decision} rollover decisions require a target academic session.`);
+    }
+
+    await this.assertRolloverScope(institutionId, {
+      fromSessionId: input.toSessionId,
+      toSessionId: input.toSessionId,
+      toStructureId: input.toStructureId
+    });
+  }
+
+  private async levelForTargetStructure(tx: Prisma.TransactionClient, structureId: string | null | undefined, fallbackLevel: string) {
+    if (!structureId) {
+      return fallbackLevel;
+    }
+
+    const structure = await tx.academicStructure.findUnique({
+      where: { uuid: structureId },
+      select: { name: true }
+    });
+    return structure?.name ?? fallbackLevel;
+  }
+
+  private institutionRefWhere(institutionRef: string): Prisma.InstitutionWhereInput {
+    return this.isUuid(institutionRef) ? { uuid: institutionRef } : { institutionId: institutionRef };
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+  }
+}
+
+function enrolmentStatusForDecision(decision: RolloverDecision) {
+  if (decision === "TRANSFERRED_OUT") return "TRANSFERRED_OUT";
+  return decision;
+}
+
+function terminalDecision(decision: RolloverDecision) {
+  return decision === "TRANSFERRED_OUT" || decision === "WITHDRAWN" || decision === "GRADUATED";
+}
+
+function exitTypeForDecision(decision: RolloverDecision) {
+  if (decision === "TRANSFERRED_OUT") return "TRANSFER";
+  if (decision === "WITHDRAWN") return "WITHDRAW";
+  if (decision === "GRADUATED") return "GRADUATE";
+  return undefined;
 }

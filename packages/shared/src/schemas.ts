@@ -224,6 +224,36 @@ export const ingestResultBatchSchema = z.object({
   rows: z.array(resultRowSchema).min(1).max(1000)
 });
 
+export const rolloverDecisions = ["PROMOTED", "REPEATED", "TRANSFERRED_OUT", "WITHDRAWN", "GRADUATED", "SUSPENDED", "SEALED"] as const;
+
+export const previewRolloverSchema = z.object({
+  institutionId: z.string().min(1),
+  fromSessionId: z.string().uuid(),
+  toSessionId: z.string().uuid().optional(),
+  fromStructureId: z.string().uuid().optional(),
+  toStructureId: z.string().uuid().optional(),
+  decision: z.enum(rolloverDecisions).default("PROMOTED"),
+  enrolmentIds: z.array(z.string().uuid()).max(500).optional(),
+  limit: z.number().int().min(1).max(500).default(200)
+});
+
+export const confirmRolloverDecisionSchema = z.object({
+  enrolmentId: z.string().uuid(),
+  decision: z.enum(rolloverDecisions),
+  toSessionId: z.string().uuid().optional(),
+  toStructureId: z.string().uuid().optional(),
+  reason: z.string().max(1000).optional()
+});
+
+export const confirmRolloverSchema = z.object({
+  institutionId: z.string().min(1),
+  fromSessionId: z.string().uuid(),
+  toSessionId: z.string().uuid().optional(),
+  fromStructureId: z.string().uuid().optional(),
+  toStructureId: z.string().uuid().optional(),
+  decisions: z.array(confirmRolloverDecisionSchema).min(1).max(500)
+});
+
 export const createAccessGrantSchema = z.object({
   credentialRef: z.string().min(1),
   scope: z.enum(["FULL", "GPA", "SEMESTER", "SUBJECT"]).default("FULL"),
@@ -330,6 +360,8 @@ export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;
 export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSchema>;
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
+export type PreviewRolloverInput = z.infer<typeof previewRolloverSchema>;
+export type ConfirmRolloverInput = z.infer<typeof confirmRolloverSchema>;
 export type CreateAcademicSessionInput = z.infer<typeof createAcademicSessionSchema>;
 export type UpdateAcademicSessionInput = z.infer<typeof updateAcademicSessionSchema>;
 export type CreateAcademicStructureInput = z.infer<typeof createAcademicStructureSchema>;

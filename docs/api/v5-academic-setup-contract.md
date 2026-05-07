@@ -189,10 +189,78 @@ If session or structure IDs are provided, they must belong to the institution. S
 
 For human non-registrar users, `structureScopeId` is checked against `InstitutionUser.assignedScopes`. A staff member assigned to `{"level":"SS1","subject":"Physics"}` can work inside that matching structure path, but a request outside that scope returns `403 Forbidden`.
 
+## Manual Rollover Preview
+
+```http
+POST /govern/rollovers/preview
+```
+
+Use this before showing a Registrar the final rollover confirmation screen.
+
+Body:
+
+```json
+{
+  "institutionId": "AINi-00001",
+  "fromSessionId": "source-session-uuid",
+  "toSessionId": "target-session-uuid",
+  "fromStructureId": "optional-source-class-or-programme-uuid",
+  "toStructureId": "optional-target-class-or-programme-uuid",
+  "decision": "PROMOTED",
+  "limit": 200
+}
+```
+
+Returns eligible active enrolments with learner AIN, student number, current level/programme, current structure, recommended decision, and any existing pending/approved rollover blocker.
+
+## Manual Rollover Confirm
+
+```http
+POST /govern/rollovers/confirm
+```
+
+Body:
+
+```json
+{
+  "institutionId": "AINi-00001",
+  "fromSessionId": "source-session-uuid",
+  "toSessionId": "target-session-uuid",
+  "fromStructureId": "optional-source-class-or-programme-uuid",
+  "toStructureId": "optional-target-class-or-programme-uuid",
+  "decisions": [
+    {
+      "enrolmentId": "active-enrolment-uuid",
+      "decision": "PROMOTED",
+      "reason": "Passed promotion review."
+    }
+  ]
+}
+```
+
+Decision values:
+
+```text
+PROMOTED
+REPEATED
+TRANSFERRED_OUT
+WITHDRAWN
+GRADUATED
+SUSPENDED
+SEALED
+```
+
+Rules:
+
+- Machine API keys cannot perform manual rollover.
+- Promotion and repeat decisions require a target academic session.
+- Session and structure IDs must belong to the same institution and must not be sealed/archived.
+- Confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates a new active enrolment for promoted/repeated learners, and writes a governance audit event.
+
 ## Engineer 2 Notes
 
 - Do not hardcode Nigerian academic structures.
 - Build setup screens from these API responses.
 - Keep destructive actions behind confirmation modals.
 - Do not let browser code call Supabase directly.
-- Rollover endpoints are not exposed yet; request missing needs through `docs/handoffs/engineer-1-api-requests.md`.
+- Use rollover preview before confirm, and always show the learner count plus warnings before submitting confirmation.

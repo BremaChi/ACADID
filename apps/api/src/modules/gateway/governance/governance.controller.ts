@@ -40,6 +40,16 @@ export class GovernanceController {
     return this.governanceService.rejectBatch(request.auth, body.batchId, body.reason);
   }
 
+  @Post("rollovers/preview")
+  previewRollover(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.governanceService.previewRollover(request.auth, body);
+  }
+
+  @Post("rollovers/confirm")
+  confirmRollover(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.governanceService.confirmRollover(request.auth, body);
+  }
+
   @Post("amend")
   amend(@Body() body: unknown) {
     return this.governanceService.amend(body);
