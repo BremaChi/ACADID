@@ -43,6 +43,30 @@ test("bulk upload parser reads XLSX content for student imports", async () => {
   assert.equal(parsed.input.rows[0].studentNumber, "ADM-002");
 });
 
+test("bulk upload parser can read storage URLs through the worker storage adapter", async () => {
+  const parser = new BulkUploadParserService({
+    readObject: async (storageUrl) => {
+      assert.equal(storageUrl, "storage://acadid-portal-intake/imports/students.csv");
+      return {
+        bucket: "acadid-portal-intake",
+        key: "imports/students.csv",
+        source: "supabase",
+        content: Buffer.from(
+          "fullName,dateOfBirth,studentNumber,level,programme\nBlessing Musa,2012-01-02,ADM-003,Primary 5,General"
+        )
+      };
+    }
+  });
+
+  const parsed = await parser.parseStudentUpload({
+    institutionId: "AINi-00001",
+    fileName: "students.csv",
+    storageUrl: "storage://acadid-portal-intake/imports/students.csv"
+  });
+
+  assert.equal(parsed.input.rows[0].studentNumber, "ADM-003");
+});
+
 test("bulk upload parser treats malformed student files as non-retryable", async () => {
   const parser = new BulkUploadParserService();
   await assert.rejects(

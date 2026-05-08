@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { ingestStudentRegisterSchema, type IngestStudentRegisterInput, type StudentRegisterRow } from "@acadid/shared";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readSheet } from "read-excel-file/node";
+import { ObjectStorageService } from "./object-storage.service.js";
 
 export class NonRetryableJobError extends Error {
   constructor(message: string) {
@@ -61,6 +62,8 @@ const headerMap: Record<string, keyof StudentRegisterRow> = {
 
 @Injectable()
 export class BulkUploadParserService {
+  constructor(@Optional() private readonly objectStorage?: ObjectStorageService) {}
+
   async parseStudentUpload(request: BulkUploadRequest): Promise<ParsedBulkUpload> {
     const institutionId = this.stringField(request, "institutionId");
     if (!institutionId) {
@@ -130,6 +133,13 @@ export class BulkUploadParserService {
     }
 
     const storageUrl = this.stringField(request, "storageUrl");
+    if (storageUrl?.startsWith("storage://")) {
+      if (!this.objectStorage) {
+        throw new BadRequestException("Object storage download is not available in this runtime.");
+      }
+      return (await this.objectStorage.readObject(storageUrl)).content;
+    }
+
     if (storageUrl?.startsWith("http://") || storageUrl?.startsWith("https://")) {
       const response = await fetch(storageUrl);
       if (!response.ok) {

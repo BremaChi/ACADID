@@ -100,6 +100,7 @@ The API has these first modules:
 - Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
 - Background worker runtime is implemented with database row-lock leasing, retry/failure handling, completion events, `npm run worker`, and `npm run worker:once`.
 - Queued bulk student uploads now have CSV/XLSX parser support, common school-header mapping, validation against the student register schema, and non-retryable failure handling for malformed files.
+- Worker-only object storage downloads are implemented for `storage://bucket/key` imports through Supabase REST or a configured internal download gateway, without exposing private storage credentials to browsers.
 
 ### Database
 
@@ -210,6 +211,7 @@ Completed successfully:
 - Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
 - Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
 - Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
+- Object storage coverage validates `storage://bucket/key` parsing, download-base authorization, and parser integration.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -247,16 +249,15 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add real object-storage download adapters for queued Supabase upload files.
-2. Add real webhook delivery transport with signing and retry policy.
-3. Add real push/email/SMS provider transports.
-4. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-5. Add invitation leads for graduate requests against unregistered institutions.
-6. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
-7. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
-8. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-9. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-10. Review dependency vulnerabilities before production without using blind force upgrades.
+1. Add real webhook delivery transport with signing and retry policy.
+2. Add real push/email/SMS provider transports.
+3. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+4. Add invitation leads for graduate requests against unregistered institutions.
+5. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
+6. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
+7. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+8. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
+9. Review dependency vulnerabilities before production without using blind force upgrades.
 
 ## GitHub Status
 

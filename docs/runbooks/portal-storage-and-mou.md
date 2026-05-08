@@ -15,6 +15,10 @@ Configure these in the API environment:
 ```text
 SUPABASE_STORAGE_BUCKET=acadid-portal-intake
 ACADID_PORTAL_UPLOAD_BASE_URL=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL=
+ACADID_OBJECT_STORAGE_BEARER_TOKEN=
 ACADID_MOU_VERSION=2026.1
 ACADID_MOU_EFFECTIVE_FROM=2026-05-01
 ACADID_MOU_TEMPLATE_URL=
@@ -22,6 +26,13 @@ ACADID_MOU_TEMPLATE_CHECKSUM=
 ```
 
 `OBJECT_STORAGE_BUCKET` and `STORAGE_BUCKET` remain backward-compatible aliases, but `SUPABASE_STORAGE_BUCKET` is the preferred pilot name.
+
+For background imports, the worker can download `storage://bucket/key` objects in either of two ways:
+
+- Supabase private storage: set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- Internal download gateway: set `ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL` and optional `ACADID_OBJECT_STORAGE_BEARER_TOKEN`.
+
+Never expose service-role keys to the browser. The Institution Portal should only receive upload tickets and `storageUrl` metadata.
 
 ## Current Sandbox Behavior
 
@@ -61,6 +72,7 @@ ISSUED
 - Store checksums where available.
 - Do not expose private storage credentials to browsers.
 - Do not let the Institution Portal write directly to Supabase core tables.
+- Let the background worker download `storage://bucket/key` files with backend credentials only.
 
 ## Engineer 2 Contract
 
@@ -81,4 +93,3 @@ docs/handoffs/engineer-1-api-requests.md
 System Health should show Storage Service as operational when a storage bucket variable is configured.
 
 Institution Applications should show uploaded document metadata after successful submission.
-
