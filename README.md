@@ -79,6 +79,12 @@ Webhook worker delivery:
 - The worker signs each delivery with `x-acadid-signature`, sends a stable `x-acadid-idempotency-key`, retries with exponential backoff, and marks exhausted deliveries as failed for operator review.
 - `ACADID_WEBHOOK_TIMEOUT_MS` controls the outbound delivery timeout, capped at 30 seconds.
 
+Rate limiting:
+
+- API key traffic uses persistent PostgreSQL counters from the token's `rateLimitPerMinute`.
+- Auth, token exchange, public verification, upload, and portal-intake routes use `RateLimitBucket` rows so limits work across API processes.
+- Rate-limit buckets store hashed keys rather than raw IP/body identifiers.
+
 Credential signing:
 
 - Local development may run with an ephemeral Ed25519 key and will show Credential Signing as degraded.

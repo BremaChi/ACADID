@@ -1125,3 +1125,22 @@ model Notification {
   @@index([userId, status])
   @@index([jobId])
 }
+
+model RateLimitBucket {
+  uuid           String   @id @default(uuid()) @db.Uuid
+  scope          String
+  bucketKeyHash  String
+  windowStart    DateTime
+  windowSeconds  Int      @default(60)
+  count          Int      @default(0)
+  limit          Int
+  firstRequestAt DateTime @default(now())
+  lastRequestAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([scope, bucketKeyHash, windowStart])
+  @@index([scope, windowStart])
+  @@index([bucketKeyHash, windowStart])
+  @@index([updatedAt])
+}

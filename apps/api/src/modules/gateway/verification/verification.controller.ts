@@ -1,4 +1,6 @@
-import { Controller, Get, Param, Req } from "@nestjs/common";
+import { Controller, Get, Param, Req, UseGuards } from "@nestjs/common";
+import { RateLimit } from "../../platform/decorators/rate-limit.decorator.js";
+import { RateLimitGuard } from "../../platform/guards/rate-limit.guard.js";
 import { VerificationService } from "./verification.service.js";
 
 type VerificationRequest = {
@@ -9,6 +11,8 @@ type VerificationRequest = {
   };
 };
 
+@UseGuards(RateLimitGuard)
+@RateLimit({ scope: "verify.public", key: "ip", limit: 120, windowSeconds: 60 })
 @Controller("verify")
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}

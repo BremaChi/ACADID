@@ -6,9 +6,11 @@ import { ScopesGuard } from "../../auth/guards/scopes.guard.js";
 import { Roles } from "../../auth/roles.decorator.js";
 import { Scopes } from "../../auth/scopes.decorator.js";
 import type { AuthenticatedRequest } from "../../auth/types.js";
+import { RateLimit } from "../../platform/decorators/rate-limit.decorator.js";
+import { RateLimitGuard } from "../../platform/guards/rate-limit.guard.js";
 import { IngestionService } from "./ingestion.service.js";
 
-@UseGuards(AuthGuard, RolesGuard, ScopesGuard)
+@UseGuards(AuthGuard, RateLimitGuard, RolesGuard, ScopesGuard)
 @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER, UserRole.DATA_ENTRY_OFFICER)
 @Scopes("ingest:write")
 @Controller("ingest")
@@ -63,21 +65,25 @@ export class IngestionController {
   }
 
   @Post("students")
+  @RateLimit({ scope: "ingest.students", key: "auth", limit: 60, windowSeconds: 60 })
   ingestStudents(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.ingestionService.ingestStudents(request.auth, body);
   }
 
   @Post("results")
+  @RateLimit({ scope: "ingest.results", key: "auth", limit: 60, windowSeconds: 60 })
   ingestResults(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.ingestionService.ingestResults(request.auth, body);
   }
 
   @Post("results/async")
+  @RateLimit({ scope: "ingest.results_async", key: "auth", limit: 120, windowSeconds: 60 })
   ingestResultsAsync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.ingestionService.queueResultBatchValidation(request.auth, body);
   }
 
   @Post("bulk-upload")
+  @RateLimit({ scope: "ingest.bulk_upload", key: "auth", limit: 30, windowSeconds: 60 })
   bulkUpload(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.ingestionService.createBulkUpload(request.auth, body);
   }

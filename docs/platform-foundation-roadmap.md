@@ -144,16 +144,16 @@ Required next:
 Implemented foundation:
 
 - API key bearer-token rate limit from token metadata.
+- Persistent `RateLimitBucket` table for distributed counters.
+- Database-backed `RateLimitService` and `RateLimitGuard`.
+- Public/auth route throttling for founder login, institution user login, invite acceptance, password reset placeholder, token exchange, and credential verification.
+- Upload/intake throttling for student ingestion, result ingestion, async result validation, bulk upload, portal upload URLs, and institution applications.
 
 Required next:
 
-- Persistent distributed rate limiting for:
-  - auth endpoints
-  - verification APIs
-  - upload endpoints
-  - public search endpoints
 - Per-institution and per-product limits.
 - Founder Console controls for default and emergency rate limits.
+- Cleanup/retention job for old rate-limit buckets.
 
 ### 9. Caching Strategy
 
@@ -200,8 +200,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Persistent rate limiting for auth, verification, uploads, and public search.
-2. Structured logging and error-observability baseline.
-3. Caching strategy for safe read-heavy surfaces.
-4. Per-institution webhook secrets and Founder Console replay controls.
-5. Dedicated worker heartbeat table if worker pool scale requires it.
+1. Structured logging and error-observability baseline.
+2. Caching strategy for safe read-heavy surfaces.
+3. Per-institution webhook secrets and Founder Console replay controls.
+4. Dedicated worker heartbeat table if worker pool scale requires it.
+5. Rate-limit bucket cleanup job and Founder Console controls.

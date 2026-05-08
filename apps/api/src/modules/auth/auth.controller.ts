@@ -1,12 +1,16 @@
 import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { RateLimit } from "../platform/decorators/rate-limit.decorator.js";
+import { RateLimitGuard } from "../platform/guards/rate-limit.guard.js";
 import { AuthService } from "./auth.service.js";
 import { AuthGuard } from "./guards/auth.guard.js";
 import type { AuthenticatedRequest } from "./types.js";
 
+@UseGuards(RateLimitGuard)
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @RateLimit({ scope: "auth.login", key: "ip_and_body", bodyField: "email", limit: 10, windowSeconds: 60 })
   @Post("login")
   login(@Body() body: { email: string; password: string; totpCode?: string; recoveryCode?: string }) {
     if (!body?.email || !body.password) {
@@ -16,6 +20,7 @@ export class AuthController {
     return this.authService.login(body.email, body.password, body.totpCode, body.recoveryCode);
   }
 
+  @RateLimit({ scope: "auth.user_login", key: "ip_and_body", bodyField: "email", limit: 10, windowSeconds: 60 })
   @Post("user/login")
   userLogin(@Body() body: { email: string; password: string; totpCode?: string; recoveryCode?: string }) {
     if (!body?.email || !body.password) {
@@ -34,6 +39,7 @@ export class AuthController {
     return this.authService.inviteInstitutionUser(request.auth, body);
   }
 
+  @RateLimit({ scope: "auth.accept_invite", key: "ip_and_body", bodyField: "token", limit: 10, windowSeconds: 60 })
   @Post("user/accept-invite")
   acceptInvite(@Body() body: { token?: string; password?: string; fullName?: string; phone?: string }) {
     if (!body?.token || !body.password) {
@@ -43,6 +49,7 @@ export class AuthController {
     return this.authService.acceptInstitutionInvite(body);
   }
 
+  @RateLimit({ scope: "auth.reset_password", key: "ip", limit: 5, windowSeconds: 60 })
   @Post("user/reset-password")
   resetPassword() {
     return {
@@ -51,6 +58,7 @@ export class AuthController {
     };
   }
 
+  @RateLimit({ scope: "auth.token", key: "ip_and_body", bodyField: "client_id", limit: 30, windowSeconds: 60 })
   @Post("token")
   token(@Body() body: { client_id?: string; clientId?: string; client_secret?: string; clientSecret?: string }) {
     return this.authService.issueApiToken(body);
