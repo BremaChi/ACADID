@@ -28,6 +28,7 @@ import { PasswordService } from "../auth/password.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 import { CredentialSigningService } from "../platform/services/credential-signing.service.js";
+import { CacheService } from "../platform/services/cache.service.js";
 
 const allowedApiKeyScopes = new Set([
   "institution:apply",
@@ -77,7 +78,8 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly passwordService: PasswordService,
-    private readonly credentialSigning?: CredentialSigningService
+    private readonly credentialSigning?: CredentialSigningService,
+    private readonly cache?: CacheService
   ) {}
 
   async createInstitution(input: unknown) {
@@ -104,10 +106,20 @@ export class AdminService {
       outcome: "SUCCESS"
     });
 
+    this.cache?.invalidateTag("institutions");
     return institution;
   }
 
   listInstitutions() {
+    return (
+      this.cache?.getOrSet("institutions:list:founder", () => this.readInstitutionList(), {
+        ttlSeconds: 20,
+        tags: ["institutions"]
+      }) ?? this.readInstitutionList()
+    );
+  }
+
+  private readInstitutionList() {
     return this.prisma.institution.findMany({
       orderBy: { createdAt: "desc" }
     });
@@ -128,6 +140,7 @@ export class AdminService {
       metadata: { status }
     });
 
+    this.cache?.invalidateTag("institutions");
     return institution;
   }
 
@@ -284,6 +297,7 @@ export class AdminService {
       }
     });
 
+    this.cache?.invalidateTag("institutions");
     return {
       accepted: true,
       applicationId: id,
@@ -1066,7 +1080,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, queue, webhook, signing, metrics] = await Promise.all([
+    const [database, auth, storage, email, cache, queue, webhook, signing, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService(
@@ -1074,6 +1088,7 @@ export class AdminService {
         Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.OBJECT_STORAGE_BUCKET || process.env.STORAGE_BUCKET)
       ),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
+      this.checkCacheService(),
       this.checkQueueWorkers(),
       this.checkWebhookDelivery(),
       this.checkCredentialSigning(),
@@ -1091,6 +1106,7 @@ export class AdminService {
       auth,
       storage,
       email,
+      cache,
       queue,
       webhook,
       signing
@@ -1215,6 +1231,15 @@ export class AdminService {
   }
 
   async readPlatformSettings() {
+    return (
+      this.cache?.getOrSet("platform-settings:current", () => this.readPlatformSettingsFromDatabase(), {
+        ttlSeconds: 60,
+        tags: ["platform-settings"]
+      }) ?? this.readPlatformSettingsFromDatabase()
+    );
+  }
+
+  private async readPlatformSettingsFromDatabase() {
     const rows = await this.prisma.platformSetting.findMany({
       select: {
         key: true,
@@ -1280,6 +1305,7 @@ export class AdminService {
       }
     });
 
+    this.cache?.invalidateTag("platform-settings");
     return this.readPlatformSettings();
   }
 
@@ -2022,6 +2048,17 @@ export class AdminService {
       status: configured ? ("OPERATIONAL" as HealthStatus) : ("PENDING_CONFIGURATION" as HealthStatus),
       responseTimeMs: 0,
       message: configured ? `${name} configuration is present.` : `${name} is not configured for this environment yet.`
+    };
+  }
+
+  private async checkCacheService() {
+    const stats = this.cache?.stats() ?? { entries: 0, tags: 0 };
+    return {
+      name: "Cache Service",
+      status: "OPERATIONAL" as HealthStatus,
+      responseTimeMs: 0,
+      message: "In-process TTL cache is available for safe read-heavy surfaces.",
+      metadata: stats
     };
   }
 

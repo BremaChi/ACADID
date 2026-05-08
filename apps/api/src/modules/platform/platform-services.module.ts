@@ -8,6 +8,7 @@ import { RateLimitService } from "./services/rate-limit.service.js";
 import { RateLimitGuard } from "./guards/rate-limit.guard.js";
 import { ErrorObservabilityService } from "./services/error-observability.service.js";
 import { StructuredLoggerService } from "./services/structured-logger.service.js";
+import { CacheService } from "./services/cache.service.js";
 
 @Module({
   providers: [
@@ -19,7 +20,8 @@ import { StructuredLoggerService } from "./services/structured-logger.service.js
     RateLimitService,
     RateLimitGuard,
     StructuredLoggerService,
-    ErrorObservabilityService
+    ErrorObservabilityService,
+    CacheService
   ],
   exports: [
     PrismaService,
@@ -30,7 +32,8 @@ import { StructuredLoggerService } from "./services/structured-logger.service.js
     RateLimitService,
     RateLimitGuard,
     StructuredLoggerService,
-    ErrorObservabilityService
+    ErrorObservabilityService,
+    CacheService
   ]
 })
 export class PlatformServicesModule {}

@@ -157,16 +157,20 @@ Required next:
 
 ### 9. Caching Strategy
 
-Current state:
+Implemented foundation:
 
-- No centralized caching layer yet.
+- `CacheService` provides short-TTL read-through caching, tag invalidation, prefix invalidation, and runtime stats.
+- Public credential status uses a 30-second cache and can be invalidated by credential reference tag.
+- Platform settings use a 60-second cache and are invalidated immediately after founder settings updates.
+- Founder institution metadata uses a 20-second cache and is invalidated after institution creation, status changes, and application approval.
+- Founder System Health reports cache availability and current in-process cache stats.
 
 Required next:
 
-- Cache read-heavy public verification status safely.
-- Cache institution metadata and platform settings with short TTLs.
-- Never cache secret-bearing payloads or unconsented student record data.
-- Add cache invalidation on credential revocation, amendment, institution suspension, and API key revocation.
+- Add a distributed cache adapter before multi-instance production deployment.
+- Add explicit cache invalidation to the full credential amendment/revocation implementation when those placeholder routes become real writes.
+- Keep secret-bearing payloads, API secrets, unconsented student record data, and share-token verification bodies out of cache.
+- Add cache-hit/cache-miss metrics when external monitoring is connected.
 
 ### 10. Error Observability
 
@@ -201,8 +205,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Caching strategy for safe read-heavy surfaces.
-2. Per-institution webhook secrets and Founder Console replay controls.
-3. Dedicated worker heartbeat table if worker pool scale requires it.
-4. Rate-limit bucket cleanup job and Founder Console controls.
-5. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+1. Per-institution webhook secrets and Founder Console replay controls.
+2. Dedicated worker heartbeat table if worker pool scale requires it.
+3. Rate-limit bucket cleanup job and Founder Console controls.
+4. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+5. Distributed cache adapter before multi-instance production deployment.

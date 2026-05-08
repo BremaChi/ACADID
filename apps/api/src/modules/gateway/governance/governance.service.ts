@@ -13,6 +13,7 @@ import { PrismaService } from "../../platform/services/prisma.service.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
 import { CredentialSigningService } from "../../platform/services/credential-signing.service.js";
+import { CacheService } from "../../platform/services/cache.service.js";
 
 type BatchTransition = "SUBMITTED" | "REVIEWED" | "APPROVED";
 type RolloverDecision = "PROMOTED" | "REPEATED" | "TRANSFERRED_OUT" | "WITHDRAWN" | "GRADUATED" | "SUSPENDED" | "SEALED";
@@ -23,7 +24,8 @@ export class GovernanceService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly authority: AuthorityService,
-    private readonly signer: CredentialSigningService
+    private readonly signer: CredentialSigningService,
+    private readonly cache?: CacheService
   ) {}
 
   async transitionBatch(auth: AuthTokenPayload, batchId: string, status: BatchTransition) {
@@ -532,6 +534,7 @@ export class GovernanceService {
   }
 
   amend(body: unknown) {
+    this.invalidateCredentialStatusFromBody(body);
     return {
       accepted: true,
       operation: "amend",
@@ -541,6 +544,7 @@ export class GovernanceService {
   }
 
   revoke(body: unknown) {
+    this.invalidateCredentialStatusFromBody(body);
     return {
       accepted: true,
       operation: "revoke",
@@ -753,6 +757,14 @@ export class GovernanceService {
 
   private isUuid(value: string) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+  }
+
+  private invalidateCredentialStatusFromBody(body: unknown) {
+    const input = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const credentialRef = typeof input.credentialRef === "string" ? input.credentialRef : undefined;
+    if (credentialRef) {
+      this.cache?.invalidateTag(`credential:${credentialRef}`);
+    }
   }
 }
 

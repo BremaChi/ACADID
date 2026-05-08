@@ -85,6 +85,13 @@ Rate limiting:
 - Auth, token exchange, public verification, upload, and portal-intake routes use `RateLimitBucket` rows so limits work across API processes.
 - Rate-limit buckets store hashed keys rather than raw IP/body identifiers.
 
+Caching:
+
+- `CacheService` provides conservative short-TTL caching for safe read-heavy surfaces.
+- Cached surfaces currently include credential status, platform settings, and founder institution metadata.
+- Do not cache API secrets, share-token verification payloads, unconsented learner records, or private student data.
+- The current adapter is in-process for local/pilot work; production multi-instance deployment should add a distributed adapter.
+
 Observability:
 
 - The API emits structured JSON logs for gateway requests with `x-request-id`, route, actor/client context, status, and duration.

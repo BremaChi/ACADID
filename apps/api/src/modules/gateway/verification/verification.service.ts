@@ -3,6 +3,7 @@ import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { CredentialSigningService } from "../../platform/services/credential-signing.service.js";
+import { CacheService } from "../../platform/services/cache.service.js";
 
 type VerificationContext = {
   ipAddress?: string | null;
@@ -14,7 +15,8 @@ type VerificationContext = {
 export class VerificationService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly signer: CredentialSigningService
+    private readonly signer: CredentialSigningService,
+    private readonly cache?: CacheService
   ) {}
 
   async verifyToken(token: string, context: VerificationContext = {}) {
@@ -147,6 +149,16 @@ export class VerificationService {
   }
 
   async credentialStatus(credId: string, _context: VerificationContext = {}) {
+    if (this.cache) {
+      return this.cache.getOrSet(`credential-status:${credId}`, () => this.readCredentialStatus(credId), {
+        ttlSeconds: 30,
+        tags: ["credential-status", `credential:${credId}`]
+      });
+    }
+    return this.readCredentialStatus(credId);
+  }
+
+  private async readCredentialStatus(credId: string) {
     const credential = await this.prisma.credential.findUnique({
       where: { credentialRef: credId },
       select: {
