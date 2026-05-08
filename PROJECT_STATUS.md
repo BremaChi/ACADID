@@ -96,6 +96,8 @@ The API has these first modules:
 - v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
 - Founder v5 Academic Operations visibility is implemented through `/api/admin/academic-operations` and a dedicated Founder Console page for setup health, active/sealed sessions, structure mix, rollover activity, sealed-session escalations, and institution flags.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
+- Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
+- Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
 
 ### Database
 
@@ -123,6 +125,10 @@ The Prisma schema includes the core AcadID model:
 - PlatformSetting.
 - MfaRecoveryCode.
 - RecordRequest.
+- BackgroundJob.
+- DomainEvent.
+- WebhookDelivery.
+- Notification.
 
 ### Web
 
@@ -199,6 +205,7 @@ Completed successfully:
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
 - v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
+- Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -236,13 +243,14 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-2. Add invitation leads for graduate requests against unregistered institutions.
-3. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
-4. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
-5. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-6. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-7. Review dependency vulnerabilities before production without using blind force upgrades.
+1. Add worker runtime for queued jobs: lease jobs, process idempotently, update progress, emit completion events, and fan out notifications/webhooks.
+2. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+3. Add invitation leads for graduate requests against unregistered institutions.
+4. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
+5. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
+6. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+7. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
+8. Review dependency vulnerabilities before production without using blind force upgrades.
 
 ## GitHub Status
 

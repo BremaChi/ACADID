@@ -72,9 +72,14 @@ export class IngestionController {
     return this.ingestionService.ingestResults(request.auth, body);
   }
 
+  @Post("results/async")
+  ingestResultsAsync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.ingestionService.queueResultBatchValidation(request.auth, body);
+  }
+
   @Post("bulk-upload")
-  bulkUpload(@Body() body: unknown) {
-    return this.ingestionService.createBulkUpload(body);
+  bulkUpload(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.ingestionService.createBulkUpload(request.auth, body);
   }
 
   @Get("batches")

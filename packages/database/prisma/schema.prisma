@@ -254,6 +254,57 @@ enum SubscriptionStatus {
   SUSPENDED
 }
 
+enum BackgroundJobType {
+  BULK_STUDENT_UPLOAD
+  RESULT_BATCH_VALIDATION
+  CREDENTIAL_GENERATION
+  PDF_GENERATION
+  SMS_EMAIL_DELIVERY
+  PAYSTACK_PAYMENT_CONFIRMATION
+  RECORD_REQUEST_DEADLINE
+  WEBHOOK_DELIVERY
+  PUSH_NOTIFICATION
+  LIVE_RESULTS_CALLBACK
+  EXAM_BODY_INGEST
+}
+
+enum BackgroundJobStatus {
+  QUEUED
+  RUNNING
+  RETRYING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum DomainEventStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  RETRYING
+  FAILED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  SMS
+  WEBHOOK
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 model Learner {
   uuid           String                @id @default(uuid()) @db.Uuid
   ain            String                @unique
@@ -276,6 +327,7 @@ model Learner {
   disputes           Dispute[]
   recordRequests     RecordRequest[]
   rolloverRecords    RolloverRecord[]
+  notifications      Notification[]
 
   @@index([fullName, dateOfBirth])
 }
@@ -309,6 +361,10 @@ model Institution {
   disputes                Dispute[]
   revenueEntries          RevenueLedgerEntry[]
   subscriptions           InstitutionSubscription[]
+  backgroundJobs          BackgroundJob[]
+  domainEvents            DomainEvent[]
+  webhookDeliveries       WebhookDelivery[]
+  notifications           Notification[]
 }
 
 model InstitutionApplication {
@@ -383,6 +439,8 @@ model User {
   assignedRecordRequests  RecordRequest[]   @relation("RecordRequestAssignee")
   platformSettings        PlatformSetting[]
   mfaRecoveryCodes        MfaRecoveryCode[]
+  backgroundJobs          BackgroundJob[]
+  notifications           Notification[]
 }
 
 model InstitutionUser {
@@ -945,4 +1003,125 @@ model AuditEvent {
   @@index([endpoint, createdAt])
   @@index([targetType, targetId])
   @@index([entityType, entityId])
+}
+
+model BackgroundJob {
+  uuid              String              @id @default(uuid()) @db.Uuid
+  type              BackgroundJobType
+  queue             String
+  status            BackgroundJobStatus @default(QUEUED)
+  institutionId     String?             @db.Uuid
+  createdById       String?             @db.Uuid
+  relatedEntityType String?
+  relatedEntityId   String?
+  priority          Int                 @default(0)
+  payload           Json
+  result            Json?
+  error             String?
+  progress          Int                 @default(0)
+  attempts          Int                 @default(0)
+  maxAttempts       Int                 @default(3)
+  runAfter          DateTime            @default(now())
+  lockedAt          DateTime?
+  lockedBy          String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  institution       Institution?      @relation(fields: [institutionId], references: [uuid])
+  createdBy         User?             @relation(fields: [createdById], references: [uuid])
+  domainEvents      DomainEvent[]
+  webhookDeliveries WebhookDelivery[]
+  notifications     Notification[]
+
+  @@index([queue, status, runAfter, priority])
+  @@index([institutionId, status, createdAt])
+  @@index([type, status, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+}
+
+model DomainEvent {
+  uuid          String            @id @default(uuid()) @db.Uuid
+  type          String
+  aggregateType String
+  aggregateId   String
+  institutionId String?           @db.Uuid
+  jobId         String?           @db.Uuid
+  payload       Json
+  status        DomainEventStatus @default(PENDING)
+  attempts      Int               @default(0)
+  lastError     String?
+  publishedAt   DateTime?
+  createdAt     DateTime          @default(now())
+
+  institution       Institution?      @relation(fields: [institutionId], references: [uuid])
+  job               BackgroundJob?    @relation(fields: [jobId], references: [uuid])
+  webhookDeliveries WebhookDelivery[]
+
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@index([aggregateType, aggregateId])
+  @@index([institutionId, createdAt])
+  @@index([jobId])
+}
+
+model WebhookDelivery {
+  uuid           String                @id @default(uuid()) @db.Uuid
+  jobId          String?               @db.Uuid
+  eventId        String?               @db.Uuid
+  institutionId  String?               @db.Uuid
+  targetUrl      String
+  eventType      String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  nextAttemptAt  DateTime              @default(now())
+  lastStatusCode Int?
+  lastError      String?
+  deliveredAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  job         BackgroundJob? @relation(fields: [jobId], references: [uuid])
+  event       DomainEvent?   @relation(fields: [eventId], references: [uuid])
+  institution Institution?   @relation(fields: [institutionId], references: [uuid])
+
+  @@index([status, nextAttemptAt])
+  @@index([institutionId, status])
+  @@index([eventType, createdAt])
+  @@index([jobId])
+  @@index([eventId])
+}
+
+model Notification {
+  uuid          String              @id @default(uuid()) @db.Uuid
+  jobId         String?             @db.Uuid
+  institutionId String?             @db.Uuid
+  learnerId     String?             @db.Uuid
+  userId        String?             @db.Uuid
+  channel       NotificationChannel
+  type          String
+  title         String
+  body          String
+  payload       Json?
+  status        NotificationStatus  @default(PENDING)
+  sentAt        DateTime?
+  failedAt      DateTime?
+  error         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  job         BackgroundJob? @relation(fields: [jobId], references: [uuid])
+  institution Institution?   @relation(fields: [institutionId], references: [uuid])
+  learner     Learner?       @relation(fields: [learnerId], references: [uuid])
+  user        User?          @relation(fields: [userId], references: [uuid])
+
+  @@index([status, createdAt])
+  @@index([channel, status])
+  @@index([institutionId, status])
+  @@index([learnerId, status])
+  @@index([userId, status])
+  @@index([jobId])
 }

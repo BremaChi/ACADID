@@ -155,6 +155,23 @@ async function main() {
   const institutionToken = apiClientLogin.accessToken;
 
   const studentNumber = `SUP-${runId}`;
+  const bulkUpload = await request("/ingest/bulk-upload", {
+    method: "POST",
+    token: institutionToken,
+    body: JSON.stringify({
+      institutionId: institution.institutionId,
+      fileName: `students-${runId}.csv`,
+      uploadType: "student_register",
+      storageUrl: `pending://smoke/${runId}/students.csv`
+    })
+  });
+  const queuedJob = await request(`/jobs/${bulkUpload.job.jobId}`, {
+    token: institutionToken
+  });
+  if (queuedJob.status !== "QUEUED") {
+    throw new Error(`Bulk upload job was not queued: ${JSON.stringify(queuedJob)}`);
+  }
+
   const students = await request("/ingest/students", {
     method: "POST",
     token: institutionToken,
@@ -264,6 +281,7 @@ async function main() {
         academicStructure: academicStructure.structure.uuid,
         developerAccess: approvedDeveloperAccess.status,
         apiClient: apiClientLogin.apiClient.clientId,
+        backgroundJob: queuedJob.status,
         learnerRows: students.rows.length,
         batchStatus: published.status,
         credentialStatus: credential.status,

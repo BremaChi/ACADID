@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
-import { Prisma, UserRole } from "@prisma/client";
+import { BackgroundJobType, Prisma, UserRole } from "@prisma/client";
 import {
   createAcademicSessionSchema,
   createAcademicStructureSchema,
@@ -13,13 +13,15 @@ import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
+import { QueueService } from "../../platform/services/queue.service.js";
 
 @Injectable()
 export class IngestionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authority: AuthorityService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly queue: QueueService
   ) {}
 
   async ingestStudents(auth: AuthTokenPayload, body: unknown) {
@@ -470,12 +472,81 @@ export class IngestionService {
     };
   }
 
-  createBulkUpload(body: unknown) {
+  async queueResultBatchValidation(auth: AuthTokenPayload, body: unknown) {
+    const parsed = ingestResultBatchSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const authority = await this.authority.assertInstitutionCan(parsed.data.institutionId, "ingest_results", auth);
+    await this.assertBatchScopeBelongsToInstitution(
+      authority.institutionUuid,
+      parsed.data.academicSessionId,
+      parsed.data.structureScopeId
+    );
+    await this.authority.assertActorAssignedScope(auth, {
+      institutionId: authority.institutionUuid,
+      structureScopeId: parsed.data.structureScopeId
+    });
+
+    const job = await this.queue.enqueueJob({
+      type: BackgroundJobType.RESULT_BATCH_VALIDATION,
+      institutionId: authority.institutionUuid,
+      createdById: auth.kind === "API_KEY" ? undefined : auth.sub,
+      relatedEntityType: "ResultBatchDraft",
+      payload: this.toJson({
+        request: parsed.data,
+        requestedBy: this.requestedBy(auth),
+        authorityGrantId: authority.authorityGrantId
+      }),
+      eventType: "result_batch.validation_queued",
+      eventPayload: this.toJson({
+        institutionId: authority.institutionId,
+        academicSessionId: parsed.data.academicSessionId ?? null,
+        structureScopeId: parsed.data.structureScopeId ?? null,
+        rowCount: parsed.data.rows.length
+      })
+    });
+
+    return {
+      accepted: true,
+      door: "ingestion",
+      operation: "result-batch-validation",
+      processing: "QUEUED",
+      institutionId: authority.institutionId,
+      rowCount: parsed.data.rows.length,
+      job
+    };
+  }
+
+  async createBulkUpload(auth: AuthTokenPayload, body: unknown) {
+    const institutionRef = this.resolveBulkUploadInstitutionRef(auth, body);
+    const authority = await this.authority.assertInstitutionCan(institutionRef, "ingest_students", auth);
+
+    const job = await this.queue.enqueueJob({
+      type: BackgroundJobType.BULK_STUDENT_UPLOAD,
+      institutionId: authority.institutionUuid,
+      createdById: auth.kind === "API_KEY" ? undefined : auth.sub,
+      relatedEntityType: "ImportFile",
+      payload: this.toJson({
+        request: body,
+        requestedBy: this.requestedBy(auth),
+        authorityGrantId: authority.authorityGrantId
+      }),
+      eventType: "bulk_student_upload.queued",
+      eventPayload: this.toJson({
+        institutionId: authority.institutionId,
+        submittedAt: new Date().toISOString()
+      })
+    });
+
     return {
       accepted: true,
       door: "ingestion",
       operation: "bulk-upload",
-      received: body
+      processing: "QUEUED",
+      institutionId: authority.institutionId,
+      job
     };
   }
 
@@ -570,6 +641,38 @@ export class IngestionService {
 
   private institutionRefWhere(institutionRef: string): Prisma.InstitutionWhereInput {
     return this.isUuid(institutionRef) ? { uuid: institutionRef } : { institutionId: institutionRef };
+  }
+
+  private resolveBulkUploadInstitutionRef(auth: AuthTokenPayload, body: unknown) {
+    if (body && typeof body === "object" && "institutionId" in body) {
+      const institutionId = (body as { institutionId?: unknown }).institutionId;
+      if (typeof institutionId === "string" && institutionId.trim()) {
+        return institutionId.trim();
+      }
+    }
+
+    const tokenInstitution = auth.institutionId ?? auth.institutionUuid;
+    if (tokenInstitution) {
+      return tokenInstitution;
+    }
+
+    throw new BadRequestException("Bulk upload requires an institutionId.");
+  }
+
+  private requestedBy(auth: AuthTokenPayload) {
+    return {
+      kind: auth.kind ?? "USER",
+      sub: auth.kind === "API_KEY" ? undefined : auth.sub,
+      role: auth.role,
+      institutionUserId: auth.institutionUserId,
+      apiKeyId: auth.apiKeyId,
+      clientId: auth.clientId,
+      productCode: auth.productCode
+    };
+  }
+
+  private toJson(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   }
 
   private isUuid(value: string) {

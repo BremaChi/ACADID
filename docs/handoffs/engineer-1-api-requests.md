@@ -4,6 +4,23 @@ Owner: Engineer 1 / Data Center API
 Purpose: queue for product engineers who need new backend roots, fields, or contract changes  
 Status: Active
 
+## Event-Driven Rule
+
+Product teams must not build long-running product flows that block a user request. If a feature needs bulk upload processing, batch validation, credential/PDF generation, payment confirmation, deadline checks, notification fanout, or webhook delivery, request a Data Center job endpoint here.
+
+Current async contract:
+
+- Create/submit endpoint returns quickly with `accepted: true` and `job.jobId`.
+- Product UI polls `GET /api/jobs/:id` lightly for progress/status.
+- Workers update `BackgroundJob`, emit `DomainEvent`, and create `Notification` or `WebhookDelivery` records.
+- Do not create product-local queue tables or shadow schemas.
+
+Implemented job roots:
+
+- `POST /api/ingest/bulk-upload`
+- `POST /api/ingest/results/async`
+- `GET /api/jobs/:id`
+
 ## How To Add A Request
 
 Copy this template into the Open Requests section:
