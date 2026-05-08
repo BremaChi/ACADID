@@ -130,12 +130,12 @@ Implemented foundation:
 - Database connectivity status.
 - Storage config status.
 - Credential signing readiness.
+- Background queue metrics: ready backlog, scheduled backlog, running jobs, failed jobs, stale running jobs, queue breakdown, and recent worker activity.
+- Webhook delivery metrics: pending/retrying, due now, delivered in 24h, failed in 24h, signing-secret readiness, and status breakdown.
 
 Required next:
 
-- Queue backlog metrics.
-- Worker heartbeat status.
-- Webhook delivery health.
+- Dedicated worker heartbeat table if multiple worker pools are deployed.
 - Supabase storage download health.
 - Error-rate windows by route and queue.
 
@@ -200,8 +200,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Worker/system-health metrics for queue backlog and failed jobs.
-2. Persistent rate limiting for auth, verification, uploads, and public search.
-3. Structured logging and error-observability baseline.
-4. Caching strategy for safe read-heavy surfaces.
-5. Per-institution webhook secrets and Founder Console replay controls.
+1. Persistent rate limiting for auth, verification, uploads, and public search.
+2. Structured logging and error-observability baseline.
+3. Caching strategy for safe read-heavy surfaces.
+4. Per-institution webhook secrets and Founder Console replay controls.
+5. Dedicated worker heartbeat table if worker pool scale requires it.

@@ -285,6 +285,21 @@ type SystemHealth = {
     status: HealthStatus;
     responseTimeMs: number;
     message: string;
+    metadata?: {
+      readyBacklog?: number;
+      scheduledBacklog?: number;
+      runningJobs?: number;
+      failedJobs24h?: number;
+      staleRunningJobs?: number;
+      queues?: Array<{ queue: string; queued: number; retrying: number; running: number; failed: number; total: number }>;
+      recentWorkers?: Array<{ jobId: string; queue: string; type: string; status: string; lockedBy: string | null; updatedAt: string }>;
+      pendingOrRetrying?: number;
+      dueNow?: number;
+      failed24h?: number;
+      delivered24h?: number;
+      secretConfigured?: boolean;
+      statusBreakdown?: Array<{ status: string; count: number }>;
+    };
   }>;
   metrics: {
     status: HealthStatus;
@@ -297,6 +312,10 @@ type SystemHealth = {
     auditEventsToday: number;
     failedAuditEvents: number;
     publishedCredentialsToday: number;
+    readyBackgroundJobs: number;
+    failedBackgroundJobs: number;
+    pendingWebhooks: number;
+    failedWebhooks: number;
     errorRate: number;
     message?: string;
   };
@@ -2565,17 +2584,22 @@ function SystemHealthPage({ health }: { health: SystemHealth | null }) {
     { name: "Authentication Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Storage Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Email Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Background Workers", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Webhook Delivery", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." }
   ];
   const incidents = health?.incidents ?? [];
+  const queueHealth = services.find((service) => service.name === "Background Workers")?.metadata;
+  const webhookHealth = services.find((service) => service.name === "Webhook Delivery")?.metadata;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Overall Status" value={titleCase(health?.overallStatus ?? "PENDING_CONFIGURATION")} helper={health ? `Updated ${formatDate(health.generatedAt)}` : "Waiting for health data"} tone={health?.overallStatus === "OPERATIONAL" ? "success" : health?.overallStatus === "DOWN" ? "error" : "warning"} icon="System Health" />
         <MetricCard label="Gateway Requests" value={metrics?.gatewayRequestsToday ?? "--"} helper="Last 24 hours" tone="accent" icon="API Keys" />
+        <MetricCard label="Queue Backlog" value={metrics?.readyBackgroundJobs ?? "--"} helper="Ready worker jobs" tone={metrics && metrics.readyBackgroundJobs > 500 ? "warning" : "success"} icon="System Health" />
+        <MetricCard label="Failed Jobs" value={metrics?.failedBackgroundJobs ?? "--"} helper="Last 24 hours" tone={metrics && metrics.failedBackgroundJobs > 0 ? "error" : "success"} icon="Disputes" />
+        <MetricCard label="Pending Webhooks" value={metrics?.pendingWebhooks ?? "--"} helper="Pending or retrying" tone={metrics && metrics.pendingWebhooks > 50 ? "warning" : "accent"} icon="API Keys" />
         <MetricCard label="Error Rate" value={typeof metrics?.errorRate === "number" ? `${metrics.errorRate}%` : "--"} helper="Denied, revoked, discrepancy, failed audit" tone={metrics && metrics.errorRate > 0 ? "warning" : "success"} icon="Security" />
-        <MetricCard label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} helper="Current API process" tone="accent" icon="System Health" />
       </div>
       <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
       <Card>
@@ -2604,9 +2628,42 @@ function SystemHealthPage({ health }: { health: SystemHealth | null }) {
           <MetricLine label="Published credentials" value={String(metrics?.publishedCredentialsToday ?? "--")} />
           <MetricLine label="Denied verifications" value={String(metrics?.deniedVerificationEvents ?? "--")} />
           <MetricLine label="Revoked/discrepancy" value={String((metrics?.revokedVerificationEvents ?? 0) + (metrics?.discrepancyEvents ?? 0))} />
+          <MetricLine label="Worker running jobs" value={String(queueHealth?.runningJobs ?? "--")} />
+          <MetricLine label="Webhook delivered 24h" value={String(webhookHealth?.delivered24h ?? "--")} />
           <MetricLine label="Recent incidents" value={`${incidents.length} open`} />
+          <MetricLine label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} />
         </div>
       </Card>
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card>
+          <SectionTitle title="Queue Backlog" subtitle="Background jobs by queue and state." />
+          <ResponsiveTable
+            empty="No background queue activity yet."
+            headers={["Queue", "Queued", "Retrying", "Running", "Failed", "Total"]}
+            rows={(queueHealth?.queues ?? []).map((queue) => [
+              queue.queue,
+              queue.queued.toLocaleString(),
+              queue.retrying.toLocaleString(),
+              queue.running.toLocaleString(),
+              <StatusBadge key="failed" status={queue.failed > 0 ? `${queue.failed} Failed` : "0 Failed"} />,
+              queue.total.toLocaleString()
+            ])}
+          />
+        </Card>
+        <Card>
+          <SectionTitle title="Webhook Delivery" subtitle="Partner callback delivery state." />
+          <div className="grid gap-3">
+            <MetricLine label="Secret configured" value={webhookHealth?.secretConfigured ? "Yes" : "No"} />
+            <MetricLine label="Due now" value={String(webhookHealth?.dueNow ?? "--")} />
+            <MetricLine label="Failed in 24h" value={String(webhookHealth?.failed24h ?? "--")} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(webhookHealth?.statusBreakdown ?? []).map((item) => (
+              <StatusBadge key={item.status} status={`${titleCase(item.status)} ${item.count}`} />
+            ))}
+          </div>
+        </Card>
       </div>
       <Card>
         <SectionTitle title="Recent Incidents" subtitle="Derived from component degradation and gateway risk events." />

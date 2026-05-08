@@ -1066,7 +1066,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, webhook, signing, metrics] = await Promise.all([
+    const [database, auth, storage, email, queue, webhook, signing, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService(
@@ -1074,6 +1074,7 @@ export class AdminService {
         Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.OBJECT_STORAGE_BUCKET || process.env.STORAGE_BUCKET)
       ),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
+      this.checkQueueWorkers(),
       this.checkWebhookDelivery(),
       this.checkCredentialSigning(),
       this.readGatewayMetrics()
@@ -1090,6 +1091,7 @@ export class AdminService {
       auth,
       storage,
       email,
+      queue,
       webhook,
       signing
     ];
@@ -2023,28 +2025,183 @@ export class AdminService {
     };
   }
 
+  private async checkQueueWorkers() {
+    const startedAt = Date.now();
+    const now = new Date();
+    const staleLockedBefore = new Date(now.getTime() - 15 * 60 * 1000);
+    try {
+      const [readyBacklog, scheduledBacklog, runningJobs, failedJobs24h, staleRunningJobs, byQueue, recentWorkers] = await Promise.all([
+        this.prisma.backgroundJob.count({
+          where: {
+            status: { in: ["QUEUED", "RETRYING"] },
+            runAfter: { lte: now }
+          }
+        }),
+        this.prisma.backgroundJob.count({
+          where: {
+            status: { in: ["QUEUED", "RETRYING"] },
+            runAfter: { gt: now }
+          }
+        }),
+        this.prisma.backgroundJob.count({ where: { status: "RUNNING" } }),
+        this.prisma.backgroundJob.count({
+          where: {
+            status: "FAILED",
+            failedAt: { gte: this.hoursAgo(24) }
+          }
+        }),
+        this.prisma.backgroundJob.count({
+          where: {
+            status: "RUNNING",
+            lockedAt: { lt: staleLockedBefore }
+          }
+        }),
+        this.prisma.backgroundJob.groupBy({
+          by: ["queue", "status"],
+          _count: { _all: true },
+          where: {
+            status: { in: ["QUEUED", "RETRYING", "RUNNING", "FAILED"] }
+          },
+          orderBy: [{ queue: "asc" }, { status: "asc" }]
+        }),
+        this.prisma.backgroundJob.findMany({
+          where: {
+            lockedBy: { not: null }
+          },
+          select: {
+            uuid: true,
+            queue: true,
+            type: true,
+            status: true,
+            lockedBy: true,
+            lockedAt: true,
+            startedAt: true,
+            completedAt: true,
+            failedAt: true,
+            updatedAt: true
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 10
+        })
+      ]);
+
+      const status: HealthStatus = staleRunningJobs > 0 || failedJobs24h > 0 || readyBacklog > 500 ? "DEGRADED" : "OPERATIONAL";
+      const message =
+        status === "OPERATIONAL"
+          ? `${readyBacklog} ready job(s), ${runningJobs} running, ${scheduledBacklog} scheduled.`
+          : `${readyBacklog} ready job(s), ${failedJobs24h} failed in 24h, ${staleRunningJobs} stale running job(s).`;
+
+      return {
+        name: "Background Workers",
+        status,
+        responseTimeMs: Date.now() - startedAt,
+        message,
+        metadata: {
+          readyBacklog,
+          scheduledBacklog,
+          runningJobs,
+          failedJobs24h,
+          staleRunningJobs,
+          queues: this.normaliseQueueBreakdown(byQueue),
+          recentWorkers: recentWorkers.map((job) => ({
+            jobId: job.uuid,
+            queue: job.queue,
+            type: job.type,
+            status: job.status,
+            lockedBy: job.lockedBy,
+            lockedAt: job.lockedAt,
+            startedAt: job.startedAt,
+            completedAt: job.completedAt,
+            failedAt: job.failedAt,
+            updatedAt: job.updatedAt
+          }))
+        }
+      };
+    } catch (error) {
+      return {
+        name: "Background Workers",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Queue and worker health check failed."),
+        metadata: {
+          readyBacklog: 0,
+          scheduledBacklog: 0,
+          runningJobs: 0,
+          failedJobs24h: 0,
+          staleRunningJobs: 0,
+          queues: [],
+          recentWorkers: []
+        }
+      };
+    }
+  }
+
   private async checkWebhookDelivery() {
     const startedAt = Date.now();
+    const now = new Date();
     try {
-      const failedWebhookEvents = await this.prisma.auditEvent.count({
-        where: {
-          targetType: "WebhookDelivery",
-          outcome: { not: "SUCCESS" },
-          createdAt: { gte: this.hoursAgo(24) }
-        }
-      });
+      const [pendingOrRetrying, dueNow, failed24h, delivered24h, byStatus] = await Promise.all([
+        this.prisma.webhookDelivery.count({ where: { status: { in: ["PENDING", "RETRYING"] } } }),
+        this.prisma.webhookDelivery.count({
+          where: {
+            status: { in: ["PENDING", "RETRYING"] },
+            nextAttemptAt: { lte: now }
+          }
+        }),
+        this.prisma.webhookDelivery.count({
+          where: {
+            status: "FAILED",
+            updatedAt: { gte: this.hoursAgo(24) }
+          }
+        }),
+        this.prisma.webhookDelivery.count({
+          where: {
+            status: "DELIVERED",
+            deliveredAt: { gte: this.hoursAgo(24) }
+          }
+        }),
+        this.prisma.webhookDelivery.groupBy({
+          by: ["status"],
+          _count: { _all: true },
+          orderBy: { status: "asc" }
+        })
+      ]);
+      const missingSecret = !process.env.ACADID_WEBHOOK_SECRET;
+      const status: HealthStatus = failed24h > 0 || dueNow > 50 || (missingSecret && pendingOrRetrying > 0) ? "DEGRADED" : "OPERATIONAL";
       return {
         name: "Webhook Delivery",
-        status: failedWebhookEvents > 0 ? ("DEGRADED" as HealthStatus) : ("OPERATIONAL" as HealthStatus),
+        status,
         responseTimeMs: Date.now() - startedAt,
-        message: failedWebhookEvents > 0 ? `${failedWebhookEvents} failed webhook event(s) in the last 24 hours.` : "No webhook delivery failures recorded in the last 24 hours."
+        message:
+          status === "OPERATIONAL"
+            ? `${delivered24h} delivered in 24h; ${pendingOrRetrying} pending or retrying.`
+            : `${failed24h} failed in 24h; ${dueNow} due now; ${pendingOrRetrying} pending or retrying.`,
+        metadata: {
+          pendingOrRetrying,
+          dueNow,
+          failed24h,
+          delivered24h,
+          secretConfigured: !missingSecret,
+          statusBreakdown: byStatus.map((row) => ({
+            status: row.status,
+            count: row._count._all
+          }))
+        }
       };
     } catch (error) {
       return {
         name: "Webhook Delivery",
         status: "DEGRADED" as HealthStatus,
         responseTimeMs: Date.now() - startedAt,
-        message: this.safeErrorMessage(error, "Webhook delivery check failed.")
+        message: this.safeErrorMessage(error, "Webhook delivery check failed."),
+        metadata: {
+          pendingOrRetrying: 0,
+          dueNow: 0,
+          failed24h: 0,
+          delivered24h: 0,
+          secretConfigured: Boolean(process.env.ACADID_WEBHOOK_SECRET),
+          statusBreakdown: []
+        }
       };
     }
   }
@@ -2090,7 +2247,19 @@ export class AdminService {
     const startedAt = Date.now();
     const since = this.hoursAgo(24);
     try {
-      const [verificationEventsToday, deniedVerificationEvents, revokedVerificationEvents, discrepancyEvents, auditEventsToday, failedAuditEvents, publishedCredentialsToday] =
+      const [
+        verificationEventsToday,
+        deniedVerificationEvents,
+        revokedVerificationEvents,
+        discrepancyEvents,
+        auditEventsToday,
+        failedAuditEvents,
+        publishedCredentialsToday,
+        readyBackgroundJobs,
+        failedBackgroundJobs,
+        pendingWebhooks,
+        failedWebhooks
+      ] =
         await Promise.all([
           this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since } } }),
           this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since }, outcome: "DENIED" } }),
@@ -2098,7 +2267,11 @@ export class AdminService {
           this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: since }, outcome: "DISCREPANCY" } }),
           this.prisma.auditEvent.count({ where: { createdAt: { gte: since } } }),
           this.prisma.auditEvent.count({ where: { createdAt: { gte: since }, outcome: { not: "SUCCESS" } } }),
-          this.prisma.credential.count({ where: { issuedAt: { gte: since } } })
+          this.prisma.credential.count({ where: { issuedAt: { gte: since } } }),
+          this.prisma.backgroundJob.count({ where: { status: { in: ["QUEUED", "RETRYING"] }, runAfter: { lte: new Date() } } }),
+          this.prisma.backgroundJob.count({ where: { status: "FAILED", failedAt: { gte: since } } }),
+          this.prisma.webhookDelivery.count({ where: { status: { in: ["PENDING", "RETRYING"] } } }),
+          this.prisma.webhookDelivery.count({ where: { status: "FAILED", updatedAt: { gte: since } } })
         ]);
       const gatewayRequestsToday = verificationEventsToday + auditEventsToday;
       const failedEvents = deniedVerificationEvents + revokedVerificationEvents + discrepancyEvents + failedAuditEvents;
@@ -2115,6 +2288,10 @@ export class AdminService {
         auditEventsToday,
         failedAuditEvents,
         publishedCredentialsToday,
+        readyBackgroundJobs,
+        failedBackgroundJobs,
+        pendingWebhooks,
+        failedWebhooks,
         errorRate
       };
     } catch (error) {
@@ -2129,6 +2306,10 @@ export class AdminService {
         auditEventsToday: 0,
         failedAuditEvents: 0,
         publishedCredentialsToday: 0,
+        readyBackgroundJobs: 0,
+        failedBackgroundJobs: 0,
+        pendingWebhooks: 0,
+        failedWebhooks: 0,
         errorRate: 0,
         message: this.safeErrorMessage(error, "Gateway metrics query failed.")
       };
@@ -2137,7 +2318,16 @@ export class AdminService {
 
   private deriveIncidents(
     services: Array<{ name: string; status: HealthStatus; message: string }>,
-    metrics: { status: HealthStatus; failedAuditEvents: number; deniedVerificationEvents: number; revokedVerificationEvents: number; discrepancyEvents: number; message?: string }
+    metrics: {
+      status: HealthStatus;
+      failedAuditEvents: number;
+      deniedVerificationEvents: number;
+      revokedVerificationEvents: number;
+      discrepancyEvents: number;
+      failedBackgroundJobs?: number;
+      failedWebhooks?: number;
+      message?: string;
+    }
   ) {
     const incidents = services
       .filter((service) => service.status === "DOWN" || service.status === "DEGRADED")
@@ -2170,7 +2360,44 @@ export class AdminService {
       });
     }
 
+    if ((metrics.failedBackgroundJobs ?? 0) > 0) {
+      incidents.push({
+        title: "Background job failures detected",
+        severity: "WARNING",
+        status: "OPEN",
+        message: `${metrics.failedBackgroundJobs} background job(s) failed in the last 24 hours.`,
+        detectedAt: new Date()
+      });
+    }
+
+    if ((metrics.failedWebhooks ?? 0) > 0) {
+      incidents.push({
+        title: "Webhook delivery failures detected",
+        severity: "WARNING",
+        status: "OPEN",
+        message: `${metrics.failedWebhooks} webhook delivery attempt(s) failed in the last 24 hours.`,
+        detectedAt: new Date()
+      });
+    }
+
     return incidents.slice(0, 10);
+  }
+
+  private normaliseQueueBreakdown(rows: Array<{ queue: string; status: string; _count: { _all: number } }>) {
+    const queues = new Map<string, Record<string, number>>();
+    for (const row of rows) {
+      const current = queues.get(row.queue) ?? {};
+      current[row.status] = (current[row.status] ?? 0) + row._count._all;
+      queues.set(row.queue, current);
+    }
+    return Array.from(queues.entries()).map(([queue, counts]) => ({
+      queue,
+      queued: counts.QUEUED ?? 0,
+      retrying: counts.RETRYING ?? 0,
+      running: counts.RUNNING ?? 0,
+      failed: counts.FAILED ?? 0,
+      total: Object.values(counts).reduce((sum, count) => sum + count, 0)
+    }));
   }
 
   private safeErrorMessage(error: unknown, fallback: string) {

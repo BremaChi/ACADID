@@ -93,6 +93,7 @@ The API has these first modules:
 - Dependency hardening notes are documented in `SECURITY_NOTES.md`, including direct vs transitive audit classification and major-upgrade paths for Nest/Next framework advisories.
 - Platform foundation priority order is documented in `docs/platform-foundation-roadmap.md`; Engineer 1 should stabilize reliability systems before feature expansion.
 - Webhook delivery worker transport is implemented: outbound webhook jobs are signed, carry idempotency headers, retry with exponential backoff, and move exhausted deliveries to failed/dead-letter state.
+- Founder System Health now reports queue and worker health: ready backlog, scheduled jobs, running jobs, stale locks, failed jobs, queue breakdown, recent worker activity, and webhook delivery status from durable delivery rows.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
@@ -220,6 +221,7 @@ Completed successfully:
 - Dependency hardening review validates with `npm audit --omit=dev --json`, `npm run typecheck`, `npm test`, and `npm run smoke:api`; no blind `npm audit fix --force` was run.
 - Security upgrade plan is documented in `SECURITY_UPGRADE_PLAN.md`; no major framework upgrade was applied on `main`.
 - Platform foundation checkpoint validates with `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
+- Worker and queue health checkpoint validates with `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -257,15 +259,14 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add worker/system-health metrics for queue backlog and failed jobs.
-2. Add persistent rate limiting for auth, verification, uploads, and public search.
-3. Add structured logging and error-observability baseline.
-4. Add caching strategy for safe read-heavy verification and platform metadata surfaces.
-5. Add per-institution webhook secrets and Founder Console retry/replay controls.
-6. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-7. Add real push/email/SMS provider transports.
-8. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-9. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add persistent rate limiting for auth, verification, uploads, and public search.
+2. Add structured logging and error-observability baseline.
+3. Add caching strategy for safe read-heavy verification and platform metadata surfaces.
+4. Add per-institution webhook secrets and Founder Console retry/replay controls.
+5. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+6. Add real push/email/SMS provider transports.
+7. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+8. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 
