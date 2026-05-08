@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import { JobWorkerService } from "../apps/api/dist/apps/api/src/modules/jobs/job-worker.service.js";
 
@@ -115,4 +116,169 @@ test("worker retries failed jobs until max attempts", async () => {
   assert.equal(calls[1].data.status, "RETRYING");
   assert.equal(calls[1].data.error, "validation failed");
   assert.equal(calls[2].data.type, "result_batch_validation.retrying");
+});
+
+test("worker delivers webhooks with signed idempotent headers", async () => {
+  const previousSecret = process.env.ACADID_WEBHOOK_SECRET;
+  process.env.ACADID_WEBHOOK_SECRET = "test-webhook-secret";
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  let fetchCall;
+  globalThis.fetch = async (url, init) => {
+    fetchCall = { url, init };
+    return {
+      ok: true,
+      status: 202,
+      text: async () => ""
+    };
+  };
+
+  try {
+    const delivery = {
+      uuid: "delivery-1",
+      targetUrl: "https://partner.example/webhooks/acadid",
+      eventType: "credential.issued",
+      payload: { credentialId: "credential-1" },
+      attempts: 0
+    };
+    const service = new JobWorkerService(
+      {
+        $transaction: async (callback) =>
+          callback({
+            $queryRaw: async () => [{ uuid: "job-webhook-1" }],
+            backgroundJob: {
+              update: async ({ where, data, select }) => {
+                calls.push({ table: "BackgroundJob", where, data });
+                if (select) {
+                  return {
+                    uuid: "job-webhook-1",
+                    type: "WEBHOOK_DELIVERY",
+                    queue: "webhooks.delivery",
+                    institutionId: "institution-1",
+                    createdById: "founder-1",
+                    payload: { deliveryId: delivery.uuid },
+                    attempts: 1,
+                    maxAttempts: 3
+                  };
+                }
+                return { uuid: where.uuid };
+              }
+            },
+            domainEvent: {
+              create: async ({ data }) => {
+                calls.push({ table: "DomainEvent", data });
+                return { uuid: "event-webhook-1", ...data };
+              }
+            }
+          }),
+        webhookDelivery: {
+          findFirst: async () => delivery,
+          update: async ({ where, data }) => {
+            calls.push({ table: "WebhookDelivery", where, data });
+            return { ...delivery, ...data };
+          }
+        }
+      },
+      {},
+      {}
+    );
+
+    const result = await service.runOnce("worker-test", 1);
+    const body = fetchCall.init.body;
+    const timestamp = fetchCall.init.headers["x-acadid-timestamp"];
+    const expectedSignature = createHmac("sha256", "test-webhook-secret").update(`${timestamp}.${delivery.uuid}.${body}`).digest("hex");
+
+    assert.deepEqual(result, { processed: 1, succeeded: 1, failed: 0 });
+    assert.equal(fetchCall.url, delivery.targetUrl);
+    assert.equal(fetchCall.init.headers["x-acadid-event"], "credential.issued");
+    assert.equal(fetchCall.init.headers["x-acadid-delivery"], "delivery-1");
+    assert.equal(fetchCall.init.headers["x-acadid-idempotency-key"], "whd_delivery-1");
+    assert.equal(fetchCall.init.headers["x-acadid-signature"], `v1=${expectedSignature}`);
+    assert.equal(calls.some((call) => call.table === "WebhookDelivery" && call.data.status === "DELIVERED"), true);
+    assert.equal(calls.some((call) => call.table === "DomainEvent" && call.data.type === "webhook_delivery.succeeded"), true);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousSecret === undefined) delete process.env.ACADID_WEBHOOK_SECRET;
+    else process.env.ACADID_WEBHOOK_SECRET = previousSecret;
+  }
+});
+
+test("worker moves exhausted webhook deliveries to failed dead-letter state", async () => {
+  const previousSecret = process.env.ACADID_WEBHOOK_SECRET;
+  process.env.ACADID_WEBHOOK_SECRET = "test-webhook-secret";
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 500,
+    text: async () => "partner unavailable"
+  });
+
+  try {
+    const delivery = {
+      uuid: "delivery-failed-1",
+      targetUrl: "https://partner.example/webhooks/acadid",
+      eventType: "credential.revoked",
+      payload: { credentialId: "credential-1" },
+      attempts: 2
+    };
+    const service = new JobWorkerService(
+      {
+        $transaction: async (callback) =>
+          callback({
+            $queryRaw: async () => [{ uuid: "job-webhook-failed-1" }],
+            backgroundJob: {
+              update: async ({ where, data, select }) => {
+                calls.push({ table: "BackgroundJob", where, data });
+                if (select) {
+                  return {
+                    uuid: "job-webhook-failed-1",
+                    type: "WEBHOOK_DELIVERY",
+                    queue: "webhooks.delivery",
+                    institutionId: "institution-1",
+                    createdById: "founder-1",
+                    payload: { deliveryId: delivery.uuid },
+                    attempts: 3,
+                    maxAttempts: 3
+                  };
+                }
+                return { uuid: where.uuid };
+              }
+            },
+            webhookDelivery: {
+              updateMany: async ({ where, data }) => {
+                calls.push({ table: "WebhookDelivery", where, data });
+                return { count: 1 };
+              }
+            },
+            domainEvent: {
+              create: async ({ data }) => {
+                calls.push({ table: "DomainEvent", data });
+                return { uuid: "event-webhook-failed-1", ...data };
+              }
+            }
+          }),
+        webhookDelivery: {
+          findFirst: async () => delivery,
+          update: async ({ where, data }) => {
+            calls.push({ table: "WebhookDelivery", where, data });
+            return { ...delivery, ...data };
+          }
+        }
+      },
+      {},
+      {}
+    );
+
+    const result = await service.runOnce("worker-test", 1);
+
+    assert.deepEqual(result, { processed: 1, succeeded: 0, failed: 1 });
+    assert.equal(calls.some((call) => call.table === "BackgroundJob" && call.data.status === "FAILED"), true);
+    assert.equal(calls.some((call) => call.table === "WebhookDelivery" && call.data.status === "FAILED"), true);
+    assert.equal(calls.some((call) => call.table === "DomainEvent" && call.data.type === "webhook_delivery.failed"), true);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousSecret === undefined) delete process.env.ACADID_WEBHOOK_SECRET;
+    else process.env.ACADID_WEBHOOK_SECRET = previousSecret;
+  }
 });

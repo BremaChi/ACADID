@@ -4,6 +4,23 @@ Owner: Engineer 1 / Data Center API
 Purpose: queue for product engineers who need new backend roots, fields, or contract changes  
 Status: Active
 
+## Platform Foundation Priority
+
+Before adding many more product features, Engineer 1 should follow `docs/platform-foundation-roadmap.md`.
+
+Current priority order:
+
+1. Event bus / queue system
+2. Webhook delivery system
+3. Retry policies
+4. Idempotency protection
+5. Structured audit logging
+6. Background workers
+7. Monitoring and health checks
+8. Rate limiting
+9. Caching strategy
+10. Error observability
+
 ## Event-Driven Rule
 
 Product teams must not build long-running product flows that block a user request. If a feature needs bulk upload processing, batch validation, credential/PDF generation, payment confirmation, deadline checks, notification fanout, or webhook delivery, request a Data Center job endpoint here.

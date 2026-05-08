@@ -73,6 +73,12 @@ Useful commands:
 - `npm run crypto:keygen`
 - `npm run crypto:validate`
 
+Webhook worker delivery:
+
+- Configure `ACADID_WEBHOOK_SECRET` before enabling outbound webhook jobs.
+- The worker signs each delivery with `x-acadid-signature`, sends a stable `x-acadid-idempotency-key`, retries with exponential backoff, and marks exhausted deliveries as failed for operator review.
+- `ACADID_WEBHOOK_TIMEOUT_MS` controls the outbound delivery timeout, capped at 30 seconds.
+
 Credential signing:
 
 - Local development may run with an ephemeral Ed25519 key and will show Credential Signing as degraded.

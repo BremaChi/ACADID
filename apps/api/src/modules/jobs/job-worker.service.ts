@@ -1,5 +1,6 @@
+import { createHmac } from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
-import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole } from "@prisma/client";
+import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDeliveryStatus } from "@prisma/client";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
@@ -20,6 +21,14 @@ type WorkerRunResult = {
   processed: number;
   succeeded: number;
   failed: number;
+};
+
+type WebhookDeliveryRecord = {
+  uuid: string;
+  targetUrl: string;
+  eventType: string;
+  payload: Prisma.JsonValue;
+  attempts: number;
 };
 
 const workerQueues = [
@@ -190,13 +199,92 @@ export class JobWorkerService {
   }
 
   private async processWebhookDelivery(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
-    await this.prisma.webhookDelivery.updateMany({
-      where: { jobId: job.uuid, status: { in: ["PENDING", "RETRYING"] } },
-      data: { status: "RETRYING", attempts: { increment: 1 }, nextAttemptAt: new Date(Date.now() + 60000) }
+    const delivery = await this.prisma.webhookDelivery.findFirst({
+      where: { jobId: job.uuid, status: { in: [WebhookDeliveryStatus.PENDING, WebhookDeliveryStatus.RETRYING] } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        uuid: true,
+        targetUrl: true,
+        eventType: true,
+        payload: true,
+        attempts: true
+      }
     });
+
+    if (!delivery) {
+      return this.toJson({
+        mode: "no_pending_delivery",
+        message: "No pending webhook delivery record was found for this job."
+      });
+    }
+
+    const attempt = delivery.attempts + 1;
+    const body = this.serializeWebhookBody(delivery, attempt);
+    const headers = this.buildWebhookHeaders(delivery, body);
+
+    await this.prisma.webhookDelivery.update({
+      where: { uuid: delivery.uuid },
+      data: {
+        status: WebhookDeliveryStatus.RETRYING,
+        attempts: { increment: 1 },
+        lastStatusCode: null,
+        lastError: null,
+        nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+      }
+    });
+
+    let response: Response;
+    try {
+      response = await fetch(delivery.targetUrl, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(this.webhookTimeoutMs())
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.prisma.webhookDelivery.update({
+        where: { uuid: delivery.uuid },
+        data: {
+          status: WebhookDeliveryStatus.RETRYING,
+          lastError: message,
+          nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+        }
+      });
+      throw new Error(`Webhook delivery ${delivery.uuid} failed: ${message}`);
+    }
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => "");
+      const message = `HTTP ${response.status}${responseText ? `: ${responseText.slice(0, 500)}` : ""}`;
+      await this.prisma.webhookDelivery.update({
+        where: { uuid: delivery.uuid },
+        data: {
+          status: WebhookDeliveryStatus.RETRYING,
+          lastStatusCode: response.status,
+          lastError: message,
+          nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+        }
+      });
+      throw new Error(`Webhook delivery ${delivery.uuid} failed: ${message}`);
+    }
+
+    await this.prisma.webhookDelivery.update({
+      where: { uuid: delivery.uuid },
+      data: {
+        status: WebhookDeliveryStatus.DELIVERED,
+        lastStatusCode: response.status,
+        lastError: null,
+        deliveredAt: new Date()
+      }
+    });
+
     return this.toJson({
-      mode: "delivery_scheduled",
-      message: "Webhook transport adapter is queued for the next phase."
+      mode: "delivered",
+      deliveryId: delivery.uuid,
+      eventType: delivery.eventType,
+      statusCode: response.status,
+      attempt
     });
   }
 
@@ -249,6 +337,7 @@ export class JobWorkerService {
   private async failOrRetryJob(job: ClaimedJob, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const shouldRetry = !(error instanceof NonRetryableJobError) && job.attempts < job.maxAttempts;
+    const nextRunAfter = shouldRetry ? new Date(Date.now() + this.retryDelayMs(job.attempts)) : undefined;
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.backgroundJob.update({
         where: { uuid: job.uuid },
@@ -258,10 +347,21 @@ export class JobWorkerService {
           progress: shouldRetry ? 0 : 100,
           lockedAt: null,
           lockedBy: null,
-          runAfter: shouldRetry ? new Date(Date.now() + this.retryDelayMs(job.attempts)) : undefined,
+          runAfter: nextRunAfter,
           failedAt: shouldRetry ? undefined : new Date()
         }
       });
+
+      if (job.type === BackgroundJobType.WEBHOOK_DELIVERY) {
+        await tx.webhookDelivery.updateMany({
+          where: { jobId: job.uuid, status: { in: [WebhookDeliveryStatus.PENDING, WebhookDeliveryStatus.RETRYING] } },
+          data: {
+            status: shouldRetry ? WebhookDeliveryStatus.RETRYING : WebhookDeliveryStatus.FAILED,
+            lastError: message,
+            nextAttemptAt: nextRunAfter ?? new Date()
+          }
+        });
+      }
 
       await tx.domainEvent.create({
         data: {
@@ -279,7 +379,47 @@ export class JobWorkerService {
   }
 
   private retryDelayMs(attempts: number) {
-    return Math.min(15 * 60 * 1000, Math.max(30 * 1000, attempts * 60 * 1000));
+    const exponent = Math.max(0, attempts - 1);
+    return Math.min(15 * 60 * 1000, 30 * 1000 * 2 ** exponent);
+  }
+
+  private serializeWebhookBody(delivery: WebhookDeliveryRecord, attempt: number) {
+    return JSON.stringify({
+      id: delivery.uuid,
+      eventType: delivery.eventType,
+      attempt,
+      payload: delivery.payload,
+      sentAt: new Date().toISOString()
+    });
+  }
+
+  private buildWebhookHeaders(delivery: WebhookDeliveryRecord, body: string) {
+    const secret = process.env.ACADID_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new Error("ACADID_WEBHOOK_SECRET is required before webhook delivery can run.");
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signedContent = `${timestamp}.${delivery.uuid}.${body}`;
+    const signature = createHmac("sha256", secret).update(signedContent).digest("hex");
+
+    return {
+      "content-type": "application/json",
+      "user-agent": "AcadID-Webhook/1.0",
+      "x-acadid-event": delivery.eventType,
+      "x-acadid-delivery": delivery.uuid,
+      "x-acadid-idempotency-key": `whd_${delivery.uuid}`,
+      "x-acadid-timestamp": timestamp,
+      "x-acadid-signature": `v1=${signature}`
+    };
+  }
+
+  private webhookTimeoutMs() {
+    const configured = Number(process.env.ACADID_WEBHOOK_TIMEOUT_MS ?? "10000");
+    if (!Number.isFinite(configured) || configured < 1000) {
+      return 10000;
+    }
+    return Math.min(configured, 30000);
   }
 
   private systemAuth(job: ClaimedJob): AuthTokenPayload {

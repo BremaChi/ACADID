@@ -35,6 +35,8 @@ Created:
 - Architecture v4 memory note in `docs/architecture-brief-v4-memory.md`, making Institution Workspace isolation, human institution sessions, expanded audit logging, and Graduate Record Requests the active next planning source.
 - Architecture v5 memory note in `docs/architecture-brief-v5-memory.md`, making AcademicSession, AcademicStructure, scoped staff assignment, modular result engines, manual rollover, and premium trust identity the active next planning source.
 - Founder authenticator-code security for the Founder Console.
+- Platform foundation roadmap in `docs/platform-foundation-roadmap.md`, making queue/event bus, webhook delivery, retries, idempotency, audit logging, workers, monitoring, rate limiting, caching, and observability the next infrastructure priority order.
+- Security upgrade sprint plan in `SECURITY_UPGRADE_PLAN.md`, keeping Nest/Next major upgrades isolated on `security/framework-upgrade`.
 
 ## Implemented Foundation
 
@@ -89,6 +91,8 @@ The API has these first modules:
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
 - Dependency hardening notes are documented in `SECURITY_NOTES.md`, including direct vs transitive audit classification and major-upgrade paths for Nest/Next framework advisories.
+- Platform foundation priority order is documented in `docs/platform-foundation-roadmap.md`; Engineer 1 should stabilize reliability systems before feature expansion.
+- Webhook delivery worker transport is implemented: outbound webhook jobs are signed, carry idempotency headers, retry with exponential backoff, and move exhausted deliveries to failed/dead-letter state.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
@@ -214,6 +218,8 @@ Completed successfully:
 - Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
 - Object storage coverage validates `storage://bucket/key` parsing, download-base authorization, and parser integration.
 - Dependency hardening review validates with `npm audit --omit=dev --json`, `npm run typecheck`, `npm test`, and `npm run smoke:api`; no blind `npm audit fix --force` was run.
+- Security upgrade plan is documented in `SECURITY_UPGRADE_PLAN.md`; no major framework upgrade was applied on `main`.
+- Platform foundation checkpoint validates with `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -251,15 +257,15 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add real webhook delivery transport with signing and retry policy.
-2. Add real push/email/SMS provider transports.
-3. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-4. Add invitation leads for graduate requests against unregistered institutions.
-5. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
-6. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
-7. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-8. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-9. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` before production.
+1. Add worker/system-health metrics for queue backlog and failed jobs.
+2. Add persistent rate limiting for auth, verification, uploads, and public search.
+3. Add structured logging and error-observability baseline.
+4. Add caching strategy for safe read-heavy verification and platform metadata surfaces.
+5. Add per-institution webhook secrets and Founder Console retry/replay controls.
+6. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+7. Add real push/email/SMS provider transports.
+8. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+9. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 

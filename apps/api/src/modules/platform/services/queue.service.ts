@@ -103,22 +103,78 @@ export class QueueService {
   }
 
   async enqueueWebhookDelivery(input: EnqueueWebhookInput) {
-    const delivery = await this.prisma.webhookDelivery.create({
-      data: {
-        jobId: input.jobId,
-        eventId: input.eventId,
-        institutionId: input.institutionId,
-        targetUrl: input.targetUrl,
-        eventType: input.eventType,
-        payload: input.payload
-      }
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const job = await tx.backgroundJob.create({
+        data: {
+          type: BackgroundJobType.WEBHOOK_DELIVERY,
+          queue: queueByJobType.WEBHOOK_DELIVERY,
+          institutionId: input.institutionId,
+          relatedEntityType: "WebhookDelivery",
+          priority: 1,
+          maxAttempts: 8,
+          payload: {
+            eventId: input.eventId ?? null,
+            sourceJobId: input.jobId ?? null,
+            targetUrl: input.targetUrl,
+            eventType: input.eventType
+          }
+        }
+      });
+
+      const event = await tx.domainEvent.create({
+        data: {
+          type: `${input.eventType}.webhook_queued`,
+          aggregateType: "WebhookDelivery",
+          aggregateId: job.uuid,
+          institutionId: input.institutionId,
+          jobId: job.uuid,
+          payload: {
+            jobId: job.uuid,
+            sourceJobId: input.jobId ?? null,
+            targetUrl: input.targetUrl,
+            eventType: input.eventType
+          }
+        }
+      });
+
+      const delivery = await tx.webhookDelivery.create({
+        data: {
+          jobId: job.uuid,
+          eventId: input.eventId ?? event.uuid,
+          institutionId: input.institutionId,
+          targetUrl: input.targetUrl,
+          eventType: input.eventType,
+          payload: input.payload
+        }
+      });
+
+      await tx.backgroundJob.update({
+        where: { uuid: job.uuid },
+        data: {
+          relatedEntityId: delivery.uuid,
+          payload: {
+            eventId: input.eventId ?? null,
+            queueEventId: event.uuid,
+            sourceJobId: input.jobId ?? null,
+            deliveryId: delivery.uuid,
+            targetUrl: input.targetUrl,
+            eventType: input.eventType
+          }
+        }
+      });
+
+      return { job, event, delivery };
     });
 
     return {
-      id: delivery.uuid,
-      status: delivery.status,
-      eventType: delivery.eventType,
-      nextAttemptAt: delivery.nextAttemptAt
+      id: result.delivery.uuid,
+      jobId: result.job.uuid,
+      eventId: result.event.uuid,
+      status: result.delivery.status,
+      eventType: result.delivery.eventType,
+      idempotencyKey: `whd_${result.delivery.uuid}`,
+      nextAttemptAt: result.delivery.nextAttemptAt,
+      pollingUrl: `/jobs/${result.job.uuid}`
     };
   }
 

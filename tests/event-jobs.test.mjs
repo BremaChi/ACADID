@@ -46,6 +46,68 @@ test("queue service creates a background job with an outbox domain event", async
   assert.equal(created.event.aggregateId, "job-1");
 });
 
+test("queue service creates a durable webhook delivery job", async () => {
+  const created = {};
+  const service = new QueueService(
+    {
+      $transaction: async (callback) =>
+        callback({
+          backgroundJob: {
+            create: async ({ data }) => {
+              created.job = data;
+              return {
+                uuid: "job-webhook-1",
+                status: "QUEUED",
+                ...data
+              };
+            },
+            update: async ({ where, data }) => {
+              created.jobUpdate = { where, data };
+              return { uuid: where.uuid, ...data };
+            }
+          },
+          domainEvent: {
+            create: async ({ data }) => {
+              created.event = data;
+              return { uuid: "event-webhook-1", ...data };
+            }
+          },
+          webhookDelivery: {
+            create: async ({ data }) => {
+              created.delivery = data;
+              return {
+                uuid: "delivery-1",
+                status: "PENDING",
+                nextAttemptAt: new Date("2026-05-08T00:00:00Z"),
+                ...data
+              };
+            }
+          }
+        })
+    },
+    {}
+  );
+
+  const result = await service.enqueueWebhookDelivery({
+    eventId: "event-source-1",
+    institutionId: "institution-1",
+    targetUrl: "https://partner.example/webhooks/acadid",
+    eventType: "credential.issued",
+    payload: { credentialId: "credential-1" }
+  });
+
+  assert.equal(result.jobId, "job-webhook-1");
+  assert.equal(result.id, "delivery-1");
+  assert.equal(result.pollingUrl, "/jobs/job-webhook-1");
+  assert.equal(result.idempotencyKey, "whd_delivery-1");
+  assert.equal(created.job.type, "WEBHOOK_DELIVERY");
+  assert.equal(created.job.queue, "webhooks.delivery");
+  assert.equal(created.job.maxAttempts, 8);
+  assert.equal(created.delivery.jobId, "job-webhook-1");
+  assert.equal(created.event.type, "credential.issued.webhook_queued");
+  assert.equal(created.jobUpdate.data.relatedEntityId, "delivery-1");
+});
+
 test("job polling hides payload and enforces institution access", async () => {
   let assertedInstitutionId = "";
   const service = new QueueService(
