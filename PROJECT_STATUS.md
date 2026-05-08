@@ -88,6 +88,7 @@ The API has these first modules:
 - Cross-engineer coordination is documented through `docs/handoffs/engineering-coordination.md` and `docs/handoffs/engineer-1-api-requests.md` so product engineers can request Data Center API roots without creating shadow schemas.
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
+- Dependency hardening notes are documented in `SECURITY_NOTES.md`, including direct vs transitive audit classification and major-upgrade paths for Nest/Next framework advisories.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
@@ -212,6 +213,7 @@ Completed successfully:
 - Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
 - Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
 - Object storage coverage validates `storage://bucket/key` parsing, download-base authorization, and parser integration.
+- Dependency hardening review validates with `npm audit --omit=dev --json`, `npm run typecheck`, `npm test`, and `npm run smoke:api`; no blind `npm audit fix --force` was run.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -229,7 +231,7 @@ Completed successfully:
 
 Known validation note:
 
-- `npm install` reports dependency vulnerabilities. These need review before production. Do not run force fixes blindly.
+- `npm audit --omit=dev` still reports Nest/Next framework advisories that require planned major upgrades; details and test impact are documented in `SECURITY_NOTES.md`. Do not run force fixes blindly.
 - Docker PostgreSQL is no longer required for normal development. It remains available only as an optional local fallback.
 - Architecture v3.1 changes the MVP API key model: internal AcadID products get API keys first; institutions register through the Institution Portal and only later request optional API access.
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
@@ -257,7 +259,7 @@ API app:
 6. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
 7. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
 8. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-9. Review dependency vulnerabilities before production without using blind force upgrades.
+9. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` before production.
 
 ## GitHub Status
 
