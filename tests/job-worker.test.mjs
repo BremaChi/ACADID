@@ -46,6 +46,11 @@ test("worker leases one queued job and completes it with a domain event", async 
       ingestStudents: async () => {
         throw new Error("metadata-only bulk uploads should not call row ingestion");
       }
+    },
+    {
+      parseStudentUpload: async () => {
+        throw new Error("metadata-only bulk uploads should not call parser");
+      }
     }
   );
 
@@ -95,6 +100,11 @@ test("worker retries failed jobs until max attempts", async () => {
     {
       ingestResults: async () => {
         throw new Error("validation failed");
+      }
+    },
+    {
+      parseStudentUpload: async () => {
+        throw new Error("result validation jobs should not parse uploads");
       }
     }
   );

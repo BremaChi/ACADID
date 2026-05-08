@@ -67,11 +67,11 @@ Implemented now:
 
 Current worker processors:
 
-- `BULK_STUDENT_UPLOAD`: processes inline `rows` when present; otherwise safely completes metadata-only upload tickets until the file parser adapter is added.
+- `BULK_STUDENT_UPLOAD`: parses inline rows, CSV text/base64/local files, readable `file://` URLs, readable HTTP(S) CSV files, and XLSX workbooks before calling the student ingestion workflow.
 - `RESULT_BATCH_VALIDATION`: creates the draft result batch and academic records in the background.
 - `WEBHOOK_DELIVERY`, `PUSH_NOTIFICATION`, and `SMS_EMAIL_DELIVERY`: have durable placeholder processors that update records without blocking product requests.
 - Other integrations use deferred adapter results until their provider-specific handlers are implemented.
 
 Next worker step:
 
-- Add real file parser adapters, real notification transports, and signed webhook delivery transports.
+- Add real object-storage download adapters, real notification transports, and signed webhook delivery transports.

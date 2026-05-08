@@ -3,6 +3,7 @@ import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole } from "@prism
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
+import { BulkUploadParserService, NonRetryableJobError } from "./bulk-upload-parser.service.js";
 
 type ClaimedJob = {
   uuid: string;
@@ -41,7 +42,8 @@ export class JobWorkerService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ingestion: IngestionService
+    private readonly ingestion: IngestionService,
+    private readonly bulkUploadParser: BulkUploadParserService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -151,24 +153,26 @@ export class JobWorkerService {
   private async processBulkStudentUpload(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
     const payload = this.asRecord(job.payload);
     const request = this.asRecord(payload.request);
-    if (Array.isArray(request.rows) && request.rows.length > 0) {
-      const result = await this.ingestion.ingestStudents(this.systemAuth(job), request);
+    if (!Array.isArray(request.rows) && this.isMetadataOnlyUpload(request)) {
       return this.toJson({
-        mode: "processed_rows",
-        createdLearners: result.createdLearners,
-        linkedLearners: result.linkedLearners,
-        createdEnrolments: result.createdEnrolments,
-        existingEnrolments: result.existingEnrolments,
-        rowCount: result.rows.length
+        mode: "metadata_only",
+        message: "Bulk upload job accepted. File parser will run when rows, csvText, contentBase64, filePath, or readable storageUrl is attached.",
+        fileName: request.fileName ?? null,
+        uploadType: request.uploadType ?? null,
+        storageUrl: request.storageUrl ?? null
       });
     }
 
+    const parsed = await this.bulkUploadParser.parseStudentUpload(request);
+    const result = await this.ingestion.ingestStudents(this.systemAuth(job), parsed.input);
     return this.toJson({
-      mode: "metadata_only",
-      message: "Bulk upload job accepted. File parser/import worker can attach parsed rows in the next phase.",
-      fileName: request.fileName ?? null,
-      uploadType: request.uploadType ?? null,
-      storageUrl: request.storageUrl ?? null
+      mode: "processed_file",
+      source: parsed.source,
+      createdLearners: result.createdLearners,
+      linkedLearners: result.linkedLearners,
+      createdEnrolments: result.createdEnrolments,
+      existingEnrolments: result.existingEnrolments,
+      rowCount: result.rows.length
     });
   }
 
@@ -244,7 +248,7 @@ export class JobWorkerService {
 
   private async failOrRetryJob(job: ClaimedJob, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    const shouldRetry = job.attempts < job.maxAttempts;
+    const shouldRetry = !(error instanceof NonRetryableJobError) && job.attempts < job.maxAttempts;
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.backgroundJob.update({
         where: { uuid: job.uuid },
@@ -292,6 +296,16 @@ export class JobWorkerService {
 
   private asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  }
+
+  private isMetadataOnlyUpload(request: Record<string, unknown>) {
+    return (
+      !request.csvText &&
+      !request.contentBase64 &&
+      !request.filePath &&
+      typeof request.storageUrl === "string" &&
+      request.storageUrl.startsWith("pending://")
+    );
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {

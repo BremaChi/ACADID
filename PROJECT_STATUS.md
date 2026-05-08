@@ -99,6 +99,7 @@ The API has these first modules:
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
 - Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
 - Background worker runtime is implemented with database row-lock leasing, retry/failure handling, completion events, `npm run worker`, and `npm run worker:once`.
+- Queued bulk student uploads now have CSV/XLSX parser support, common school-header mapping, validation against the student register schema, and non-retryable failure handling for malformed files.
 
 ### Database
 
@@ -208,6 +209,7 @@ Completed successfully:
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
 - Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
 - Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
+- Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -245,7 +247,7 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add real CSV/XLSX parser adapters for queued bulk uploads.
+1. Add real object-storage download adapters for queued Supabase upload files.
 2. Add real webhook delivery transport with signing and retry policy.
 3. Add real push/email/SMS provider transports.
 4. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
