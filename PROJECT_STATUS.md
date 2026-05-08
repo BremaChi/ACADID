@@ -95,6 +95,7 @@ The API has these first modules:
 - Webhook delivery worker transport is implemented: outbound webhook jobs are signed, carry idempotency headers, retry with exponential backoff, and move exhausted deliveries to failed/dead-letter state.
 - Founder System Health now reports queue and worker health: ready backlog, scheduled jobs, running jobs, stale locks, failed jobs, queue breakdown, recent worker activity, and webhook delivery status from durable delivery rows.
 - Persistent rate limiting is implemented with `RateLimitBucket`, `RateLimitService`, and `RateLimitGuard`; auth, token exchange, public verification, ingestion uploads, and portal intake are protected by database-backed counters.
+- Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
@@ -224,6 +225,7 @@ Completed successfully:
 - Platform foundation checkpoint validates with `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
 - Worker and queue health checkpoint validates with `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
 - Persistent rate limiting checkpoint validates with `npm run db:deploy`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
+- Structured logging and error-observability checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms secret redaction, HTTP error capture, and worker error audit logging.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -261,14 +263,13 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add structured logging and error-observability baseline.
-2. Add caching strategy for safe read-heavy verification and platform metadata surfaces.
-3. Add per-institution webhook secrets and Founder Console retry/replay controls.
-4. Add rate-limit bucket cleanup job and Founder Console controls.
-5. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-6. Add real push/email/SMS provider transports.
-7. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-8. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add caching strategy for safe read-heavy verification and platform metadata surfaces.
+2. Add per-institution webhook secrets and Founder Console retry/replay controls.
+3. Add rate-limit bucket cleanup job and Founder Console controls.
+4. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+5. Add real push/email/SMS provider transports.
+6. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+7. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 

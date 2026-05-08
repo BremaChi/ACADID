@@ -85,6 +85,12 @@ Rate limiting:
 - Auth, token exchange, public verification, upload, and portal-intake routes use `RateLimitBucket` rows so limits work across API processes.
 - Rate-limit buckets store hashed keys rather than raw IP/body identifiers.
 
+Observability:
+
+- The API emits structured JSON logs for gateway requests with `x-request-id`, route, actor/client context, status, and duration.
+- HTTP failures and worker failures are captured by `ErrorObservabilityService` and also written as durable audit events.
+- Log metadata is redacted for passwords, secrets, tokens, authorization material, credentials, private keys, NIN, and BVN fields.
+
 Credential signing:
 
 - Local development may run with an ephemeral Ed25519 key and will show Credential Signing as degraded.

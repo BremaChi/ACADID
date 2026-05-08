@@ -3,6 +3,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDeliveryStatus } from "@prisma/client";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
+import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { BulkUploadParserService, NonRetryableJobError } from "./bulk-upload-parser.service.js";
 
@@ -52,7 +53,8 @@ export class JobWorkerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingestion: IngestionService,
-    private readonly bulkUploadParser: BulkUploadParserService
+    private readonly bulkUploadParser: BulkUploadParserService,
+    private readonly observability?: ErrorObservabilityService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -376,6 +378,18 @@ export class JobWorkerService {
     });
 
     this.logger.warn(`Job ${job.uuid} ${shouldRetry ? "will retry" : "failed"}: ${message}`);
+    void this.observability
+      ?.recordWorkerError({
+        jobId: job.uuid,
+        queue: job.queue,
+        type: job.type,
+        institutionId: job.institutionId,
+        error,
+        retrying: shouldRetry
+      })
+      .catch(() => {
+        // Worker failure handling must not fail because observability is unavailable.
+      });
   }
 
   private retryDelayMs(attempts: number) {

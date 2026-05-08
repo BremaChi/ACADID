@@ -1,8 +1,10 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from "@nestjs/common";
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor, Optional } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { catchError, tap, throwError } from "rxjs";
 import type { Observable } from "rxjs";
 import { AuditService } from "../services/audit.service.js";
+import { ErrorObservabilityService } from "../services/error-observability.service.js";
+import { StructuredLoggerService } from "../services/structured-logger.service.js";
 import type { AuthenticatedRequest } from "../../auth/types.js";
 
 type HttpRequest = AuthenticatedRequest & {
@@ -20,22 +22,33 @@ type HttpResponse = {
 
 @Injectable()
 export class RequestAuditInterceptor implements NestInterceptor {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    @Optional() private readonly logger?: StructuredLoggerService,
+    @Optional() private readonly errors?: ErrorObservabilityService
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const http = context.switchToHttp();
     const request = http.getRequest<HttpRequest>();
     const response = http.getResponse<HttpResponse>();
     const requestId = this.resolveRequestId(request);
+    const startedAt = Date.now();
     response?.setHeader?.("x-request-id", requestId);
 
     return next.handle().pipe(
       tap(() => {
-        this.writeGatewayAudit(request, requestId, "SUCCESS", response?.statusCode);
+        const durationMs = Date.now() - startedAt;
+        this.writeGatewayAudit(request, requestId, "SUCCESS", response?.statusCode, undefined, durationMs);
+        this.writeStructuredRequestLog(request, requestId, "SUCCESS", response?.statusCode, durationMs);
       }),
       catchError((error: unknown) => {
         const statusCode = this.statusCodeFromError(error);
-        this.writeGatewayAudit(request, requestId, statusCode === 401 || statusCode === 403 ? "DENIED" : "FAILED", statusCode, error);
+        const outcome = statusCode === 401 || statusCode === 403 ? "DENIED" : "FAILED";
+        const durationMs = Date.now() - startedAt;
+        this.writeGatewayAudit(request, requestId, outcome, statusCode, error, durationMs);
+        this.writeStructuredRequestLog(request, requestId, outcome, statusCode, durationMs, error);
+        this.writeObservedError(request, requestId, statusCode, durationMs, error);
         return throwError(() => error);
       })
     );
@@ -46,7 +59,8 @@ export class RequestAuditInterceptor implements NestInterceptor {
     requestId: string,
     outcome: "SUCCESS" | "DENIED" | "FAILED",
     statusCode?: number,
-    error?: unknown
+    error?: unknown,
+    durationMs?: number
   ) {
     const auth = request.auth;
     const endpoint = this.normaliseEndpoint(request);
@@ -75,6 +89,7 @@ export class RequestAuditInterceptor implements NestInterceptor {
         userAgentHash: this.hashHeader(this.headerValue(request.headers["user-agent"])),
         metadata: {
           statusCode,
+          durationMs,
           sessionId: auth?.kind === "API_KEY" ? undefined : auth?.sessionId,
           apiKeyId: auth?.apiKeyId,
           apiKeyOwnerType: auth?.apiKeyOwnerType,
@@ -84,6 +99,70 @@ export class RequestAuditInterceptor implements NestInterceptor {
       })
       .catch(() => {
         // Gateway responses must not fail because the audit writer is unavailable.
+      });
+  }
+
+  private writeStructuredRequestLog(
+    request: HttpRequest,
+    requestId: string,
+    outcome: "SUCCESS" | "DENIED" | "FAILED",
+    statusCode?: number,
+    durationMs?: number,
+    error?: unknown
+  ) {
+    const auth = request.auth;
+    const endpoint = this.normaliseEndpoint(request);
+    const actorType = auth?.kind === "API_KEY" ? "API_KEY" : auth ? "USER" : "ANONYMOUS";
+    const payload = {
+      event: "gateway.request",
+      message: `${request.method ?? "HTTP"} ${endpoint} ${outcome.toLowerCase()}`,
+      requestId,
+      actorType,
+      actorId: auth?.kind === "API_KEY" ? undefined : auth?.sub,
+      clientId: auth?.kind === "API_KEY" ? auth.clientId : undefined,
+      institutionId: auth?.institutionUuid,
+      route: endpoint,
+      method: request.method,
+      statusCode,
+      durationMs,
+      metadata: {
+        outcome,
+        error: this.safeErrorMessage(error),
+        apiKeyOwnerType: auth?.apiKeyOwnerType,
+        productCode: auth?.productCode,
+        environment: auth?.environment
+      }
+    };
+
+    if (outcome === "SUCCESS") {
+      this.logger?.info(payload);
+      return;
+    }
+    if (outcome === "DENIED") {
+      this.logger?.warn(payload);
+      return;
+    }
+    this.logger?.error(payload);
+  }
+
+  private writeObservedError(request: HttpRequest, requestId: string, statusCode: number, durationMs: number, error: unknown) {
+    const auth = request.auth;
+    void this.errors
+      ?.recordHttpError({
+        requestId,
+        route: this.normaliseEndpoint(request),
+        method: request.method,
+        statusCode,
+        durationMs,
+        error,
+        actorType: auth?.kind === "API_KEY" ? "API_KEY" : auth ? "USER" : "ANONYMOUS",
+        actorId: auth?.kind === "API_KEY" ? undefined : auth?.sub,
+        actorRole: auth?.role,
+        clientId: auth?.kind === "API_KEY" ? auth.clientId : undefined,
+        institutionId: auth?.institutionUuid
+      })
+      .catch(() => {
+        // Observability must never break the HTTP response path.
       });
   }
 

@@ -170,18 +170,19 @@ Required next:
 
 ### 10. Error Observability
 
-Current state:
+Implemented foundation:
 
-- Structured errors exist at API boundaries, but centralized error observability is not implemented.
+- Structured JSON request logs from the gateway audit interceptor.
+- Request IDs returned through `x-request-id` and written into logs/audit events.
+- Redaction rules for passwords, secrets, tokens, authorization material, credentials, private keys, NIN, and BVN fields.
+- HTTP failure capture through `ErrorObservabilityService` with durable `error.observed` audit events.
+- Worker failure capture through `ErrorObservabilityService` with durable `worker.error` audit events and retry context.
 
 Required next:
 
-- Structured JSON logs.
-- Request/job correlation IDs.
-- Worker error capture.
 - Webhook failure dashboards.
 - Error alert thresholds.
-- Redaction rules for student data, credentials, secrets, and tokens.
+- External log sink/monitoring adapter for production alerts.
 
 ## Engineering Rules
 
@@ -200,8 +201,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Structured logging and error-observability baseline.
-2. Caching strategy for safe read-heavy surfaces.
-3. Per-institution webhook secrets and Founder Console replay controls.
-4. Dedicated worker heartbeat table if worker pool scale requires it.
-5. Rate-limit bucket cleanup job and Founder Console controls.
+1. Caching strategy for safe read-heavy surfaces.
+2. Per-institution webhook secrets and Founder Console replay controls.
+3. Dedicated worker heartbeat table if worker pool scale requires it.
+4. Rate-limit bucket cleanup job and Founder Console controls.
+5. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
