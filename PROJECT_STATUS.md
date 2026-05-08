@@ -98,6 +98,7 @@ The API has these first modules:
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
 - Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
+- Background worker runtime is implemented with database row-lock leasing, retry/failure handling, completion events, `npm run worker`, and `npm run worker:once`.
 
 ### Database
 
@@ -206,6 +207,7 @@ Completed successfully:
 - v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
 - Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
+- Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -243,14 +245,16 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add worker runtime for queued jobs: lease jobs, process idempotently, update progress, emit completion events, and fan out notifications/webhooks.
-2. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-3. Add invitation leads for graduate requests against unregistered institutions.
-4. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
-5. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
-6. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
-7. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
-8. Review dependency vulnerabilities before production without using blind force upgrades.
+1. Add real CSV/XLSX parser adapters for queued bulk uploads.
+2. Add real webhook delivery transport with signing and retry policy.
+3. Add real push/email/SMS provider transports.
+4. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+5. Add invitation leads for graduate requests against unregistered institutions.
+6. Add database-backed sealed-session reopen request queue if the audit-backed MVP flow needs multi-step assignment/SLA tracking.
+7. Actually provision stable production signing keys in the deployment secret store, then run `npm run crypto:validate` against that environment.
+8. Add automated database-backed integration tests for the live Supabase-backed founder and gateway workflows.
+9. Configure real storage signed-upload provider values for `ACADID_PORTAL_UPLOAD_BASE_URL`, `SUPABASE_STORAGE_BUCKET`, and MOU template URL/checksum in deployment secrets before pilot.
+10. Review dependency vulnerabilities before production without using blind force upgrades.
 
 ## GitHub Status
 

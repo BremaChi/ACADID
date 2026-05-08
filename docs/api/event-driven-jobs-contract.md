@@ -62,7 +62,16 @@ Implemented now:
 - `POST /api/ingest/results/async` queues `RESULT_BATCH_VALIDATION`.
 - `GET /api/jobs/:id` returns safe job status for light polling.
 - Prisma models exist for `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification`.
+- `npm run worker` starts the long-running worker process.
+- `npm run worker:once` processes one small batch and exits, useful for local checks and scheduled jobs.
+
+Current worker processors:
+
+- `BULK_STUDENT_UPLOAD`: processes inline `rows` when present; otherwise safely completes metadata-only upload tickets until the file parser adapter is added.
+- `RESULT_BATCH_VALIDATION`: creates the draft result batch and academic records in the background.
+- `WEBHOOK_DELIVERY`, `PUSH_NOTIFICATION`, and `SMS_EMAIL_DELIVERY`: have durable placeholder processors that update records without blocking product requests.
+- Other integrations use deferred adapter results until their provider-specific handlers are implemented.
 
 Next worker step:
 
-- Add worker runtime that leases queued jobs, processes them idempotently, updates progress, emits completion events, and fans out notifications/webhooks.
+- Add real file parser adapters, real notification transports, and signed webhook delivery transports.

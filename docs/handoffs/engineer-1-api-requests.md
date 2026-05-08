@@ -20,6 +20,8 @@ Implemented job roots:
 - `POST /api/ingest/bulk-upload`
 - `POST /api/ingest/results/async`
 - `GET /api/jobs/:id`
+- `npm run worker`
+- `npm run worker:once`
 
 ## How To Add A Request
 
