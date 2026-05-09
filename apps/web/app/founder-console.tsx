@@ -21,6 +21,14 @@ const navItems = [
 ] as const;
 
 const scopeOptions = ["institution:apply", "ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
+const staffRoleOptions = ["REGISTRAR", "EXAM_OFFICER", "DATA_ENTRY_OFFICER", "DEPARTMENTAL_OFFICER", "READ_ONLY"];
+const staffPermissionDefaults: Record<string, string[]> = {
+  REGISTRAR: ["staff:manage", "academic_setup:read", "academic_setup:write", "ingest:write", "govern:write", "govern:publish", "records:amend"],
+  EXAM_OFFICER: ["academic_setup:read", "students:read", "results:read", "govern:review", "record_requests:verify"],
+  DATA_ENTRY_OFFICER: ["students:write", "ingest:write", "results:draft", "govern:submit", "record_requests:upload"],
+  DEPARTMENTAL_OFFICER: ["academic_setup:read", "students:read", "results:read", "ingest:write", "govern:review", "record_requests:verify"],
+  READ_ONLY: ["academic_setup:read", "students:read", "results:read", "credentials:read", "reports:read"]
+};
 const productOptions = [
   {
     code: "INSTITUTION_PORTAL",
@@ -81,6 +89,38 @@ type Institution = {
   createdAt: string;
 };
 
+type InstitutionStaff = {
+  uuid: string;
+  role: string;
+  status: "INVITED" | "ACTIVE" | "SUSPENDED" | "DISABLED";
+  permissions: string[];
+  assignedScopes: Array<Record<string, string>>;
+  twoFactorRequired: boolean;
+  invitedAt: string | null;
+  inviteExpiresAt: string | null;
+  inviteAcceptedAt: string | null;
+  lastLoginAt: string | null;
+  suspendedAt: string | null;
+  createdAt: string;
+  user: {
+    uuid: string;
+    email: string;
+    fullName: string;
+    phone: string | null;
+    mfaEnabled: boolean;
+  };
+  invitedBy: {
+    uuid: string;
+    email: string;
+    fullName: string;
+  } | null;
+  institution: {
+    uuid: string;
+    institutionId: string;
+    officialName: string;
+  };
+};
+
 type ApiKey = {
   uuid: string;
   ownerType: "PRODUCT" | "INSTITUTION";
@@ -137,6 +177,29 @@ type CreatedRegistrarInvite = {
       uuid: string;
       email: string;
       fullName: string;
+    };
+  };
+  inviteToken: string;
+  warning: string;
+};
+
+type CreatedStaffInvite = {
+  invitation: {
+    id: string;
+    status: string;
+    role: string;
+    permissions: string[];
+    inviteExpiresAt: string;
+    user: {
+      uuid: string;
+      email: string;
+      fullName: string;
+      phone: string | null;
+    };
+    institution: {
+      uuid: string;
+      institutionId: string;
+      officialName: string;
     };
   };
   inviteToken: string;
@@ -651,6 +714,10 @@ async function loadRecoveryCodeStatus(token: string): Promise<RecoveryCodeStatus
   return apiRequest<RecoveryCodeStatus>("/auth/mfa/recovery-codes", token);
 }
 
+async function loadInstitutionStaff(token: string, institutionId: string): Promise<InstitutionStaff[]> {
+  return apiRequest<InstitutionStaff[]>(`/admin/institutions/${institutionId}/staff`, token);
+}
+
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
   const [token, setToken] = useState<string | null>(null);
@@ -674,6 +741,16 @@ export function FounderConsole() {
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingsResponse | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
+  const [institutionStaff, setInstitutionStaff] = useState<InstitutionStaff[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffInviteForm, setStaffInviteForm] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    role: "EXAM_OFFICER",
+    permissions: "academic_setup:read, students:read, results:read, govern:review",
+    assignedScopes: ""
+  });
   const [selectedApplicationId, setSelectedApplicationId] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
   const [selectedRecordRequestId, setSelectedRecordRequestId] = useState("");
@@ -683,6 +760,7 @@ export function FounderConsole() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [createdInvite, setCreatedInvite] = useState<CreatedRegistrarInvite | null>(null);
+  const [createdStaffInvite, setCreatedStaffInvite] = useState<CreatedStaffInvite | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
   const [totpEnableCode, setTotpEnableCode] = useState("");
   const [recoveryRotateCode, setRecoveryRotateCode] = useState("");
@@ -849,6 +927,26 @@ export function FounderConsole() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!token || !selectedInstitutionId) {
+      setInstitutionStaff([]);
+      return;
+    }
+    void refreshInstitutionStaff(selectedInstitutionId, token);
+  }, [selectedInstitutionId, token]);
+
+  async function refreshInstitutionStaff(institutionId = selectedInstitutionId, activeToken = token) {
+    if (!activeToken || !institutionId) return;
+    setStaffLoading(true);
+    try {
+      setInstitutionStaff(await loadInstitutionStaff(activeToken, institutionId));
+    } catch (error) {
+      handleAuthenticatedError(error, "Could not load institution staff.");
+    } finally {
+      setStaffLoading(false);
+    }
+  }
+
   async function refreshData(activeToken = token) {
     if (!activeToken) return;
     setLoading(true);
@@ -944,6 +1042,7 @@ export function FounderConsole() {
     window.localStorage.removeItem("acadid_founder_mfa");
     setToken(null);
     setInstitutions([]);
+    setInstitutionStaff([]);
     setInstitutionApplications([]);
     setGlobalApiKeys([]);
     setDeveloperRequests([]);
@@ -963,6 +1062,7 @@ export function FounderConsole() {
     setRecoveryCodeStatus(null);
       setNewRecoveryCodes(null);
       setCreatedInvite(null);
+      setCreatedStaffInvite(null);
       setRecoveryRotateCode("");
     setMfaEnabled(false);
   }
@@ -1029,6 +1129,57 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Institution status update failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function inviteInstitutionStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !selectedInstitutionId) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<CreatedStaffInvite>(`/admin/institutions/${selectedInstitutionId}/staff/invite`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: staffInviteForm.fullName,
+          email: staffInviteForm.email,
+          phone: staffInviteForm.phone || undefined,
+          role: staffInviteForm.role,
+          permissions: parseCsv(staffInviteForm.permissions),
+          assignedScopes: parseAssignedScopesText(staffInviteForm.assignedScopes)
+        })
+      });
+      setCreatedStaffInvite(response);
+      setStaffInviteForm({
+        ...staffInviteForm,
+        fullName: "",
+        email: "",
+        phone: "",
+        assignedScopes: ""
+      });
+      setNotice({ tone: "success", text: "Institution staff invite created. Save the one-time invite token now." });
+      await refreshInstitutionStaff();
+    } catch (error) {
+      handleAuthenticatedError(error, "Staff invitation failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateInstitutionStaff(staffId: string, body: Record<string, unknown>) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest<InstitutionStaff>(`/admin/institution-staff/${staffId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(body)
+      });
+      setNotice({ tone: "success", text: "Institution staff access updated." });
+      await refreshInstitutionStaff();
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Staff access update failed.");
     } finally {
       setLoading(false);
     }
@@ -1523,6 +1674,7 @@ export function FounderConsole() {
       </div>
       {createdKey ? <SecretModal apiKey={createdKey} onClose={() => setCreatedKey(null)} /> : null}
       {createdInvite ? <RegistrarInviteModal invite={createdInvite} onClose={() => setCreatedInvite(null)} /> : null}
+      {createdStaffInvite ? <StaffInviteModal invite={createdStaffInvite} onClose={() => setCreatedStaffInvite(null)} /> : null}
     </main>
   );
 
@@ -1552,14 +1704,20 @@ export function FounderConsole() {
           institutionTierFilter={institutionTierFilter}
           institutionTypeFilter={institutionTypeFilter}
           institutions={institutions}
-          loading={loading}
-          apiKeys={globalApiKeys}
-          auditEvents={auditEvents}
-          developerRequests={developerRequests}
-          onCreateInstitution={handleCreateInstitution}
-          onSelectInstitution={setSelectedInstitutionId}
-          onStateFilter={setInstitutionStateFilter}
-          onStatusFilter={setInstitutionStatusFilter}
+            loading={loading}
+            institutionStaff={institutionStaff}
+            staffInviteForm={staffInviteForm}
+            staffLoading={staffLoading}
+            apiKeys={globalApiKeys}
+            auditEvents={auditEvents}
+            developerRequests={developerRequests}
+            onCreateInstitution={handleCreateInstitution}
+            onInviteStaff={inviteInstitutionStaff}
+            onSelectInstitution={setSelectedInstitutionId}
+            onStateFilter={setInstitutionStateFilter}
+            onUpdateStaff={updateInstitutionStaff}
+            onUpdateStaffInviteForm={setStaffInviteForm}
+            onStatusFilter={setInstitutionStatusFilter}
           onTierFilter={setInstitutionTierFilter}
           onTypeFilter={setInstitutionTypeFilter}
           onUpdateInstitutionForm={setInstitutionForm}
@@ -1805,23 +1963,29 @@ function InstitutionsPage(props: {
   institutionForm: { officialName: string; type: string; state: string; tier: string };
   institutionSearch: string;
   institutionStateFilter: string;
-  institutionStatusFilter: string;
-  institutionTierFilter: string;
-  institutionTypeFilter: string;
-  institutions: Institution[];
-  loading: boolean;
-  onCreateInstitution: (event: FormEvent<HTMLFormElement>) => void;
-  onSelectInstitution: (id: string) => void;
-  onStateFilter: (value: string) => void;
-  onStatusFilter: (value: string) => void;
-  onTierFilter: (value: string) => void;
-  onTypeFilter: (value: string) => void;
-  onUpdateInstitutionForm: (value: { officialName: string; type: string; state: string; tier: string }) => void;
-  onUpdateSearch: (value: string) => void;
-  onUpdateStatus: (id: string, status: "ACTIVE" | "SUSPENDED") => void;
-  selectedInstitution?: Institution;
-  verificationLogs: VerificationLog[];
-}) {
+    institutionStatusFilter: string;
+    institutionStaff: InstitutionStaff[];
+    institutionTierFilter: string;
+    institutionTypeFilter: string;
+    institutions: Institution[];
+    loading: boolean;
+    onCreateInstitution: (event: FormEvent<HTMLFormElement>) => void;
+    onInviteStaff: (event: FormEvent<HTMLFormElement>) => void;
+    onSelectInstitution: (id: string) => void;
+    onStateFilter: (value: string) => void;
+    onStatusFilter: (value: string) => void;
+    onTierFilter: (value: string) => void;
+    onTypeFilter: (value: string) => void;
+    onUpdateStaff: (staffId: string, body: Record<string, unknown>) => void;
+    onUpdateStaffInviteForm: (value: { fullName: string; email: string; phone: string; role: string; permissions: string; assignedScopes: string }) => void;
+    onUpdateInstitutionForm: (value: { officialName: string; type: string; state: string; tier: string }) => void;
+    onUpdateSearch: (value: string) => void;
+    onUpdateStatus: (id: string, status: "ACTIVE" | "SUSPENDED") => void;
+    selectedInstitution?: Institution;
+    staffInviteForm: { fullName: string; email: string; phone: string; role: string; permissions: string; assignedScopes: string };
+    staffLoading: boolean;
+    verificationLogs: VerificationLog[];
+  }) {
   const states = uniqueValues(props.institutions.map((institution) => institution.state));
   return (
     <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
@@ -1876,9 +2040,22 @@ function InstitutionsPage(props: {
             <button className={primaryButtonClass} disabled={props.loading}>Create Institution</button>
           </form>
         </Card>
-        <InstitutionDetail apiKeys={props.apiKeys} auditEvents={props.auditEvents} developerRequests={props.developerRequests} institution={props.selectedInstitution} verificationLogs={props.verificationLogs} />
+          <InstitutionDetail
+            apiKeys={props.apiKeys}
+            auditEvents={props.auditEvents}
+            developerRequests={props.developerRequests}
+            institution={props.selectedInstitution}
+            staff={props.institutionStaff}
+            staffInviteForm={props.staffInviteForm}
+            staffLoading={props.staffLoading}
+            loading={props.loading}
+            onInviteStaff={props.onInviteStaff}
+            onUpdateStaff={props.onUpdateStaff}
+            onUpdateStaffInviteForm={props.onUpdateStaffInviteForm}
+            verificationLogs={props.verificationLogs}
+          />
+        </div>
       </div>
-    </div>
   );
 }
 
@@ -3008,12 +3185,26 @@ function InstitutionDetail({
   auditEvents,
   developerRequests,
   institution,
+  loading,
+  onInviteStaff,
+  onUpdateStaff,
+  onUpdateStaffInviteForm,
+  staff,
+  staffInviteForm,
+  staffLoading,
   verificationLogs
 }: {
   apiKeys: GlobalApiKey[];
   auditEvents: AuditEvent[];
   developerRequests: DeveloperAccessRequest[];
   institution?: Institution;
+  loading: boolean;
+  onInviteStaff: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateStaff: (staffId: string, body: Record<string, unknown>) => void;
+  onUpdateStaffInviteForm: (value: { fullName: string; email: string; phone: string; role: string; permissions: string; assignedScopes: string }) => void;
+  staff: InstitutionStaff[];
+  staffInviteForm: { fullName: string; email: string; phone: string; role: string; permissions: string; assignedScopes: string };
+  staffLoading: boolean;
   verificationLogs: VerificationLog[];
 }) {
   if (!institution) return <Card><SectionTitle title="Institution Details" subtitle="Select an institution." /><EmptyState text="No institution selected." /></Card>;
@@ -3034,7 +3225,7 @@ function InstitutionDetail({
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-borderLight bg-soft p-3">
           <p className="text-xs text-textSecondary">Staff</p>
-          <p className="mt-1 text-sm font-semibold text-primary">Registrar accounts endpoint pending</p>
+          <p className="mt-1 text-sm font-semibold text-primary">{staffLoading ? "Loading..." : `${staff.filter((member) => member.status === "ACTIVE").length} active / ${staff.length} total`}</p>
         </div>
         <div className="rounded-lg border border-borderLight bg-soft p-3">
           <p className="text-xs text-textSecondary">Learners</p>
@@ -3066,6 +3257,74 @@ function InstitutionDetail({
           date: formatDate(event.createdAt)
         }))}
       />
+      <div className="mt-5 border-t border-borderLight pt-4">
+        <SectionTitle title="Staff Access Control" subtitle="Founder-managed Registrar, officer, and scoped access for this institution." />
+        <form className="mt-4 grid gap-3" onSubmit={onInviteStaff}>
+          <input className={inputClass} placeholder="Full name" value={staffInviteForm.fullName} onChange={(event) => onUpdateStaffInviteForm({ ...staffInviteForm, fullName: event.target.value })} />
+          <input className={inputClass} placeholder="Email address" type="email" value={staffInviteForm.email} onChange={(event) => onUpdateStaffInviteForm({ ...staffInviteForm, email: event.target.value })} />
+          <input className={inputClass} placeholder="Phone number (optional)" value={staffInviteForm.phone} onChange={(event) => onUpdateStaffInviteForm({ ...staffInviteForm, phone: event.target.value })} />
+          <FilterSelect
+            value={staffInviteForm.role}
+            onChange={(role) => onUpdateStaffInviteForm({ ...staffInviteForm, role, permissions: (staffPermissionDefaults[role] ?? []).join(", ") })}
+            options={staffRoleOptions}
+          />
+          <textarea
+            className={`${inputClass} min-h-20`}
+            placeholder="Permissions, comma separated"
+            value={staffInviteForm.permissions}
+            onChange={(event) => onUpdateStaffInviteForm({ ...staffInviteForm, permissions: event.target.value })}
+          />
+          <textarea
+            className={`${inputClass} min-h-20`}
+            placeholder='Assigned scopes JSON, e.g. [{"level":"SS1","subject":"Physics"}]'
+            value={staffInviteForm.assignedScopes}
+            onChange={(event) => onUpdateStaffInviteForm({ ...staffInviteForm, assignedScopes: event.target.value })}
+          />
+          <button className={primaryButtonClass} disabled={loading || !institution} type="submit">Invite Staff</button>
+        </form>
+        <div className="mt-4 divide-y divide-borderLight rounded-lg border border-borderLight">
+          {staff.length ? staff.map((member) => (
+            <div key={member.uuid} className="grid gap-3 p-3 text-sm">
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="font-semibold text-primary">{member.user.fullName}</p>
+                  <p className="text-xs text-textSecondary">{member.user.email} / {titleCase(member.role)}</p>
+                  <p className="mt-1 text-xs text-textSecondary">
+                    Scopes: {member.assignedScopes.length ? member.assignedScopes.map((scope) => JSON.stringify(scope)).join(", ") : "Institution-wide"}
+                  </p>
+                </div>
+                <StatusBadge status={member.status} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={secondaryButtonClass}
+                  disabled={loading}
+                  onClick={() => onUpdateStaff(member.uuid, { status: member.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" })}
+                  type="button"
+                >
+                  {member.status === "ACTIVE" ? "Suspend" : "Activate"}
+                </button>
+                <button
+                  className={secondaryButtonClass}
+                  disabled={loading}
+                  onClick={() => onUpdateStaff(member.uuid, { twoFactorRequired: !member.twoFactorRequired })}
+                  type="button"
+                >
+                  {member.twoFactorRequired ? "Relax TOTP Rule" : "Require TOTP"}
+                </button>
+                <button
+                  className={secondaryButtonClass}
+                  disabled={loading}
+                  onClick={() => onUpdateStaff(member.uuid, { permissions: staffPermissionDefaults[member.role] ?? member.permissions })}
+                  type="button"
+                >
+                  Reset Permissions
+                </button>
+              </div>
+            </div>
+          )) : <EmptyState text={staffLoading ? "Loading staff accounts..." : "No staff accounts found for this institution yet."} />}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -3388,6 +3647,25 @@ function RegistrarInviteModal({ invite, onClose }: { invite: CreatedRegistrarInv
   );
 }
 
+function StaffInviteModal({ invite, onClose }: { invite: CreatedStaffInvite; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4">
+      <section className="w-full max-w-lg rounded-xl border border-borderLight bg-white p-5 shadow-sm">
+        <h2 className="text-xl font-semibold text-primary">Staff Invite Created</h2>
+        <p className="mt-2 text-sm leading-6 text-textSecondary">{invite.warning}</p>
+        <div className="mt-4 space-y-3">
+          <MetricLine label="Institution" value={invite.invitation.institution.officialName} />
+          <MetricLine label="Staff" value={`${invite.invitation.user.fullName} / ${invite.invitation.user.email}`} />
+          <MetricLine label="Role" value={titleCase(invite.invitation.role)} />
+          <MetricLine label="Expires" value={formatDate(invite.invitation.inviteExpiresAt)} />
+          <SecretRow label="Invite Token" value={invite.inviteToken} />
+        </div>
+        <button className={`${primaryButtonClass} mt-5`} onClick={onClose}>I have saved it</button>
+      </section>
+    </div>
+  );
+}
+
 function SecretRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -3400,6 +3678,20 @@ function SecretRow({ label, value }: { label: string; value: string }) {
 
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.filter(Boolean))).sort();
+}
+
+function parseCsv(value: string) {
+  return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
+}
+
+function parseAssignedScopesText(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const parsed = JSON.parse(trimmed);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Assigned scopes must be a JSON array.");
+  }
+  return parsed;
 }
 
 function initials(value: string) {

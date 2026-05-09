@@ -35,6 +35,21 @@ export class AdminController {
     return this.adminService.updateInstitutionStatus(id, body.status);
   }
 
+  @Get("institutions/:id/staff")
+  listInstitutionStaff(@Param("id") id: string) {
+    return this.adminService.listInstitutionStaff(id);
+  }
+
+  @Post("institutions/:id/staff/invite")
+  inviteInstitutionStaff(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.inviteInstitutionStaff(request.auth, id, body);
+  }
+
+  @Patch("institution-staff/:id")
+  updateInstitutionStaff(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.updateInstitutionStaff(request.auth, id, body);
+  }
+
   @Post("institutions/:id/authority-grants")
   createAuthorityGrant(@Param("id") id: string, @Body() body: unknown) {
     return this.adminService.createAuthorityGrant(id, body);

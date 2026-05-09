@@ -77,6 +77,7 @@ The API has these first modules:
 - Founder emergency lockdown is implemented as a guarded API-key revocation workflow that records an audit event.
 - Institution application request-more-information and email-record actions are implemented with founder audit events.
 - Architecture v4 InstitutionUser foundation is implemented with staff invitation status, permissions, invite tokens, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
+- Founder institution staff control is implemented through `/api/admin/institutions/:id/staff`, `/api/admin/institutions/:id/staff/invite`, and `/api/admin/institution-staff/:id`, covering safe staff listing, founder-created invites, status changes, permission updates, TOTP requirement flags, assigned academic scopes, and audit logging.
 - Founder institution approval now creates the institution workspace and a one-time Registrar invite token for the approved institution contact.
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
@@ -155,6 +156,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Founder Console login.
 - Live Founder Console authenticator-code field and security setup panel.
 - Live institution list and creation form.
+- Live institution detail staff access controls for founder-managed staff invitation, suspension/reactivation, TOTP requirement, default permission reset, and assigned-scope visibility.
 - Live Authority Grant creation form.
 - Live API key generation with one-time secret modal.
 - Live selected-institution API key list and revocation action.
@@ -201,6 +203,7 @@ Completed successfully:
 - Founder Console returns 200 at `http://localhost:3000`.
 - Founder Console ACAD.ID UI refresh typechecks, builds, and renders without the stale Next.js cache error after clearing `apps/web/.next`.
 - Founder Console navigation refactor validates with `npm run typecheck`, `npm test`, and `http://localhost:3000` returning 200.
+- Founder institution staff control validates with `npm run typecheck` and `npm test`; tests cover secret-safe staff listing plus audited status/permission/scope updates.
 - Developer Access Request workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, `npm run smoke:api`, and browser verification in the Founder Console.
 - Dispute workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, authenticated `/api/admin/disputes` check, and browser verification in the Founder Console.
 - Founder Verification Logs workflow validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/verification-logs` check.

@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { BackgroundJobType, UserRole } from "@prisma/client";
+import { BackgroundJobType, InstitutionUserStatus, UserRole } from "@prisma/client";
 import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
@@ -24,6 +24,7 @@ import {
   sendDisputeNoticeSchema
 } from "@acadid/shared";
 import type { AuthTokenPayload } from "../auth/types.js";
+import { AuthService } from "../auth/auth.service.js";
 import { PasswordService } from "../auth/password.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
@@ -85,7 +86,8 @@ export class AdminService {
     private readonly cache?: CacheService,
     private readonly webhookSecrets?: WebhookSecretService,
     private readonly queue?: QueueService,
-    private readonly rateLimit?: RateLimitService
+    private readonly rateLimit?: RateLimitService,
+    @Optional() private readonly authService?: AuthService
   ) {}
 
   async createInstitution(input: unknown) {
@@ -148,6 +150,150 @@ export class AdminService {
 
     this.cache?.invalidateTag("institutions");
     return institution;
+  }
+
+  async listInstitutionStaff(institutionId: string) {
+    await this.assertInstitutionExists(institutionId);
+    const staff = await this.prisma.institutionUser.findMany({
+      where: { institutionId },
+      include: {
+        user: {
+          select: {
+            uuid: true,
+            email: true,
+            fullName: true,
+            phone: true,
+            mfaEnabled: true
+          }
+        },
+        invitedBy: {
+          select: {
+            uuid: true,
+            email: true,
+            fullName: true
+          }
+        },
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true
+          }
+        }
+      },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }]
+    });
+
+    return staff.map((member) => this.safeInstitutionStaff(member));
+  }
+
+  async inviteInstitutionStaff(auth: AuthTokenPayload, institutionId: string, input: unknown) {
+    if (!this.authService) {
+      throw new BadRequestException("Staff invitation service is not available.");
+    }
+    await this.assertInstitutionExists(institutionId);
+    const body = typeof input === "object" && input ? (input as Record<string, unknown>) : {};
+    const invitation = await this.authService.inviteInstitutionUser(auth, {
+      institutionId,
+      email: typeof body.email === "string" ? body.email : undefined,
+      fullName: typeof body.fullName === "string" ? body.fullName : undefined,
+      phone: typeof body.phone === "string" ? body.phone : undefined,
+      role: typeof body.role === "string" ? body.role : undefined,
+      permissions: this.parseStringArray(body.permissions, "permissions", 30, false),
+      assignedScopes: this.parseAssignedScopes(body.assignedScopes)
+    });
+    return invitation;
+  }
+
+  async updateInstitutionStaff(auth: AuthTokenPayload, staffId: string, input: unknown) {
+    const existing = await this.prisma.institutionUser.findUnique({
+      where: { uuid: staffId },
+      select: {
+        uuid: true,
+        institutionId: true,
+        role: true,
+        status: true,
+        permissions: true,
+        assignedScopes: true,
+        twoFactorRequired: true
+      }
+    });
+    if (!existing) {
+      throw new BadRequestException("Institution staff member not found.");
+    }
+
+    const body = typeof input === "object" && input ? (input as Record<string, unknown>) : {};
+    const data: Prisma.InstitutionUserUpdateInput = {};
+    if (typeof body.role === "string") {
+      data.role = this.parseInstitutionUserRole(body.role);
+    }
+    if (typeof body.status === "string") {
+      data.status = this.parseInstitutionUserStatus(body.status);
+      data.suspendedAt = data.status === InstitutionUserStatus.SUSPENDED ? new Date() : null;
+    }
+    if (Array.isArray(body.permissions)) {
+      data.permissions = this.parseStringArray(body.permissions, "permissions", 30, true);
+    }
+    if (Array.isArray(body.assignedScopes)) {
+      data.assignedScopes = this.parseAssignedScopes(body.assignedScopes) as Prisma.InputJsonValue;
+    }
+    if (typeof body.twoFactorRequired === "boolean") {
+      data.twoFactorRequired = body.twoFactorRequired;
+    }
+    if (!Object.keys(data).length) {
+      throw new BadRequestException("No staff fields were provided for update.");
+    }
+
+    const updated = await this.prisma.institutionUser.update({
+      where: { uuid: staffId },
+      data,
+      include: {
+        user: {
+          select: {
+            uuid: true,
+            email: true,
+            fullName: true,
+            phone: true,
+            mfaEnabled: true
+          }
+        },
+        invitedBy: {
+          select: {
+            uuid: true,
+            email: true,
+            fullName: true
+          }
+        },
+        institution: {
+          select: {
+            uuid: true,
+            institutionId: true,
+            officialName: true
+          }
+        }
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "institution_user.update",
+      targetType: "InstitutionUser",
+      targetId: staffId,
+      institutionId: existing.institutionId,
+      outcome: "SUCCESS",
+      metadata: {
+        previousStatus: existing.status,
+        nextStatus: updated.status,
+        previousRole: existing.role,
+        nextRole: updated.role,
+        permissionsUpdated: Array.isArray(body.permissions),
+        assignedScopesUpdated: Array.isArray(body.assignedScopes),
+        twoFactorRequired: updated.twoFactorRequired
+      }
+    });
+
+    return this.safeInstitutionStaff(updated);
   }
 
   async createAuthorityGrant(institutionId: string, input: unknown) {
@@ -1976,6 +2122,115 @@ export class AdminService {
   private async nextInstitutionDisplayId(prisma: Pick<PrismaService, "institution"> = this.prisma): Promise<string> {
     const count = await prisma.institution.count();
     return `AINi-${(count + 1).toString().padStart(5, "0")}`;
+  }
+
+  private async assertInstitutionExists(institutionId: string) {
+    const institution = await this.prisma.institution.findUnique({
+      where: { uuid: institutionId },
+      select: { uuid: true }
+    });
+    if (!institution) {
+      throw new BadRequestException("Institution not found.");
+    }
+  }
+
+  private parseInstitutionUserRole(role: string) {
+    const normalized = role.trim().toUpperCase();
+    const allowed = new Set<UserRole>([
+      UserRole.REGISTRAR,
+      UserRole.EXAM_OFFICER,
+      UserRole.DATA_ENTRY_OFFICER,
+      UserRole.DEPARTMENTAL_OFFICER,
+      UserRole.READ_ONLY
+    ]);
+    if (!allowed.has(normalized as UserRole)) {
+      throw new BadRequestException("Staff role is invalid.");
+    }
+    return normalized as UserRole;
+  }
+
+  private parseInstitutionUserStatus(status: string) {
+    const normalized = status.trim().toUpperCase();
+    const allowed = new Set<InstitutionUserStatus>([
+      InstitutionUserStatus.INVITED,
+      InstitutionUserStatus.ACTIVE,
+      InstitutionUserStatus.SUSPENDED,
+      InstitutionUserStatus.DISABLED
+    ]);
+    if (!allowed.has(normalized as InstitutionUserStatus)) {
+      throw new BadRequestException("Staff status is invalid.");
+    }
+    return normalized as InstitutionUserStatus;
+  }
+
+  private parseStringArray(value: unknown, field: string, maxItems: number, required: true): string[];
+  private parseStringArray(value: unknown, field: string, maxItems: number, required: false): string[] | undefined;
+  private parseStringArray(value: unknown, field: string, maxItems: number, required: boolean) {
+    if (!Array.isArray(value)) {
+      if (required) {
+        throw new BadRequestException(`${field} must be an array.`);
+      }
+      return undefined;
+    }
+    const items = value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (items.length !== value.length || items.length > maxItems) {
+      throw new BadRequestException(`${field} must contain ${maxItems} or fewer string values.`);
+    }
+    return Array.from(new Set(items));
+  }
+
+  private parseAssignedScopes(value: unknown) {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException("assignedScopes must be an array.");
+    }
+    if (value.length > 25) {
+      throw new BadRequestException("assignedScopes cannot contain more than 25 entries.");
+    }
+    return value.map((scope) => {
+      if (!scope || typeof scope !== "object" || Array.isArray(scope)) {
+        throw new BadRequestException("Each assigned scope must be an object.");
+      }
+      const entries = Object.entries(scope as Record<string, unknown>)
+        .filter(([, scopeValue]) => scopeValue !== undefined && scopeValue !== null && String(scopeValue).trim() !== "")
+        .map(([key, scopeValue]) => [key.trim(), String(scopeValue).trim()]);
+      if (!entries.length || entries.length > 8 || entries.some(([key]) => !/^[a-zA-Z0-9_.-]{1,64}$/.test(key))) {
+        throw new BadRequestException("Assigned scope entries are invalid.");
+      }
+      return Object.fromEntries(entries);
+    });
+  }
+
+  private safeInstitutionStaff(member: Prisma.InstitutionUserGetPayload<{
+    include: {
+      user: { select: { uuid: true; email: true; fullName: true; phone: true; mfaEnabled: true } };
+      invitedBy: { select: { uuid: true; email: true; fullName: true } };
+      institution: { select: { uuid: true; institutionId: true; officialName: true } };
+    };
+  }>) {
+    return {
+      uuid: member.uuid,
+      role: member.role,
+      status: member.status,
+      permissions: member.permissions,
+      assignedScopes: Array.isArray(member.assignedScopes) ? member.assignedScopes : [],
+      twoFactorRequired: member.twoFactorRequired,
+      invitedAt: member.invitedAt,
+      inviteExpiresAt: member.inviteExpiresAt,
+      inviteAcceptedAt: member.inviteAcceptedAt,
+      lastLoginAt: member.lastLoginAt,
+      suspendedAt: member.suspendedAt,
+      createdAt: member.createdAt,
+      updatedAt: member.updatedAt,
+      user: member.user,
+      invitedBy: member.invitedBy,
+      institution: member.institution
+    };
   }
 
   private parseApiKeyInput(input: unknown): {

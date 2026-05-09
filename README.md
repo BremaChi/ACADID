@@ -169,6 +169,7 @@ Current v3 checkpoint:
 - Founder can request more information from institution applications and record application email actions for provider delivery.
 - Founder Security includes login/audit history plus guarded emergency lockdown that revokes active API keys.
 - Institution staff human auth foundation is available through `/auth/user/login`, `/auth/user/invite`, `/auth/user/accept-invite`, `/auth/user/me`, and `/auth/user/logout`.
+- Founder can manage institution staff through `/api/admin/institutions/:id/staff`, `/api/admin/institutions/:id/staff/invite`, and `/api/admin/institution-staff/:id`; product teams should use these Data Center roots instead of writing staff assignments directly to Supabase.
 - Founder institution approval now creates a Registrar invitation so approved schools can move into the v4 human-session workspace model.
 - Credential signing uses JOSE/JWS Ed25519 readiness checks and reports whether stable deployment keys are configured.
 - Founder MFA supports hashed one-time recovery codes with TOTP-protected rotation and recovery-code login fallback.

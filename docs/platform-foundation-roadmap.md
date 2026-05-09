@@ -99,6 +99,7 @@ Implemented foundation:
 - `AuditEvent` with actor, role, request, endpoint, entity, institution, IP/user-agent hashes.
 - Audit interceptor for API requests.
 - Explicit audit writes for sensitive workflows.
+- Founder-managed institution staff role, permission, TOTP requirement, and assigned-scope updates now write `institution_user.update` audit events.
 
 Required audit coverage must remain mandatory for:
 
@@ -218,8 +219,12 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Staff assigned-scope management endpoints and UI for Registrar staff assignment.
-2. Distributed cache adapter before multi-instance production deployment.
-3. Webhook receiver documentation for partners.
-4. Idempotency cleanup/retention job and Founder Console visibility.
-5. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
+1. Distributed cache adapter before multi-instance production deployment.
+2. Webhook receiver documentation for partners.
+3. Idempotency cleanup/retention job and Founder Console visibility.
+4. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
+5. Worker deployment topology and heartbeat design for multi-worker production.
+
+Completed:
+
+- Staff assigned-scope management endpoints and Founder Console UI for institution staff assignment.
