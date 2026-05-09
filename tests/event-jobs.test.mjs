@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { IdempotencyService } from "../apps/api/dist/apps/api/src/modules/platform/services/idempotency.service.js";
 import { QueueService } from "../apps/api/dist/apps/api/src/modules/platform/services/queue.service.js";
 
 test("queue service creates a background job with an outbox domain event", async () => {
@@ -44,6 +45,81 @@ test("queue service creates a background job with an outbox domain event", async
   assert.equal(created.job.type, "BULK_STUDENT_UPLOAD");
   assert.equal(created.event.type, "bulk_student_upload.queued");
   assert.equal(created.event.aggregateId, "job-1");
+});
+
+test("queue service replays idempotent background job responses", async () => {
+  let createdJobs = 0;
+  let createdRecords = 0;
+  const stored = new Map();
+  const service = new QueueService(
+    {
+      idempotencyRecord: {
+        findUnique: async ({ where }) => stored.get(`${where.scope_keyHash.scope}:${where.scope_keyHash.keyHash}`) ?? null,
+        create: async ({ data }) => {
+          createdRecords += 1;
+          const row = { uuid: `idem-${createdRecords}`, status: "IN_PROGRESS", response: null, ...data };
+          stored.set(`${data.scope}:${data.keyHash}`, row);
+          return row;
+        },
+        update: async ({ where, data }) => {
+          const entry = Array.from(stored.entries()).find(([, value]) => value.uuid === where.uuid);
+          const row = { ...entry[1], ...data };
+          stored.set(entry[0], row);
+          return row;
+        }
+      },
+      $transaction: async (callback) =>
+        callback({
+          backgroundJob: {
+            create: async ({ data }) => {
+              createdJobs += 1;
+              return {
+                uuid: `job-${createdJobs}`,
+                status: "QUEUED",
+                ...data
+              };
+            }
+          },
+          domainEvent: {
+            create: async ({ data }) => ({ uuid: `event-${createdJobs}`, ...data })
+          }
+        })
+    },
+    {},
+    new IdempotencyService({
+      idempotencyRecord: {
+        findUnique: async (args) => stored.get(`${args.where.scope_keyHash.scope}:${args.where.scope_keyHash.keyHash}`) ?? null,
+        create: async ({ data }) => {
+          createdRecords += 1;
+          const row = { uuid: `idem-${createdRecords}`, status: "IN_PROGRESS", response: null, ...data };
+          stored.set(`${data.scope}:${data.keyHash}`, row);
+          return row;
+        },
+        update: async ({ where, data }) => {
+          const entry = Array.from(stored.entries()).find(([, value]) => value.uuid === where.uuid);
+          const row = { ...entry[1], ...data };
+          stored.set(entry[0], row);
+          return row;
+        }
+      }
+    })
+  );
+
+  const input = {
+    type: "PDF_GENERATION",
+    institutionId: "institution-1",
+    relatedEntityType: "Credential",
+    relatedEntityId: "credential-1",
+    payload: { credentialId: "credential-1" },
+    idempotencyKey: "pdf-request-001"
+  };
+
+  const first = await service.enqueueJob(input);
+  const second = await service.enqueueJob(input);
+
+  assert.equal(first.jobId, "job-1");
+  assert.equal(second.jobId, "job-1");
+  assert.equal(createdJobs, 1);
 });
 
 test("queue service creates a durable webhook delivery job", async () => {

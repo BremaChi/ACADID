@@ -269,6 +269,12 @@ enum BackgroundJobType {
   RATE_LIMIT_BUCKET_CLEANUP
 }
 
+enum IdempotencyRecordStatus {
+  IN_PROGRESS
+  SUCCEEDED
+  FAILED
+}
+
 enum BackgroundJobStatus {
   QUEUED
   RUNNING
@@ -1160,6 +1166,32 @@ model Notification {
   @@index([learnerId, status])
   @@index([userId, status])
   @@index([jobId])
+}
+
+model IdempotencyRecord {
+  uuid          String                  @id @default(uuid()) @db.Uuid
+  scope         String
+  keyHash       String
+  requestHash   String
+  operation     String
+  status        IdempotencyRecordStatus @default(IN_PROGRESS)
+  actorType     String?
+  actorUserId   String?                 @db.Uuid
+  clientId      String?
+  institutionId String?                 @db.Uuid
+  jobId         String?                 @db.Uuid
+  response      Json?
+  error         String?
+  expiresAt     DateTime
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  @@unique([scope, keyHash])
+  @@index([status, expiresAt])
+  @@index([institutionId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([jobId])
+  @@index([operation, createdAt])
 }
 
 model RateLimitBucket {

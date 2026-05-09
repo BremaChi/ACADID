@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AuthGuard } from "../../auth/guards/auth.guard.js";
 import { RolesGuard } from "../../auth/guards/roles.guard.js";
@@ -78,14 +78,14 @@ export class IngestionController {
 
   @Post("results/async")
   @RateLimit({ scope: "ingest.results_async", key: "auth", limit: 120, windowSeconds: 60 })
-  ingestResultsAsync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return this.ingestionService.queueResultBatchValidation(request.auth, body);
+  ingestResultsAsync(@Req() request: AuthenticatedRequest, @Body() body: unknown, @Headers("x-idempotency-key") idempotencyKey?: string) {
+    return this.ingestionService.queueResultBatchValidation(request.auth, body, idempotencyKey);
   }
 
   @Post("bulk-upload")
   @RateLimit({ scope: "ingest.bulk_upload", key: "auth", limit: 30, windowSeconds: 60 })
-  bulkUpload(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return this.ingestionService.createBulkUpload(request.auth, body);
+  bulkUpload(@Req() request: AuthenticatedRequest, @Body() body: unknown, @Headers("x-idempotency-key") idempotencyKey?: string) {
+    return this.ingestionService.createBulkUpload(request.auth, body, idempotencyKey);
   }
 
   @Get("batches")

@@ -90,6 +90,14 @@ Rate limiting:
 - Founder admins can inspect bucket activity at `GET /api/admin/rate-limits` and queue asynchronous retention cleanup through `POST /api/admin/rate-limits/cleanup`.
 - Cleanup runs as the `RATE_LIMIT_BUCKET_CLEANUP` background job on the `platform.maintenance` queue, so HTTP requests return quickly with a job ID.
 
+Idempotency:
+
+- Clients should send `x-idempotency-key` on retryable POST requests.
+- AcadID stores only hashed idempotency keys in `IdempotencyRecord`; raw keys are not persisted.
+- Job-producing operations replay the original job response for duplicate keys and reject key reuse with a different request payload.
+- Bulk uploads, async result validation, credential generation, PDF generation, and Paystack confirmation jobs also receive automatic request-fingerprint protection for accidental duplicate enqueues.
+- Institution application and learner record-request POST flows use the same idempotency ledger when clients provide `x-idempotency-key`.
+
 Caching:
 
 - `CacheService` provides conservative short-TTL caching for safe read-heavy surfaces.

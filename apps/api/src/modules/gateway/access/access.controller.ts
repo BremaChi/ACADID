@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Post, Req, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AuthGuard } from "../../auth/guards/auth.guard.js";
 import { RolesGuard } from "../../auth/guards/roles.guard.js";
@@ -41,8 +41,8 @@ export class AccessController {
   }
 
   @Post("record-requests")
-  createRecordRequest(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return this.accessService.createRecordRequest(request.auth, body);
+  createRecordRequest(@Req() request: AuthenticatedRequest, @Body() body: unknown, @Headers("x-idempotency-key") idempotencyKey?: string) {
+    return this.accessService.createRecordRequest(request.auth, body, idempotencyKey);
   }
 
   @Get("record-requests")

@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { BackgroundJobType, NotificationChannel, Prisma, UserRole } from "@prisma/client";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuthorityService } from "./authority.service.js";
+import { IdempotencyService } from "./idempotency.service.js";
 import { PrismaService } from "./prisma.service.js";
 
 const queueByJobType: Record<BackgroundJobType, string> = {
@@ -32,6 +34,9 @@ export interface EnqueueJobInput {
   payload: Prisma.InputJsonValue;
   eventType?: string;
   eventPayload?: Prisma.InputJsonValue;
+  idempotencyKey?: string;
+  idempotencyScope?: string;
+  idempotencyTtlHours?: number;
 }
 
 export interface EnqueueWebhookInput {
@@ -60,10 +65,35 @@ export interface EnqueueNotificationInput {
 export class QueueService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly authority: AuthorityService
+    private readonly authority: AuthorityService,
+    private readonly idempotency?: IdempotencyService
   ) {}
 
   async enqueueJob(input: EnqueueJobInput) {
+    const idempotencyKey = input.idempotencyKey ?? this.autoIdempotencyKey(input);
+    if (idempotencyKey && this.idempotency) {
+      return this.idempotency.execute({
+        scope: input.idempotencyScope ?? `job:${input.type}`,
+        key: idempotencyKey,
+        operation: input.eventType ?? `${input.type.toLowerCase()}.queued`,
+        request: {
+          type: input.type,
+          institutionId: input.institutionId ?? null,
+          relatedEntityType: input.relatedEntityType ?? null,
+          relatedEntityId: input.relatedEntityId ?? null,
+          payload: input.payload
+        },
+        institutionId: input.institutionId,
+        ttlHours: input.idempotencyTtlHours,
+        handler: () => this.createJob(input),
+        responseJobId: (response) => response.jobId
+      });
+    }
+
+    return this.createJob(input);
+  }
+
+  private async createJob(input: EnqueueJobInput) {
     const job = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const createdJob = await tx.backgroundJob.create({
         data: {
@@ -303,5 +333,38 @@ export class QueueService {
       eventId: job.eventId,
       pollingUrl: `/jobs/${job.uuid}`
     };
+  }
+
+  private autoIdempotencyKey(input: EnqueueJobInput) {
+    const protectedTypes = new Set<BackgroundJobType>([
+      BackgroundJobType.BULK_STUDENT_UPLOAD,
+      BackgroundJobType.RESULT_BATCH_VALIDATION,
+      BackgroundJobType.CREDENTIAL_GENERATION,
+      BackgroundJobType.PDF_GENERATION,
+      BackgroundJobType.PAYSTACK_PAYMENT_CONFIRMATION
+    ]);
+    if (!protectedTypes.has(input.type)) {
+      return undefined;
+    }
+    return `auto:${this.hash(this.stableStringify({
+      type: input.type,
+      institutionId: input.institutionId ?? null,
+      relatedEntityType: input.relatedEntityType ?? null,
+      relatedEntityId: input.relatedEntityId ?? null,
+      payload: input.payload
+    }))}`;
+  }
+
+  private stableStringify(value: unknown): string {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((entry) => this.stableStringify(entry)).join(",")}]`;
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${this.stableStringify(entry)}`).join(",")}}`;
+  }
+
+  private hash(value: string) {
+    return createHash("sha256").update(value).digest("hex");
   }
 }

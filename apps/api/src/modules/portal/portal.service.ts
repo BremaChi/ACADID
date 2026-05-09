@@ -3,13 +3,15 @@ import { randomUUID } from "node:crypto";
 import { createInstitutionApplicationSchema, createPortalUploadUrlSchema } from "@acadid/shared";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { AuditService } from "../platform/services/audit.service.js";
+import { IdempotencyService } from "../platform/services/idempotency.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 
 @Injectable()
 export class PortalService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit?: AuditService
+    private readonly audit?: AuditService,
+    private readonly idempotency?: IdempotencyService
   ) {}
 
   readMouVersion() {
@@ -84,7 +86,22 @@ export class PortalService {
     };
   }
 
-  async createInstitutionApplication(input: unknown) {
+  async createInstitutionApplication(auth: AuthTokenPayload, input: unknown, idempotencyKey?: string) {
+    if (idempotencyKey && this.idempotency) {
+      return this.idempotency.execute({
+        scope: "portal:institution_application",
+        key: idempotencyKey,
+        operation: "portal.institution_application.create",
+        request: input,
+        auth,
+        ttlHours: 72,
+        handler: () => this.createInstitutionApplicationRecord(input)
+      });
+    }
+    return this.createInstitutionApplicationRecord(input);
+  }
+
+  private async createInstitutionApplicationRecord(input: unknown) {
     const parsed = createInstitutionApplicationSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());

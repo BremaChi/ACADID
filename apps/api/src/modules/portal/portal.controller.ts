@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { ScopesGuard } from "../auth/guards/scopes.guard.js";
 import { Scopes } from "../auth/scopes.decorator.js";
@@ -28,7 +28,7 @@ export class PortalController {
   @Scopes("institution:apply")
   @RateLimit({ scope: "portal.institution_applications", key: "auth", limit: 30, windowSeconds: 60 })
   @Post("institution-applications")
-  createInstitutionApplication(@Body() body: unknown) {
-    return this.portalService.createInstitutionApplication(body);
+  createInstitutionApplication(@Req() request: AuthenticatedRequest, @Body() body: unknown, @Headers("x-idempotency-key") idempotencyKey?: string) {
+    return this.portalService.createInstitutionApplication(request.auth, body, idempotencyKey);
   }
 }

@@ -59,17 +59,32 @@ test("portal institution application creates a pending founder-review item", asy
     }
   });
 
-  const application = await service.createInstitutionApplication({
-    officialName: "AcadID Model School",
-    type: "SECONDARY_JSS",
-    state: "Lagos",
-    address: "12 Academic Road, Yaba, Lagos",
-    contactPersonName: "Registrar One",
-    contactEmail: "registrar@example.edu.ng",
-    studentVolume: 2500,
-    documentUploads: [{ label: "CAC certificate", storageUrl: "pending-secure-storage/cac.pdf" }],
-    mouAccepted: true
-  });
+  const application = await service.createInstitutionApplication(
+    {
+      sub: "api-key-1",
+      email: "ak_sandbox_product@api-key.acadid.local",
+      fullName: "Institution Portal Backend",
+      role: "REGISTRAR",
+      kind: "API_KEY",
+      clientId: "ak_sandbox_product",
+      productCode: "INSTITUTION_PORTAL",
+      scopes: ["institution:apply"],
+      environment: "SANDBOX",
+      iat: 1,
+      exp: 2
+    },
+    {
+      officialName: "AcadID Model School",
+      type: "SECONDARY_JSS",
+      state: "Lagos",
+      address: "12 Academic Road, Yaba, Lagos",
+      contactPersonName: "Registrar One",
+      contactEmail: "registrar@example.edu.ng",
+      studentVolume: 2500,
+      documentUploads: [{ label: "CAC certificate", storageUrl: "pending-secure-storage/cac.pdf" }],
+      mouAccepted: true
+    }
+  );
 
   assert.equal(application.accepted, true);
   assert.equal(application.status, "PENDING");

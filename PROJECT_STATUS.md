@@ -97,6 +97,8 @@ The API has these first modules:
 - Founder System Health now reports queue and worker health: ready backlog, scheduled jobs, running jobs, stale locks, failed jobs, queue breakdown, recent worker activity, and webhook delivery status from durable delivery rows.
 - Persistent rate limiting is implemented with `RateLimitBucket`, `RateLimitService`, and `RateLimitGuard`; auth, token exchange, public verification, ingestion uploads, and portal intake are protected by database-backed counters.
 - Rate-limit bucket operations are now maintainable: `/api/admin/rate-limits` exposes bucket summary/top scopes, `/api/admin/rate-limits/cleanup` queues a `RATE_LIMIT_BUCKET_CLEANUP` background job, the worker deletes stale buckets asynchronously, and Founder System Health includes bucket counts plus a cleanup control.
+- Durable idempotency protection is implemented with `IdempotencyRecord`; job-producing flows can deduplicate by `x-idempotency-key` or automatic request fingerprints, with coverage for bulk uploads, async result validation, credential generation, PDF generation, and Paystack payment confirmation jobs.
+- Public/gateway POST roots now have idempotency hooks for institution applications and learner record requests when clients send `x-idempotency-key`.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
@@ -269,11 +271,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-2. Add real push/email/SMS provider transports.
-3. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-4. Prepare production distributed-cache adapter before multi-instance deployment.
-5. Add webhook receiver documentation for partners.
+1. Add real push/email/SMS provider transports.
+2. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+3. Prepare production distributed-cache adapter before multi-instance deployment.
+4. Add webhook receiver documentation for partners.
+5. Add idempotency cleanup/retention job and Founder Console visibility for idempotency replay/failure records.
 6. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

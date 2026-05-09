@@ -75,18 +75,22 @@ Required next:
 
 ### 4. Idempotency Protection
 
-Implemented partial protection:
+Implemented foundation:
 
 - Credential publication avoids duplicated credential refs in normal publish flow.
 - API keys have one-time secret behavior.
 - Worker leases jobs with database row locks.
 - Webhook deliveries send stable `x-acadid-idempotency-key` values.
+- `IdempotencyRecord` stores hashed request keys, request fingerprints, response snapshots, operation scope, actor/client context, status, and expiry.
+- `QueueService` supports explicit idempotency keys and automatic request-fingerprint protection for bulk upload, result validation, credential generation, PDF generation, and Paystack payment confirmation jobs.
+- Gateway async result validation and bulk upload accept `x-idempotency-key`.
+- Institution application and learner record-request POST flows replay through the idempotency ledger when a client sends `x-idempotency-key`.
 
 Required next:
 
-- `IdempotencyKey` model or request-key fields for public/gateway operations.
-- Idempotency enforcement for webhooks, payment confirmation, credential generation, PDF generation, and bulk import replay.
 - Unique constraints for external event IDs such as Paystack references and exam-body callback IDs.
+- Retention cleanup for expired `IdempotencyRecord` rows.
+- Founder Console visibility for idempotency replay/failure records.
 
 ### 5. Structured Audit Logging
 

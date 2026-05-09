@@ -472,7 +472,7 @@ export class IngestionService {
     };
   }
 
-  async queueResultBatchValidation(auth: AuthTokenPayload, body: unknown) {
+  async queueResultBatchValidation(auth: AuthTokenPayload, body: unknown, idempotencyKey?: string) {
     const parsed = ingestResultBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
@@ -505,7 +505,9 @@ export class IngestionService {
         academicSessionId: parsed.data.academicSessionId ?? null,
         structureScopeId: parsed.data.structureScopeId ?? null,
         rowCount: parsed.data.rows.length
-      })
+      }),
+      idempotencyKey,
+      idempotencyScope: "gateway:ingest:results_async"
     });
 
     return {
@@ -519,7 +521,7 @@ export class IngestionService {
     };
   }
 
-  async createBulkUpload(auth: AuthTokenPayload, body: unknown) {
+  async createBulkUpload(auth: AuthTokenPayload, body: unknown, idempotencyKey?: string) {
     const institutionRef = this.resolveBulkUploadInstitutionRef(auth, body);
     const authority = await this.authority.assertInstitutionCan(institutionRef, "ingest_students", auth);
 
@@ -537,7 +539,9 @@ export class IngestionService {
       eventPayload: this.toJson({
         institutionId: authority.institutionId,
         submittedAt: new Date().toISOString()
-      })
+      }),
+      idempotencyKey,
+      idempotencyScope: "gateway:ingest:bulk_upload"
     });
 
     return {

@@ -3,13 +3,15 @@ import { createHash, randomBytes } from "node:crypto";
 import { createAccessGrantSchema, createRecordRequestSchema, revokeAccessGrantSchema } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
+import { IdempotencyService } from "../../platform/services/idempotency.service.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 
 @Injectable()
 export class AccessService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly idempotency?: IdempotencyService
   ) {}
 
   async passport(auth: AuthTokenPayload) {
@@ -201,7 +203,22 @@ export class AccessService {
     });
   }
 
-  async createRecordRequest(auth: AuthTokenPayload, body: unknown) {
+  async createRecordRequest(auth: AuthTokenPayload, body: unknown, idempotencyKey?: string) {
+    if (idempotencyKey && this.idempotency) {
+      return this.idempotency.execute({
+        scope: "access:record_request",
+        key: idempotencyKey,
+        operation: "record_request.create",
+        request: body,
+        auth,
+        ttlHours: 72,
+        handler: () => this.createRecordRequestRecord(auth, body)
+      });
+    }
+    return this.createRecordRequestRecord(auth, body);
+  }
+
+  private async createRecordRequestRecord(auth: AuthTokenPayload, body: unknown) {
     const learnerId = this.requireLearner(auth);
     const parsed = createRecordRequestSchema.safeParse(body);
     if (!parsed.success) {

@@ -17,6 +17,21 @@ Queue these workflows instead of processing synchronously:
 - Push notification fanout: `PUSH_NOTIFICATION`, queue `notifications.push`.
 - Live Results callbacks: `LIVE_RESULTS_CALLBACK`, queue `live-results.callbacks`.
 - Exam body ingestion: `EXAM_BODY_INGEST`, queue `exam-body.ingest`.
+- Rate-limit bucket cleanup: `RATE_LIMIT_BUCKET_CLEANUP`, queue `platform.maintenance`.
+
+## Idempotency
+
+Clients should send `x-idempotency-key` for retryable POST requests. The key must be unique per logical operation and reused only when retrying the same payload.
+
+AcadID stores only a hash of the key in `IdempotencyRecord`. If the same key and payload are submitted again, the API returns the original response. If the same key is reused with a different payload, the request is rejected.
+
+The queue layer also applies automatic request-fingerprint idempotency for:
+
+- `BULK_STUDENT_UPLOAD`
+- `RESULT_BATCH_VALIDATION`
+- `CREDENTIAL_GENERATION`
+- `PDF_GENERATION`
+- `PAYSTACK_PAYMENT_CONFIRMATION`
 
 ## Accepted Response Shape
 
