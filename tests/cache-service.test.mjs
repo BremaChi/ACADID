@@ -43,6 +43,64 @@ test("cache service returns TTL hits and supports tag invalidation", async () =>
   assert.equal(loads, 2);
 });
 
+test("cache service can read through an Upstash Redis REST adapter", async () => {
+  const previousAdapter = process.env.ACADID_CACHE_ADAPTER;
+  const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const previousFetch = globalThis.fetch;
+  process.env.ACADID_CACHE_ADAPTER = "upstash";
+  process.env.UPSTASH_REDIS_REST_URL = "https://cache.example.com";
+  process.env.UPSTASH_REDIS_REST_TOKEN = "cache-token";
+  let loads = 0;
+  const commands = [];
+  globalThis.fetch = async (_url, init) => {
+    const [[command, key]] = JSON.parse(init.body);
+    commands.push({ command, key });
+    if (command === "GET") {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            result: JSON.stringify({
+              value: { version: 7 },
+              expiresAt: Date.now() + 30_000,
+              tags: ["platform-settings"]
+            })
+          }
+        ]
+      };
+    }
+    return { ok: true, json: async () => [{ result: "OK" }] };
+  };
+
+  try {
+    const cache = new CacheService();
+    const value = await cache.getOrSet(
+      "platform-settings:current",
+      async () => {
+        loads += 1;
+        return { version: 1 };
+      },
+      { ttlSeconds: 60, tags: ["platform-settings"] }
+    );
+
+    assert.deepEqual(value, { version: 7 });
+    assert.equal(loads, 0);
+    assert.equal(commands[0].command, "GET");
+    assert.equal(commands[0].key, "acadid:cache:entry:platform-settings:current");
+    assert.equal(cache.stats().adapter, "upstash-redis");
+    assert.equal(cache.stats().distributedConfigured, true);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousAdapter === undefined) delete process.env.ACADID_CACHE_ADAPTER;
+    else process.env.ACADID_CACHE_ADAPTER = previousAdapter;
+    if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+  }
+});
+
 test("credential status uses cache without caching verification events or secrets", async () => {
   const cache = new CacheService();
   let reads = 0;

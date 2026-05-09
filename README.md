@@ -6,17 +6,20 @@ AcadID is a permanent academic identity infrastructure for Nigeria. It gives eve
 
 The current authoritative source is:
 
-- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v4_Updated.docx`
+- `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v5 (1).docx`
 
-Current implementation memory from the v4 brief:
+Current implementation memory:
 
 - `docs/architecture-brief-v4-memory.md`
+- `docs/architecture-brief-v5-memory.md`
 
 Engineer handoff documents:
 
+- `ENGINEER_1_BACKLOG.md`
 - `docs/handoffs/engineer-2-institution-portal.md`
 - `docs/api/institution-portal-contract.md`
 - `docs/handoffs/engineer-2-sandbox-test.md`
+- `docs/api/webhook-receiver-contract.md`
 
 Earlier note:
 
@@ -81,6 +84,7 @@ Webhook worker delivery:
 - Founder APIs can rotate endpoint secrets, suspend/disable endpoints, retry failed deliveries with the same idempotency key, or replay an existing delivery as a new idempotency key.
 - `ACADID_WEBHOOK_SECRET` remains a legacy fallback for webhook delivery rows without a configured endpoint.
 - `ACADID_WEBHOOK_TIMEOUT_MS` controls the outbound delivery timeout, capped at 30 seconds.
+- Receiver verification, idempotency, replay, and response rules are documented in `docs/api/webhook-receiver-contract.md`.
 
 Rate limiting:
 
@@ -103,7 +107,9 @@ Caching:
 - `CacheService` provides conservative short-TTL caching for safe read-heavy surfaces.
 - Cached surfaces currently include credential status, platform settings, and founder institution metadata.
 - Do not cache API secrets, share-token verification payloads, unconsented learner records, or private student data.
-- The current adapter is in-process for local/pilot work; production multi-instance deployment should add a distributed adapter.
+- Local development defaults to in-process memory cache.
+- Multi-instance pilot/production can enable the optional Upstash Redis REST L2 adapter with `ACADID_CACHE_ADAPTER=upstash`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN`.
+- See `docs/runbooks/distributed-cache.md`.
 
 Observability:
 

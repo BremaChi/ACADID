@@ -2816,12 +2816,15 @@ export class AdminService {
   }
 
   private async checkCacheService() {
-    const stats = this.cache?.stats() ?? { entries: 0, tags: 0 };
+    const stats = this.cache ? await this.cache.distributedStats() : { entries: 0, tags: 0, adapter: "memory", distributedConfigured: false };
+    const distributedConfigured = Boolean("distributedConfigured" in stats && stats.distributedConfigured);
     return {
       name: "Cache Service",
       status: "OPERATIONAL" as HealthStatus,
       responseTimeMs: 0,
-      message: "In-process TTL cache is available for safe read-heavy surfaces.",
+      message: distributedConfigured
+        ? "L1 memory cache with distributed L2 adapter is available for safe read-heavy surfaces."
+        : "In-process TTL cache is available for safe read-heavy surfaces.",
       metadata: stats
     };
   }

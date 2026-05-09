@@ -103,6 +103,9 @@ The API has these first modules:
 - Notification delivery transports are implemented for worker-driven email, SMS, and push notifications: Resend/SendGrid for email, Termii/Twilio for SMS, Expo push for mobile, and safe local dry-run when providers are not configured.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
+- Distributed cache support is implemented with an in-process L1 cache plus optional Upstash Redis REST L2 adapter for multi-instance pilot/production deployments; configuration is documented in `docs/runbooks/distributed-cache.md`.
+- Webhook receiver behavior is documented for partners in `docs/api/webhook-receiver-contract.md`, including HMAC signature verification, idempotency keys, retries, replay behavior, timestamp checks, and response rules.
+- Engineer 1 remaining foundation work is tracked in `ENGINEER_1_BACKLOG.md` so Data Center, Gateway, Founder Console, and reliability tasks stay visible before Engineer 2/3/4 product expansion.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
@@ -275,11 +278,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-2. Prepare production distributed-cache adapter before multi-instance deployment.
-3. Add webhook receiver documentation for partners.
-4. Add idempotency cleanup/retention job and Founder Console visibility for idempotency replay/failure records.
-5. Add notification delivery dashboards, provider health checks, and failed notification retry controls.
+1. Add idempotency cleanup/retention job and Founder Console visibility for idempotency replay/failure records.
+2. Add notification delivery dashboards, provider health checks, and failed notification retry controls.
+3. Define worker deployment topology and heartbeat design for multi-worker production.
+4. Add a central retry policy module by job type, including jitter.
+5. Add dead-letter queue/listing for operator review.
 6. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

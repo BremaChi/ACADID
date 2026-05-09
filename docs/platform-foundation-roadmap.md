@@ -49,10 +49,10 @@ Implemented foundation:
 - Endpoint-specific worker signing through `x-acadid-webhook-endpoint`.
 - Founder retry controls for failed/pending deliveries.
 - Founder replay controls that create a new delivery and idempotency key from an existing payload.
+- Partner receiver contract covering signatures, idempotency, retry behavior, replay behavior, and response rules.
 
 Required next:
 
-- Webhook receiver documentation for partners.
 - Founder Console UI surfaces for endpoint setup, secret rotation, retry, and replay.
 
 ### 3. Retry Policies
@@ -174,14 +174,15 @@ Required next:
 Implemented foundation:
 
 - `CacheService` provides short-TTL read-through caching, tag invalidation, prefix invalidation, and runtime stats.
+- `CacheService` keeps a fast in-process L1 cache and can use an optional Upstash Redis REST L2 adapter for multi-instance deployments.
 - Public credential status uses a 30-second cache and can be invalidated by credential reference tag.
 - Platform settings use a 60-second cache and are invalidated immediately after founder settings updates.
 - Founder institution metadata uses a 20-second cache and is invalidated after institution creation, status changes, and application approval.
-- Founder System Health reports cache availability and current in-process cache stats.
+- Founder System Health reports cache availability, adapter status, distributed-cache configuration, and current cache stats.
 
 Required next:
 
-- Add a distributed cache adapter before multi-instance production deployment.
+- Enable the distributed cache adapter in pilot/production environment variables before multi-instance deployment.
 - Add explicit cache invalidation to the full credential amendment/revocation implementation when those placeholder routes become real writes.
 - Keep secret-bearing payloads, API secrets, unconsented student record data, and share-token verification bodies out of cache.
 - Add cache-hit/cache-miss metrics when external monitoring is connected.
@@ -219,12 +220,14 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Distributed cache adapter before multi-instance production deployment.
-2. Webhook receiver documentation for partners.
-3. Idempotency cleanup/retention job and Founder Console visibility.
-4. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
-5. Worker deployment topology and heartbeat design for multi-worker production.
+1. Idempotency cleanup/retention job and Founder Console visibility.
+2. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
+3. Worker deployment topology and heartbeat design for multi-worker production.
+4. Central retry policy module by job type, including jitter.
+5. Dead-letter queue/listing for operator review.
 
 Completed:
 
 - Staff assigned-scope management endpoints and Founder Console UI for institution staff assignment.
+- Distributed cache adapter with in-process L1 and optional Upstash Redis REST L2.
+- Webhook receiver documentation for partners.
