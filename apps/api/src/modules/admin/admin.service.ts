@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { UserRole } from "@prisma/client";
+import { BackgroundJobType, UserRole } from "@prisma/client";
 import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
@@ -29,6 +29,7 @@ import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 import { CredentialSigningService } from "../platform/services/credential-signing.service.js";
 import { CacheService } from "../platform/services/cache.service.js";
+import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 
 const allowedApiKeyScopes = new Set([
   "institution:apply",
@@ -79,7 +80,8 @@ export class AdminService {
     private readonly audit: AuditService,
     private readonly passwordService: PasswordService,
     private readonly credentialSigning?: CredentialSigningService,
-    private readonly cache?: CacheService
+    private readonly cache?: CacheService,
+    private readonly webhookSecrets?: WebhookSecretService
   ) {}
 
   async createInstitution(input: unknown) {
@@ -1309,6 +1311,285 @@ export class AdminService {
     return this.readPlatformSettings();
   }
 
+  async createWebhookEndpoint(auth: AuthTokenPayload, institutionId: string, input: unknown) {
+    const parsed = this.parseWebhookEndpointInput(input);
+    const institution = await this.prisma.institution.findUnique({
+      where: { uuid: institutionId },
+      select: { uuid: true, institutionId: true, officialName: true }
+    });
+    if (!institution) {
+      throw new BadRequestException("Institution not found.");
+    }
+
+    const secret = this.webhookSecretManager().createSecret();
+    const endpoint = await this.prisma.webhookEndpoint.create({
+      data: {
+        institutionId: institution.uuid,
+        label: parsed.label,
+        targetUrl: parsed.targetUrl,
+        eventTypes: parsed.eventTypes,
+        secretEncrypted: this.webhookSecretManager().encrypt(secret),
+        secretPreview: this.webhookSecretManager().preview(secret),
+        createdById: auth.sub
+      },
+      include: this.webhookEndpointInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "webhook_endpoint.create",
+      targetType: "WebhookEndpoint",
+      targetId: endpoint.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        label: endpoint.label,
+        targetUrl: endpoint.targetUrl,
+        eventTypes: endpoint.eventTypes
+      }
+    });
+
+    return {
+      endpoint: this.safeWebhookEndpoint(endpoint),
+      secret,
+      warning: "Webhook secret is shown once. Store it in the partner system before leaving this screen."
+    };
+  }
+
+  async listWebhookEndpoints(options: { institutionId?: string; status?: string } = {}) {
+    const endpoints = await this.prisma.webhookEndpoint.findMany({
+      where: {
+        ...(options.institutionId ? { institutionId: options.institutionId } : {}),
+        ...(options.status ? { status: options.status as never } : {})
+      },
+      include: this.webhookEndpointInclude(),
+      orderBy: { createdAt: "desc" },
+      take: 250
+    });
+    return endpoints.map((endpoint) => this.safeWebhookEndpoint(endpoint));
+  }
+
+  async rotateWebhookEndpointSecret(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.webhookEndpoint.findUnique({
+      where: { uuid: id },
+      include: this.webhookEndpointInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Webhook endpoint not found.");
+    }
+
+    const secret = this.webhookSecretManager().createSecret();
+    const endpoint = await this.prisma.webhookEndpoint.update({
+      where: { uuid: id },
+      data: {
+        secretEncrypted: this.webhookSecretManager().encrypt(secret),
+        secretPreview: this.webhookSecretManager().preview(secret),
+        rotatedAt: new Date()
+      },
+      include: this.webhookEndpointInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "webhook_endpoint.rotate_secret",
+      targetType: "WebhookEndpoint",
+      targetId: endpoint.uuid,
+      institutionId: endpoint.institutionId,
+      outcome: "SUCCESS"
+    });
+
+    return {
+      endpoint: this.safeWebhookEndpoint(endpoint),
+      secret,
+      warning: "Webhook secret is shown once. Update the partner system immediately."
+    };
+  }
+
+  async updateWebhookEndpointStatus(auth: AuthTokenPayload, id: string, status: "ACTIVE" | "SUSPENDED" | "DISABLED") {
+    if (!["ACTIVE", "SUSPENDED", "DISABLED"].includes(status)) {
+      throw new BadRequestException("Webhook endpoint status must be ACTIVE, SUSPENDED, or DISABLED.");
+    }
+
+    const endpoint = await this.prisma.webhookEndpoint.update({
+      where: { uuid: id },
+      data: {
+        status,
+        disabledAt: status === "DISABLED" ? new Date() : null
+      },
+      include: this.webhookEndpointInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "webhook_endpoint.status_update",
+      targetType: "WebhookEndpoint",
+      targetId: endpoint.uuid,
+      institutionId: endpoint.institutionId,
+      outcome: "SUCCESS",
+      metadata: { status }
+    });
+
+    return this.safeWebhookEndpoint(endpoint);
+  }
+
+  async listWebhookDeliveries(options: { institutionId?: string; status?: string } = {}) {
+    const deliveries = await this.prisma.webhookDelivery.findMany({
+      where: {
+        ...(options.institutionId ? { institutionId: options.institutionId } : {}),
+        ...(options.status ? { status: options.status as never } : {})
+      },
+      include: this.webhookDeliveryInclude(),
+      orderBy: { createdAt: "desc" },
+      take: 250
+    });
+    return deliveries.map((delivery) => this.safeWebhookDelivery(delivery));
+  }
+
+  async retryWebhookDelivery(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.webhookDelivery.findUnique({
+      where: { uuid: id },
+      include: this.webhookDeliveryInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Webhook delivery not found.");
+    }
+    if (existing.status === "DELIVERED") {
+      throw new BadRequestException("Delivered webhooks should be replayed, not retried.");
+    }
+
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const job = await this.createWebhookJob(tx, existing, "webhook_delivery.retry_requested");
+      const delivery = await tx.webhookDelivery.update({
+        where: { uuid: existing.uuid },
+        data: {
+          jobId: job.uuid,
+          status: "RETRYING",
+          nextAttemptAt: new Date(),
+          lastStatusCode: null,
+          lastError: null
+        },
+        include: this.webhookDeliveryInclude()
+      });
+      return { job, delivery };
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "webhook_delivery.retry",
+      targetType: "WebhookDelivery",
+      targetId: existing.uuid,
+      institutionId: existing.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        jobId: result.job.uuid,
+        eventType: existing.eventType
+      }
+    });
+
+    return {
+      accepted: true,
+      delivery: this.safeWebhookDelivery(result.delivery),
+      job: this.webhookJobResponse(result.job),
+      idempotencyKey: `whd_${result.delivery.uuid}`
+    };
+  }
+
+  async replayWebhookDelivery(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.webhookDelivery.findUnique({
+      where: { uuid: id },
+      include: this.webhookDeliveryInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Webhook delivery not found.");
+    }
+
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const job = await tx.backgroundJob.create({
+        data: {
+          type: BackgroundJobType.WEBHOOK_DELIVERY,
+          queue: "webhooks.delivery",
+          institutionId: existing.institutionId,
+          relatedEntityType: "WebhookDelivery",
+          priority: 1,
+          maxAttempts: 8,
+          payload: {
+            replayOfDeliveryId: existing.uuid,
+            webhookEndpointId: existing.webhookEndpointId,
+            targetUrl: existing.targetUrl,
+            eventType: existing.eventType
+          }
+        }
+      });
+      const event = await tx.domainEvent.create({
+        data: {
+          type: "webhook_delivery.replay_requested",
+          aggregateType: "WebhookDelivery",
+          aggregateId: existing.uuid,
+          institutionId: existing.institutionId,
+          jobId: job.uuid,
+          payload: {
+            replayOfDeliveryId: existing.uuid,
+            jobId: job.uuid,
+            webhookEndpointId: existing.webhookEndpointId,
+            eventType: existing.eventType
+          }
+        }
+      });
+      const delivery = await tx.webhookDelivery.create({
+        data: {
+          jobId: job.uuid,
+          eventId: event.uuid,
+          institutionId: existing.institutionId,
+          webhookEndpointId: existing.webhookEndpointId,
+          targetUrl: existing.targetUrl,
+          eventType: existing.eventType,
+          payload: existing.payload as Prisma.InputJsonValue
+        },
+        include: this.webhookDeliveryInclude()
+      });
+      const updatedJob = await tx.backgroundJob.update({
+        where: { uuid: job.uuid },
+        data: {
+          relatedEntityId: delivery.uuid,
+          payload: {
+            replayOfDeliveryId: existing.uuid,
+            deliveryId: delivery.uuid,
+            webhookEndpointId: existing.webhookEndpointId,
+            targetUrl: existing.targetUrl,
+            eventType: existing.eventType
+          }
+        }
+      });
+      return { job: updatedJob, delivery };
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "webhook_delivery.replay",
+      targetType: "WebhookDelivery",
+      targetId: result.delivery.uuid,
+      institutionId: existing.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        replayOfDeliveryId: existing.uuid,
+        jobId: result.job.uuid,
+        eventType: existing.eventType
+      }
+    });
+
+    return {
+      accepted: true,
+      delivery: this.safeWebhookDelivery(result.delivery),
+      job: this.webhookJobResponse(result.job),
+      idempotencyKey: `whd_${result.delivery.uuid}`
+    };
+  }
+
   async createApiKey(auth: AuthTokenPayload, institutionId: string, input: unknown) {
     const parsed = this.parseApiKeyInput(input);
     const institution = await this.prisma.institution.findUnique({
@@ -2000,6 +2281,187 @@ export class AdminService {
       .join(" ");
   }
 
+  private parseWebhookEndpointInput(input: unknown) {
+    const body = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const label = typeof body.label === "string" ? body.label.trim() : "";
+    const targetUrl = typeof body.targetUrl === "string" ? body.targetUrl.trim() : "";
+    const eventTypes = Array.isArray(body.eventTypes)
+      ? body.eventTypes.map((eventType) => String(eventType).trim()).filter(Boolean).slice(0, 50)
+      : [];
+
+    if (!label || label.length > 120) {
+      throw new BadRequestException("Webhook endpoint label is required and must be 120 characters or fewer.");
+    }
+    try {
+      const url = new URL(targetUrl);
+      if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+        throw new Error("Production webhook endpoints must use HTTPS.");
+      }
+      if (!["https:", "http:"].includes(url.protocol)) {
+        throw new Error("Webhook endpoint must use HTTP or HTTPS.");
+      }
+    } catch {
+      throw new BadRequestException("Webhook endpoint targetUrl must be a valid HTTP or HTTPS URL.");
+    }
+
+    return { label, targetUrl, eventTypes };
+  }
+
+  private webhookSecretManager() {
+    if (!this.webhookSecrets) {
+      throw new BadRequestException("Webhook secret service is unavailable.");
+    }
+    return this.webhookSecrets;
+  }
+
+  private webhookEndpointInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true
+        }
+      },
+      createdBy: {
+        select: {
+          uuid: true,
+          fullName: true,
+          email: true
+        }
+      }
+    } as const;
+  }
+
+  private webhookDeliveryInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true
+        }
+      },
+      webhookEndpoint: {
+        select: {
+          uuid: true,
+          label: true,
+          status: true,
+          secretPreview: true
+        }
+      },
+      job: {
+        select: {
+          uuid: true,
+          status: true,
+          attempts: true,
+          maxAttempts: true,
+          runAfter: true,
+          error: true
+        }
+      }
+    } as const;
+  }
+
+  private safeWebhookEndpoint(endpoint: Prisma.WebhookEndpointGetPayload<{ include: ReturnType<AdminService["webhookEndpointInclude"]> }>) {
+    return {
+      id: endpoint.uuid,
+      institutionUuid: endpoint.institutionId,
+      institutionId: endpoint.institution.institutionId,
+      institutionName: endpoint.institution.officialName,
+      label: endpoint.label,
+      targetUrl: endpoint.targetUrl,
+      eventTypes: endpoint.eventTypes,
+      secretPreview: endpoint.secretPreview,
+      status: endpoint.status,
+      rotatedAt: endpoint.rotatedAt,
+      disabledAt: endpoint.disabledAt,
+      createdBy: endpoint.createdBy,
+      createdAt: endpoint.createdAt,
+      updatedAt: endpoint.updatedAt
+    };
+  }
+
+  private safeWebhookDelivery(delivery: Prisma.WebhookDeliveryGetPayload<{ include: ReturnType<AdminService["webhookDeliveryInclude"]> }>) {
+    return {
+      id: delivery.uuid,
+      jobId: delivery.jobId,
+      eventId: delivery.eventId,
+      institutionUuid: delivery.institutionId,
+      institutionId: delivery.institution?.institutionId ?? null,
+      institutionName: delivery.institution?.officialName ?? null,
+      webhookEndpointId: delivery.webhookEndpointId,
+      webhookEndpoint: delivery.webhookEndpoint,
+      targetUrl: delivery.targetUrl,
+      eventType: delivery.eventType,
+      status: delivery.status,
+      attempts: delivery.attempts,
+      nextAttemptAt: delivery.nextAttemptAt,
+      lastStatusCode: delivery.lastStatusCode,
+      lastError: delivery.lastError,
+      deliveredAt: delivery.deliveredAt,
+      createdAt: delivery.createdAt,
+      updatedAt: delivery.updatedAt,
+      job: delivery.job
+    };
+  }
+
+  private async createWebhookJob(
+    tx: Prisma.TransactionClient,
+    delivery: {
+      uuid: string;
+      institutionId: string | null;
+      webhookEndpointId: string | null;
+      targetUrl: string;
+      eventType: string;
+    },
+    eventType: string
+  ) {
+    const job = await tx.backgroundJob.create({
+      data: {
+        type: BackgroundJobType.WEBHOOK_DELIVERY,
+        queue: "webhooks.delivery",
+        institutionId: delivery.institutionId,
+        relatedEntityType: "WebhookDelivery",
+        relatedEntityId: delivery.uuid,
+        priority: 1,
+        maxAttempts: 8,
+        payload: {
+          deliveryId: delivery.uuid,
+          webhookEndpointId: delivery.webhookEndpointId,
+          targetUrl: delivery.targetUrl,
+          eventType: delivery.eventType
+        }
+      }
+    });
+    await tx.domainEvent.create({
+      data: {
+        type: eventType,
+        aggregateType: "WebhookDelivery",
+        aggregateId: delivery.uuid,
+        institutionId: delivery.institutionId,
+        jobId: job.uuid,
+        payload: {
+          deliveryId: delivery.uuid,
+          jobId: job.uuid,
+          webhookEndpointId: delivery.webhookEndpointId,
+          targetUrl: delivery.targetUrl,
+          eventType: delivery.eventType
+        }
+      }
+    });
+    return job;
+  }
+
+  private webhookJobResponse(job: { uuid: string; status: string; type?: string; queue?: string }) {
+    return {
+      id: job.uuid,
+      jobId: job.uuid,
+      status: job.status,
+      pollingUrl: `/jobs/${job.uuid}`
+    };
+  }
+
   private async checkDatabase() {
     const startedAt = Date.now();
     try {
@@ -2177,7 +2639,7 @@ export class AdminService {
     const startedAt = Date.now();
     const now = new Date();
     try {
-      const [pendingOrRetrying, dueNow, failed24h, delivered24h, byStatus] = await Promise.all([
+      const [pendingOrRetrying, dueNow, failed24h, delivered24h, byStatus, activeEndpoints, pendingLegacyWithoutEndpoint] = await Promise.all([
         this.prisma.webhookDelivery.count({ where: { status: { in: ["PENDING", "RETRYING"] } } }),
         this.prisma.webhookDelivery.count({
           where: {
@@ -2201,10 +2663,12 @@ export class AdminService {
           by: ["status"],
           _count: { _all: true },
           orderBy: { status: "asc" }
-        })
+        }),
+        this.prisma.webhookEndpoint.count({ where: { status: "ACTIVE" } }),
+        this.prisma.webhookDelivery.count({ where: { status: { in: ["PENDING", "RETRYING"] }, webhookEndpointId: null } })
       ]);
       const missingSecret = !process.env.ACADID_WEBHOOK_SECRET;
-      const status: HealthStatus = failed24h > 0 || dueNow > 50 || (missingSecret && pendingOrRetrying > 0) ? "DEGRADED" : "OPERATIONAL";
+      const status: HealthStatus = failed24h > 0 || dueNow > 50 || (missingSecret && pendingLegacyWithoutEndpoint > 0) ? "DEGRADED" : "OPERATIONAL";
       return {
         name: "Webhook Delivery",
         status,
@@ -2218,7 +2682,9 @@ export class AdminService {
           dueNow,
           failed24h,
           delivered24h,
-          secretConfigured: !missingSecret,
+          activeEndpoints,
+          legacyGlobalSecretConfigured: !missingSecret,
+          pendingLegacyWithoutEndpoint,
           statusBreakdown: byStatus.map((row) => ({
             status: row.status,
             count: row._count._all
@@ -2236,7 +2702,9 @@ export class AdminService {
           dueNow: 0,
           failed24h: 0,
           delivered24h: 0,
-          secretConfigured: Boolean(process.env.ACADID_WEBHOOK_SECRET),
+          activeEndpoints: 0,
+          legacyGlobalSecretConfigured: Boolean(process.env.ACADID_WEBHOOK_SECRET),
+          pendingLegacyWithoutEndpoint: 0,
           statusBreakdown: []
         }
       };

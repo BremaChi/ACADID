@@ -5,6 +5,7 @@ import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
+import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 import { BulkUploadParserService, NonRetryableJobError } from "./bulk-upload-parser.service.js";
 
 type ClaimedJob = {
@@ -30,6 +31,11 @@ type WebhookDeliveryRecord = {
   eventType: string;
   payload: Prisma.JsonValue;
   attempts: number;
+  webhookEndpoint: {
+    uuid: string;
+    status: string;
+    secretEncrypted: string;
+  } | null;
 };
 
 const workerQueues = [
@@ -54,7 +60,8 @@ export class JobWorkerService {
     private readonly prisma: PrismaService,
     private readonly ingestion: IngestionService,
     private readonly bulkUploadParser: BulkUploadParserService,
-    private readonly observability?: ErrorObservabilityService
+    private readonly observability?: ErrorObservabilityService,
+    private readonly webhookSecrets?: WebhookSecretService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -209,7 +216,14 @@ export class JobWorkerService {
         targetUrl: true,
         eventType: true,
         payload: true,
-        attempts: true
+        attempts: true,
+        webhookEndpoint: {
+          select: {
+            uuid: true,
+            status: true,
+            secretEncrypted: true
+          }
+        }
       }
     });
 
@@ -408,9 +422,9 @@ export class JobWorkerService {
   }
 
   private buildWebhookHeaders(delivery: WebhookDeliveryRecord, body: string) {
-    const secret = process.env.ACADID_WEBHOOK_SECRET;
+    const secret = this.resolveWebhookSecret(delivery);
     if (!secret) {
-      throw new Error("ACADID_WEBHOOK_SECRET is required before webhook delivery can run.");
+      throw new Error("A webhook signing secret is required before webhook delivery can run.");
     }
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -422,10 +436,24 @@ export class JobWorkerService {
       "user-agent": "AcadID-Webhook/1.0",
       "x-acadid-event": delivery.eventType,
       "x-acadid-delivery": delivery.uuid,
+      ...(delivery.webhookEndpoint ? { "x-acadid-webhook-endpoint": delivery.webhookEndpoint.uuid } : {}),
       "x-acadid-idempotency-key": `whd_${delivery.uuid}`,
       "x-acadid-timestamp": timestamp,
       "x-acadid-signature": `v1=${signature}`
     };
+  }
+
+  private resolveWebhookSecret(delivery: WebhookDeliveryRecord) {
+    if (delivery.webhookEndpoint) {
+      if (delivery.webhookEndpoint.status !== "ACTIVE") {
+        throw new Error(`Webhook endpoint ${delivery.webhookEndpoint.uuid} is not active.`);
+      }
+      if (!this.webhookSecrets) {
+        throw new Error("Webhook secret service is unavailable.");
+      }
+      return this.webhookSecrets.decrypt(delivery.webhookEndpoint.secretEncrypted);
+    }
+    return process.env.ACADID_WEBHOOK_SECRET;
   }
 
   private webhookTimeoutMs() {

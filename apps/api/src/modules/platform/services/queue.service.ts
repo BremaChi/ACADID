@@ -37,6 +37,7 @@ export interface EnqueueWebhookInput {
   jobId?: string;
   eventId?: string;
   institutionId?: string;
+  webhookEndpointId?: string;
   targetUrl: string;
   eventType: string;
   payload: Prisma.InputJsonValue;
@@ -115,6 +116,7 @@ export class QueueService {
           payload: {
             eventId: input.eventId ?? null,
             sourceJobId: input.jobId ?? null,
+            webhookEndpointId: input.webhookEndpointId ?? null,
             targetUrl: input.targetUrl,
             eventType: input.eventType
           }
@@ -131,6 +133,7 @@ export class QueueService {
           payload: {
             jobId: job.uuid,
             sourceJobId: input.jobId ?? null,
+            webhookEndpointId: input.webhookEndpointId ?? null,
             targetUrl: input.targetUrl,
             eventType: input.eventType
           }
@@ -142,6 +145,7 @@ export class QueueService {
           jobId: job.uuid,
           eventId: input.eventId ?? event.uuid,
           institutionId: input.institutionId,
+          webhookEndpointId: input.webhookEndpointId,
           targetUrl: input.targetUrl,
           eventType: input.eventType,
           payload: input.payload
@@ -157,6 +161,7 @@ export class QueueService {
             queueEventId: event.uuid,
             sourceJobId: input.jobId ?? null,
             deliveryId: delivery.uuid,
+            webhookEndpointId: input.webhookEndpointId ?? null,
             targetUrl: input.targetUrl,
             eventType: input.eventType
           }

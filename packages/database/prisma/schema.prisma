@@ -291,6 +291,12 @@ enum WebhookDeliveryStatus {
   CANCELLED
 }
 
+enum WebhookEndpointStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
 enum NotificationChannel {
   PUSH
   EMAIL
@@ -363,6 +369,7 @@ model Institution {
   subscriptions           InstitutionSubscription[]
   backgroundJobs          BackgroundJob[]
   domainEvents            DomainEvent[]
+  webhookEndpoints        WebhookEndpoint[]
   webhookDeliveries       WebhookDelivery[]
   notifications           Notification[]
 }
@@ -440,6 +447,7 @@ model User {
   platformSettings        PlatformSetting[]
   mfaRecoveryCodes        MfaRecoveryCode[]
   backgroundJobs          BackgroundJob[]
+  webhookEndpoints        WebhookEndpoint[]
   notifications           Notification[]
 }
 
@@ -1068,31 +1076,58 @@ model DomainEvent {
 }
 
 model WebhookDelivery {
-  uuid           String                @id @default(uuid()) @db.Uuid
-  jobId          String?               @db.Uuid
-  eventId        String?               @db.Uuid
-  institutionId  String?               @db.Uuid
-  targetUrl      String
-  eventType      String
-  payload        Json
-  status         WebhookDeliveryStatus @default(PENDING)
-  attempts       Int                   @default(0)
-  nextAttemptAt  DateTime              @default(now())
-  lastStatusCode Int?
-  lastError      String?
-  deliveredAt    DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  uuid              String                @id @default(uuid()) @db.Uuid
+  jobId             String?               @db.Uuid
+  eventId           String?               @db.Uuid
+  institutionId     String?               @db.Uuid
+  webhookEndpointId String?               @db.Uuid
+  targetUrl         String
+  eventType         String
+  payload           Json
+  status            WebhookDeliveryStatus @default(PENDING)
+  attempts          Int                   @default(0)
+  nextAttemptAt     DateTime              @default(now())
+  lastStatusCode    Int?
+  lastError         String?
+  deliveredAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
-  job         BackgroundJob? @relation(fields: [jobId], references: [uuid])
-  event       DomainEvent?   @relation(fields: [eventId], references: [uuid])
-  institution Institution?   @relation(fields: [institutionId], references: [uuid])
+  job             BackgroundJob?  @relation(fields: [jobId], references: [uuid])
+  event           DomainEvent?    @relation(fields: [eventId], references: [uuid])
+  institution     Institution?    @relation(fields: [institutionId], references: [uuid])
+  webhookEndpoint WebhookEndpoint? @relation(fields: [webhookEndpointId], references: [uuid])
 
   @@index([status, nextAttemptAt])
   @@index([institutionId, status])
+  @@index([webhookEndpointId, status])
   @@index([eventType, createdAt])
   @@index([jobId])
   @@index([eventId])
+}
+
+model WebhookEndpoint {
+  uuid            String                @id @default(uuid()) @db.Uuid
+  institutionId   String                @db.Uuid
+  label           String
+  targetUrl       String
+  eventTypes      String[]              @default([])
+  secretEncrypted String
+  secretPreview   String?
+  status          WebhookEndpointStatus @default(ACTIVE)
+  createdById     String?               @db.Uuid
+  rotatedAt       DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  institution Institution       @relation(fields: [institutionId], references: [uuid])
+  createdBy   User?             @relation(fields: [createdById], references: [uuid])
+  deliveries  WebhookDelivery[]
+
+  @@index([institutionId, status])
+  @@index([targetUrl])
+  @@index([createdById])
 }
 
 model Notification {

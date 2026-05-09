@@ -66,6 +66,9 @@ test("founder system health returns component and gateway metrics", async () => 
           { status: "DELIVERED", _count: { _all: 9 } },
           { status: "PENDING", _count: { _all: 1 } }
         ]
+      },
+      webhookEndpoint: {
+        count: async () => 2
       }
     },
     {},
@@ -143,6 +146,11 @@ test("founder system health degrades instead of throwing when database ping fail
           throw new Error("database unavailable");
         },
         groupBy: async () => {
+          throw new Error("database unavailable");
+        }
+      },
+      webhookEndpoint: {
+        count: async () => {
           throw new Error("database unavailable");
         }
       }

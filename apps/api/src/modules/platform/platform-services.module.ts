@@ -9,6 +9,7 @@ import { RateLimitGuard } from "./guards/rate-limit.guard.js";
 import { ErrorObservabilityService } from "./services/error-observability.service.js";
 import { StructuredLoggerService } from "./services/structured-logger.service.js";
 import { CacheService } from "./services/cache.service.js";
+import { WebhookSecretService } from "./services/webhook-secret.service.js";
 
 @Module({
   providers: [
@@ -21,7 +22,8 @@ import { CacheService } from "./services/cache.service.js";
     RateLimitGuard,
     StructuredLoggerService,
     ErrorObservabilityService,
-    CacheService
+    CacheService,
+    WebhookSecretService
   ],
   exports: [
     PrismaService,
@@ -33,7 +35,8 @@ import { CacheService } from "./services/cache.service.js";
     RateLimitGuard,
     StructuredLoggerService,
     ErrorObservabilityService,
-    CacheService
+    CacheService,
+    WebhookSecretService
   ]
 })
 export class PlatformServicesModule {}

@@ -44,12 +44,16 @@ Implemented foundation:
 - Exhausted deliveries move to failed/dead-letter state.
 - Idempotency headers for receivers.
 - Per-target delivery logs.
+- `WebhookEndpoint` table for institution-scoped targets.
+- Encrypted per-endpoint webhook secrets with one-time display and rotation.
+- Endpoint-specific worker signing through `x-acadid-webhook-endpoint`.
+- Founder retry controls for failed/pending deliveries.
+- Founder replay controls that create a new delivery and idempotency key from an existing payload.
 
 Required next:
 
-- Per-institution webhook secrets.
-- Founder Console retry/replay controls.
 - Webhook receiver documentation for partners.
+- Founder Console UI surfaces for endpoint setup, secret rotation, retry, and replay.
 
 ### 3. Retry Policies
 
@@ -60,13 +64,14 @@ Implemented foundation:
 - Non-retryable errors for malformed imports.
 - Exponential backoff for worker retry scheduling.
 - Webhook dead-letter state after exhausted attempts.
+- Founder retry/replay APIs for operator-controlled webhook recovery.
 
 Required next:
 
 - Central retry policy module by job type.
 - Retry jitter.
 - Dedicated dead-letter queue/listing for operator review.
-- Operator retry controls in Founder Console.
+- Founder Console controls for dead-letter review.
 
 ### 4. Idempotency Protection
 
@@ -205,8 +210,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Per-institution webhook secrets and Founder Console replay controls.
-2. Dedicated worker heartbeat table if worker pool scale requires it.
-3. Rate-limit bucket cleanup job and Founder Console controls.
-4. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-5. Distributed cache adapter before multi-instance production deployment.
+1. Dedicated worker heartbeat table if worker pool scale requires it.
+2. Rate-limit bucket cleanup job and Founder Console controls.
+3. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+4. Distributed cache adapter before multi-instance production deployment.
+5. Webhook receiver documentation for partners.

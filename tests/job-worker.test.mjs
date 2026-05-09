@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import { JobWorkerService } from "../apps/api/dist/apps/api/src/modules/jobs/job-worker.service.js";
+import { WebhookSecretService } from "../apps/api/dist/apps/api/src/modules/platform/services/webhook-secret.service.js";
 
 test("worker leases one queued job and completes it with a domain event", async () => {
   const calls = [];
@@ -200,6 +201,91 @@ test("worker delivers webhooks with signed idempotent headers", async () => {
     globalThis.fetch = previousFetch;
     if (previousSecret === undefined) delete process.env.ACADID_WEBHOOK_SECRET;
     else process.env.ACADID_WEBHOOK_SECRET = previousSecret;
+  }
+});
+
+test("worker signs webhooks with the institution endpoint secret when configured", async () => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  let fetchCall;
+  globalThis.fetch = async (url, init) => {
+    fetchCall = { url, init };
+    return {
+      ok: true,
+      status: 202,
+      text: async () => ""
+    };
+  };
+
+  try {
+    const secrets = new WebhookSecretService();
+    const endpointSecret = "whsec_endpoint_specific_secret";
+    const delivery = {
+      uuid: "delivery-endpoint-1",
+      targetUrl: "https://partner.example/webhooks/acadid",
+      eventType: "credential.issued",
+      payload: { credentialId: "credential-1" },
+      attempts: 0,
+      webhookEndpoint: {
+        uuid: "endpoint-1",
+        status: "ACTIVE",
+        secretEncrypted: secrets.encrypt(endpointSecret)
+      }
+    };
+    const service = new JobWorkerService(
+      {
+        $transaction: async (callback) =>
+          callback({
+            $queryRaw: async () => [{ uuid: "job-webhook-endpoint-1" }],
+            backgroundJob: {
+              update: async ({ where, data, select }) => {
+                calls.push({ table: "BackgroundJob", where, data });
+                if (select) {
+                  return {
+                    uuid: "job-webhook-endpoint-1",
+                    type: "WEBHOOK_DELIVERY",
+                    queue: "webhooks.delivery",
+                    institutionId: "institution-1",
+                    createdById: "founder-1",
+                    payload: { deliveryId: delivery.uuid },
+                    attempts: 1,
+                    maxAttempts: 3
+                  };
+                }
+                return { uuid: where.uuid };
+              }
+            },
+            domainEvent: {
+              create: async ({ data }) => {
+                calls.push({ table: "DomainEvent", data });
+                return { uuid: "event-webhook-endpoint-1", ...data };
+              }
+            }
+          }),
+        webhookDelivery: {
+          findFirst: async () => delivery,
+          update: async ({ where, data }) => {
+            calls.push({ table: "WebhookDelivery", where, data });
+            return { ...delivery, ...data };
+          }
+        }
+      },
+      {},
+      {},
+      undefined,
+      secrets
+    );
+
+    const result = await service.runOnce("worker-test", 1);
+    const body = fetchCall.init.body;
+    const timestamp = fetchCall.init.headers["x-acadid-timestamp"];
+    const expectedSignature = createHmac("sha256", endpointSecret).update(`${timestamp}.${delivery.uuid}.${body}`).digest("hex");
+
+    assert.deepEqual(result, { processed: 1, succeeded: 1, failed: 0 });
+    assert.equal(fetchCall.init.headers["x-acadid-webhook-endpoint"], "endpoint-1");
+    assert.equal(fetchCall.init.headers["x-acadid-signature"], `v1=${expectedSignature}`);
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });
 

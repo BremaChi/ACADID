@@ -77,6 +77,9 @@ Webhook worker delivery:
 
 - Configure `ACADID_WEBHOOK_SECRET` before enabling outbound webhook jobs.
 - The worker signs each delivery with `x-acadid-signature`, sends a stable `x-acadid-idempotency-key`, retries with exponential backoff, and marks exhausted deliveries as failed for operator review.
+- Prefer institution-scoped webhook endpoints created through the Founder API; each endpoint receives a one-time `whsec_...` secret, stores only an encrypted copy, and signs deliveries with that endpoint secret.
+- Founder APIs can rotate endpoint secrets, suspend/disable endpoints, retry failed deliveries with the same idempotency key, or replay an existing delivery as a new idempotency key.
+- `ACADID_WEBHOOK_SECRET` remains a legacy fallback for webhook delivery rows without a configured endpoint.
 - `ACADID_WEBHOOK_TIMEOUT_MS` controls the outbound delivery timeout, capped at 30 seconds.
 
 Rate limiting:

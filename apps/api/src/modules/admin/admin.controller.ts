@@ -1,5 +1,13 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { DeveloperAccessRequestStatus, DisputeStatus, RecordRequestStatus, UserRole, VerificationOutcome } from "@prisma/client";
+import {
+  DeveloperAccessRequestStatus,
+  DisputeStatus,
+  RecordRequestStatus,
+  UserRole,
+  VerificationOutcome,
+  WebhookDeliveryStatus,
+  WebhookEndpointStatus
+} from "@prisma/client";
 import { AuthGuard } from "../auth/guards/auth.guard.js";
 import { RolesGuard } from "../auth/guards/roles.guard.js";
 import { Roles } from "../auth/roles.decorator.js";
@@ -160,6 +168,41 @@ export class AdminController {
   @Patch("settings")
   updatePlatformSettings(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.adminService.updatePlatformSettings(request.auth, body);
+  }
+
+  @Post("institutions/:id/webhook-endpoints")
+  createWebhookEndpoint(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.createWebhookEndpoint(request.auth, id, body);
+  }
+
+  @Get("webhook-endpoints")
+  listWebhookEndpoints(@Query("institutionId") institutionId?: string, @Query("status") status?: WebhookEndpointStatus) {
+    return this.adminService.listWebhookEndpoints({ institutionId, status });
+  }
+
+  @Post("webhook-endpoints/:id/rotate-secret")
+  rotateWebhookEndpointSecret(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.rotateWebhookEndpointSecret(request.auth, id);
+  }
+
+  @Patch("webhook-endpoints/:id/status")
+  updateWebhookEndpointStatus(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: { status: WebhookEndpointStatus }) {
+    return this.adminService.updateWebhookEndpointStatus(request.auth, id, body.status);
+  }
+
+  @Get("webhook-deliveries")
+  listWebhookDeliveries(@Query("institutionId") institutionId?: string, @Query("status") status?: WebhookDeliveryStatus) {
+    return this.adminService.listWebhookDeliveries({ institutionId, status });
+  }
+
+  @Post("webhook-deliveries/:id/retry")
+  retryWebhookDelivery(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.retryWebhookDelivery(request.auth, id);
+  }
+
+  @Post("webhook-deliveries/:id/replay")
+  replayWebhookDelivery(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.replayWebhookDelivery(request.auth, id);
   }
 
   @Post("institutions/:id/api-keys")

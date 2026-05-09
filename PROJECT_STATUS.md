@@ -93,6 +93,7 @@ The API has these first modules:
 - Dependency hardening notes are documented in `SECURITY_NOTES.md`, including direct vs transitive audit classification and major-upgrade paths for Nest/Next framework advisories.
 - Platform foundation priority order is documented in `docs/platform-foundation-roadmap.md`; Engineer 1 should stabilize reliability systems before feature expansion.
 - Webhook delivery worker transport is implemented: outbound webhook jobs are signed, carry idempotency headers, retry with exponential backoff, and move exhausted deliveries to failed/dead-letter state.
+- Per-institution webhook endpoints are implemented with encrypted one-time secrets, secret rotation, endpoint status controls, endpoint-specific worker signing, and founder retry/replay APIs for webhook deliveries.
 - Founder System Health now reports queue and worker health: ready backlog, scheduled jobs, running jobs, stale locks, failed jobs, queue breakdown, recent worker activity, and webhook delivery status from durable delivery rows.
 - Persistent rate limiting is implemented with `RateLimitBucket`, `RateLimitService`, and `RateLimitGuard`; auth, token exchange, public verification, ingestion uploads, and portal intake are protected by database-backed counters.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
@@ -140,6 +141,7 @@ The Prisma schema includes the core AcadID model:
 - BackgroundJob.
 - DomainEvent.
 - WebhookDelivery.
+- WebhookEndpoint.
 - Notification.
 
 ### Web
@@ -228,6 +230,7 @@ Completed successfully:
 - Persistent rate limiting checkpoint validates with `npm run db:deploy`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`.
 - Structured logging and error-observability checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms secret redaction, HTTP error capture, and worker error audit logging.
 - Safe caching checkpoint validates with `npm run typecheck`, `npm test`, `npm run worker:once`, and `npm run smoke:api`; coverage confirms TTL hits, tag invalidation, credential-status cache invalidation, and platform-settings cache invalidation.
+- Webhook endpoint controls checkpoint validates with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`; coverage confirms one-time endpoint secret creation, endpoint-secret signing, delivery retry, and delivery replay.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
@@ -265,12 +268,12 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add per-institution webhook secrets and Founder Console retry/replay controls.
-2. Add rate-limit bucket cleanup job and Founder Console controls.
-3. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-4. Add real push/email/SMS provider transports.
-5. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
-6. Prepare production distributed-cache adapter before multi-instance deployment.
+1. Add rate-limit bucket cleanup job and Founder Console controls.
+2. Add idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
+3. Add real push/email/SMS provider transports.
+4. Add staff assigned-scope management endpoints and UI for Registrar staff assignment.
+5. Prepare production distributed-cache adapter before multi-instance deployment.
+6. Add webhook receiver documentation for partners.
 7. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
