@@ -155,6 +155,16 @@ export class AdminController {
     return this.adminService.readSystemHealth();
   }
 
+  @Get("rate-limits")
+  readRateLimitBuckets() {
+    return this.adminService.readRateLimitBuckets();
+  }
+
+  @Post("rate-limits/cleanup")
+  queueRateLimitBucketCleanup(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.queueRateLimitBucketCleanup(request.auth, body);
+  }
+
   @Get("revenue")
   readRevenueOverview() {
     return this.adminService.readRevenueOverview();

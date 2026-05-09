@@ -87,6 +87,8 @@ Rate limiting:
 - API key traffic uses persistent PostgreSQL counters from the token's `rateLimitPerMinute`.
 - Auth, token exchange, public verification, upload, and portal-intake routes use `RateLimitBucket` rows so limits work across API processes.
 - Rate-limit buckets store hashed keys rather than raw IP/body identifiers.
+- Founder admins can inspect bucket activity at `GET /api/admin/rate-limits` and queue asynchronous retention cleanup through `POST /api/admin/rate-limits/cleanup`.
+- Cleanup runs as the `RATE_LIMIT_BUCKET_CLEANUP` background job on the `platform.maintenance` queue, so HTTP requests return quickly with a job ID.
 
 Caching:
 

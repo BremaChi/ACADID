@@ -5,6 +5,7 @@ import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
+import { RateLimitService } from "../platform/services/rate-limit.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 import { BulkUploadParserService, NonRetryableJobError } from "./bulk-upload-parser.service.js";
 
@@ -49,7 +50,8 @@ const workerQueues = [
   "webhooks.delivery",
   "notifications.push",
   "live-results.callbacks",
-  "exam-body.ingest"
+  "exam-body.ingest",
+  "platform.maintenance"
 ];
 
 @Injectable()
@@ -61,7 +63,8 @@ export class JobWorkerService {
     private readonly ingestion: IngestionService,
     private readonly bulkUploadParser: BulkUploadParserService,
     private readonly observability?: ErrorObservabilityService,
-    private readonly webhookSecrets?: WebhookSecretService
+    private readonly webhookSecrets?: WebhookSecretService,
+    private readonly rateLimit?: RateLimitService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -165,6 +168,8 @@ export class JobWorkerService {
       case BackgroundJobType.LIVE_RESULTS_CALLBACK:
       case BackgroundJobType.EXAM_BODY_INGEST:
         return this.processDeferredIntegration(job);
+      case BackgroundJobType.RATE_LIMIT_BUCKET_CLEANUP:
+        return this.processRateLimitBucketCleanup(job);
     }
   }
 
@@ -312,6 +317,21 @@ export class JobWorkerService {
     return this.toJson({
       mode: "notification_records_marked",
       message: "Notification delivery adapter can replace this marker with real push/email/SMS transport."
+    });
+  }
+
+  private async processRateLimitBucketCleanup(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
+    if (!this.rateLimit) {
+      throw new Error("Rate limit service is unavailable for bucket cleanup.");
+    }
+    const payload = this.asRecord(job.payload);
+    const olderThanHours = this.asNumber(payload.olderThanHours, 1, 720, 24);
+    const result = await this.rateLimit.cleanupExpiredBuckets({ olderThanHours });
+    return this.toJson({
+      mode: "rate_limit_bucket_cleanup",
+      olderThanHours: result.olderThanHours,
+      cutoff: result.cutoff.toISOString(),
+      deletedBuckets: result.deletedBuckets
     });
   }
 
@@ -478,6 +498,12 @@ export class JobWorkerService {
 
   private asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  }
+
+  private asNumber(value: unknown, min: number, max: number, fallback: number) {
+    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(parsed)));
   }
 
   private isMetadataOnlyUpload(request: Record<string, unknown>) {

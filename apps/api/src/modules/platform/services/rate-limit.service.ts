@@ -18,6 +18,10 @@ type RateLimitRequest = {
   auth?: { sub?: string; kind?: string; apiKeyId?: string; clientId?: string; institutionUuid?: string };
 };
 
+type CleanupInput = {
+  olderThanHours?: number;
+};
+
 @Injectable()
 export class RateLimitService {
   constructor(private readonly prisma: PrismaService) {}
@@ -86,6 +90,63 @@ export class RateLimitService {
     };
   }
 
+  async readBucketSummary(options: { recentHours?: number; staleAfterHours?: number } = {}) {
+    const now = new Date();
+    const recentHours = this.clampNumber(options.recentHours, 1, 168, 24);
+    const staleAfterHours = this.clampNumber(options.staleAfterHours, 1, 720, 24);
+    const recentSince = new Date(now.getTime() - recentHours * 60 * 60 * 1000);
+    const staleBefore = new Date(now.getTime() - staleAfterHours * 60 * 60 * 1000);
+
+    const [totalBuckets, recentBuckets, staleBuckets, totalRequests, recentRequests, topScopes] = await Promise.all([
+      this.prisma.rateLimitBucket.count(),
+      this.prisma.rateLimitBucket.count({ where: { windowStart: { gte: recentSince } } }),
+      this.prisma.rateLimitBucket.count({ where: { windowStart: { lt: staleBefore } } }),
+      this.prisma.rateLimitBucket.aggregate({ _sum: { count: true } }),
+      this.prisma.rateLimitBucket.aggregate({ where: { windowStart: { gte: recentSince } }, _sum: { count: true } }),
+      this.prisma.rateLimitBucket.groupBy({
+        by: ["scope"],
+        where: { windowStart: { gte: recentSince } },
+        _count: { _all: true },
+        _sum: { count: true },
+        orderBy: { _sum: { count: "desc" } },
+        take: 10
+      })
+    ]);
+
+    return {
+      generatedAt: now,
+      recentHours,
+      staleAfterHours,
+      totalBuckets,
+      recentBuckets,
+      staleBuckets,
+      totalRequests: totalRequests._sum.count ?? 0,
+      recentRequests: recentRequests._sum.count ?? 0,
+      topScopes: topScopes.map((scope) => ({
+        scope: scope.scope,
+        buckets: scope._count._all,
+        requests: scope._sum.count ?? 0
+      }))
+    };
+  }
+
+  async cleanupExpiredBuckets(input: CleanupInput = {}) {
+    const olderThanHours = this.clampNumber(input.olderThanHours, 1, 720, 24);
+    const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
+    const result = await this.prisma.rateLimitBucket.deleteMany({
+      where: {
+        windowStart: { lt: cutoff }
+      }
+    });
+
+    return {
+      cleanedAt: new Date(),
+      cutoff,
+      olderThanHours,
+      deletedBuckets: result.count
+    };
+  }
+
   keyForRequest(request: RateLimitRequest, policy: RateLimitPolicy) {
     const strategy = policy.key ?? "ip";
     if (strategy === "auth") {
@@ -119,5 +180,10 @@ export class RateLimitService {
 
   private hashKey(key: string) {
     return createHash("sha256").update(key).digest("hex");
+  }
+
+  private clampNumber(value: number | undefined, min: number, max: number, fallback: number) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(value)));
   }
 }

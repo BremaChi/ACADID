@@ -79,3 +79,51 @@ test("request rate-limit keys avoid storing raw IP and body identifiers", () => 
 
   assert.equal(key, "ip-body:203.0.113.10:founder@acadid.local");
 });
+
+test("rate-limit summary reports recent, stale, and top scope counters", async () => {
+  const service = new RateLimitService({
+    rateLimitBucket: {
+      count: async ({ where } = {}) => {
+        if (where?.windowStart?.gte) return 4;
+        if (where?.windowStart?.lt) return 2;
+        return 6;
+      },
+      aggregate: async ({ where } = {}) => ({
+        _sum: {
+          count: where?.windowStart?.gte ? 120 : 400
+        }
+      }),
+      groupBy: async () => [
+        { scope: "verify.public", _count: { _all: 3 }, _sum: { count: 90 } },
+        { scope: "auth.login", _count: { _all: 1 }, _sum: { count: 30 } }
+      ]
+    }
+  });
+
+  const summary = await service.readBucketSummary({ recentHours: 24, staleAfterHours: 24 });
+
+  assert.equal(summary.totalBuckets, 6);
+  assert.equal(summary.recentBuckets, 4);
+  assert.equal(summary.staleBuckets, 2);
+  assert.equal(summary.totalRequests, 400);
+  assert.equal(summary.recentRequests, 120);
+  assert.deepEqual(summary.topScopes[0], { scope: "verify.public", buckets: 3, requests: 90 });
+});
+
+test("rate-limit cleanup deletes only old bucket windows", async () => {
+  let deleteWhere;
+  const service = new RateLimitService({
+    rateLimitBucket: {
+      deleteMany: async ({ where }) => {
+        deleteWhere = where;
+        return { count: 8 };
+      }
+    }
+  });
+
+  const result = await service.cleanupExpiredBuckets({ olderThanHours: 48 });
+
+  assert.equal(result.olderThanHours, 48);
+  assert.equal(result.deletedBuckets, 8);
+  assert.equal(deleteWhere.windowStart.lt instanceof Date, true);
+});

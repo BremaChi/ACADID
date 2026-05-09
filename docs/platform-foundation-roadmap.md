@@ -153,12 +153,14 @@ Implemented foundation:
 - Database-backed `RateLimitService` and `RateLimitGuard`.
 - Public/auth route throttling for founder login, institution user login, invite acceptance, password reset placeholder, token exchange, and credential verification.
 - Upload/intake throttling for student ingestion, result ingestion, async result validation, bulk upload, portal upload URLs, and institution applications.
+- Founder API controls for rate-limit visibility through `/api/admin/rate-limits`.
+- Async stale-bucket retention through `RATE_LIMIT_BUCKET_CLEANUP` jobs on `platform.maintenance`.
+- Founder System Health shows bucket totals, stale buckets, recent requests, top scopes, and a cleanup queue button.
 
 Required next:
 
 - Per-institution and per-product limits.
-- Founder Console controls for default and emergency rate limits.
-- Cleanup/retention job for old rate-limit buckets.
+- Founder Console controls for emergency rate-limit overrides.
 
 ### 9. Caching Strategy
 

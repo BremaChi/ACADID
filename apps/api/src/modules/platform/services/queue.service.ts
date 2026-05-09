@@ -15,7 +15,8 @@ const queueByJobType: Record<BackgroundJobType, string> = {
   WEBHOOK_DELIVERY: "webhooks.delivery",
   PUSH_NOTIFICATION: "notifications.push",
   LIVE_RESULTS_CALLBACK: "live-results.callbacks",
-  EXAM_BODY_INGEST: "exam-body.ingest"
+  EXAM_BODY_INGEST: "exam-body.ingest",
+  RATE_LIMIT_BUCKET_CLEANUP: "platform.maintenance"
 };
 
 export interface EnqueueJobInput {

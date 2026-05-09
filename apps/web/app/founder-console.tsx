@@ -299,6 +299,14 @@ type SystemHealth = {
       delivered24h?: number;
       secretConfigured?: boolean;
       statusBreakdown?: Array<{ status: string; count: number }>;
+      totalBuckets?: number;
+      recentBuckets?: number;
+      staleBuckets?: number;
+      totalRequests?: number;
+      recentRequests?: number;
+      recentHours?: number;
+      staleAfterHours?: number;
+      topScopes?: Array<{ scope: string; buckets: number; requests: number }>;
     };
   }>;
   metrics: {
@@ -701,6 +709,7 @@ export function FounderConsole() {
   const [recordRequestNote, setRecordRequestNote] = useState("Reviewed from Founder Console.");
   const [verificationSearch, setVerificationSearch] = useState("");
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
+  const [rateLimitCleanupHours, setRateLimitCleanupHours] = useState(24);
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -969,6 +978,23 @@ export function FounderConsole() {
   function navigate(page: PageKey) {
     setActivePage(page);
     setDrawerOpen(false);
+  }
+
+  async function queueRateLimitCleanup() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ jobId: string; olderThanHours: number }>("/admin/rate-limits/cleanup", token, {
+        method: "POST",
+        body: JSON.stringify({ olderThanHours: rateLimitCleanupHours })
+      });
+      setNotice({ tone: "success", text: `Rate-limit cleanup queued for buckets older than ${response.olderThanHours} hour(s). Job ${response.jobId}.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Rate-limit cleanup could not be queued.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCreateInstitution(event: FormEvent<HTMLFormElement>) {
@@ -1654,7 +1680,15 @@ export function FounderConsole() {
       return <RevenuePage revenue={revenueOverview} />;
     }
     if (activePage === "System Health") {
-      return <SystemHealthPage health={systemHealth} />;
+      return (
+        <SystemHealthPage
+          cleanupHours={rateLimitCleanupHours}
+          health={systemHealth}
+          loading={loading}
+          onCleanupHours={setRateLimitCleanupHours}
+          onQueueRateLimitCleanup={queueRateLimitCleanup}
+        />
+      );
     }
     if (activePage === "Security") {
       return (
@@ -2576,7 +2610,19 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
   );
 }
 
-function SystemHealthPage({ health }: { health: SystemHealth | null }) {
+function SystemHealthPage({
+  cleanupHours,
+  health,
+  loading,
+  onCleanupHours,
+  onQueueRateLimitCleanup
+}: {
+  cleanupHours: number;
+  health: SystemHealth | null;
+  loading: boolean;
+  onCleanupHours: (value: number) => void;
+  onQueueRateLimitCleanup: () => void;
+}) {
   const metrics = health?.metrics;
   const services = health?.services ?? [
     { name: "API Gateway", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
@@ -2590,6 +2636,7 @@ function SystemHealthPage({ health }: { health: SystemHealth | null }) {
   const incidents = health?.incidents ?? [];
   const queueHealth = services.find((service) => service.name === "Background Workers")?.metadata;
   const webhookHealth = services.find((service) => service.name === "Webhook Delivery")?.metadata;
+  const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
 
   return (
     <div className="space-y-5">
@@ -2663,6 +2710,40 @@ function SystemHealthPage({ health }: { health: SystemHealth | null }) {
               <StatusBadge key={item.status} status={`${titleCase(item.status)} ${item.count}`} />
             ))}
           </div>
+        </Card>
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <SectionTitle title="Rate Limit Buckets" subtitle="Distributed API throttle counters and maintenance controls." />
+            <StatusBadge status={services.find((service) => service.name === "Rate Limit Buckets")?.status ?? "PENDING_CONFIGURATION"} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <MetricLine label="Total buckets" value={String(rateLimitHealth?.totalBuckets ?? "--")} />
+            <MetricLine label="Recent buckets" value={String(rateLimitHealth?.recentBuckets ?? "--")} />
+            <MetricLine label="Stale buckets" value={String(rateLimitHealth?.staleBuckets ?? "--")} />
+            <MetricLine label="Recent requests" value={String(rateLimitHealth?.recentRequests ?? "--")} />
+          </div>
+          <div className="mt-4 rounded-md border border-borderLight bg-soft p-3">
+            <label className="text-xs font-medium text-textSecondary" htmlFor="rate-limit-cleanup-hours">Clean buckets older than</label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input id="rate-limit-cleanup-hours" className={inputClass} min={1} max={720} type="number" value={cleanupHours} onChange={(event) => onCleanupHours(Number(event.target.value))} />
+              <button className={primaryButtonClass} disabled={loading} onClick={onQueueRateLimitCleanup} type="button">Queue Cleanup Job</button>
+            </div>
+            <p className="mt-2 text-xs text-textSecondary">The API returns immediately; the maintenance worker deletes old buckets in the background.</p>
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Top Throttled Scopes" subtitle="Highest rate-limit activity over the last 24 hours." />
+          <ResponsiveTable
+            empty="No rate-limit activity has been recorded yet."
+            headers={["Scope", "Requests", "Buckets"]}
+            rows={(rateLimitHealth?.topScopes ?? []).map((scope) => [
+              scope.scope,
+              scope.requests.toLocaleString(),
+              scope.buckets.toLocaleString()
+            ])}
+          />
         </Card>
       </div>
       <Card>

@@ -29,6 +29,8 @@ import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 import { CredentialSigningService } from "../platform/services/credential-signing.service.js";
 import { CacheService } from "../platform/services/cache.service.js";
+import { QueueService } from "../platform/services/queue.service.js";
+import { RateLimitService } from "../platform/services/rate-limit.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 
 const allowedApiKeyScopes = new Set([
@@ -81,7 +83,9 @@ export class AdminService {
     private readonly passwordService: PasswordService,
     private readonly credentialSigning?: CredentialSigningService,
     private readonly cache?: CacheService,
-    private readonly webhookSecrets?: WebhookSecretService
+    private readonly webhookSecrets?: WebhookSecretService,
+    private readonly queue?: QueueService,
+    private readonly rateLimit?: RateLimitService
   ) {}
 
   async createInstitution(input: unknown) {
@@ -1082,7 +1086,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, cache, queue, webhook, signing, metrics] = await Promise.all([
+    const [database, auth, storage, email, cache, queue, webhook, signing, rateLimitBuckets, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService(
@@ -1094,6 +1098,7 @@ export class AdminService {
       this.checkQueueWorkers(),
       this.checkWebhookDelivery(),
       this.checkCredentialSigning(),
+      this.checkRateLimitBuckets(),
       this.readGatewayMetrics()
     ]);
 
@@ -1111,7 +1116,8 @@ export class AdminService {
       cache,
       queue,
       webhook,
-      signing
+      signing,
+      rateLimitBuckets
     ];
     const incidents = this.deriveIncidents(services, metrics);
     const overallStatus = services.some((service) => service.status === "DOWN")
@@ -1127,6 +1133,47 @@ export class AdminService {
       services,
       metrics,
       incidents
+    };
+  }
+
+  async readRateLimitBuckets() {
+    return this.rateLimitManager().readBucketSummary({ recentHours: 24, staleAfterHours: 24 });
+  }
+
+  async queueRateLimitBucketCleanup(auth: AuthTokenPayload, input: unknown) {
+    if (!this.queue) {
+      throw new BadRequestException("Queue service is unavailable.");
+    }
+
+    const body = typeof input === "object" && input ? (input as Record<string, unknown>) : {};
+    const olderThanHours = this.parseBoundedNumber(body.olderThanHours, 1, 720, 24);
+    const job = await this.queue.enqueueJob({
+      type: BackgroundJobType.RATE_LIMIT_BUCKET_CLEANUP,
+      createdById: auth.sub,
+      relatedEntityType: "RateLimitBucket",
+      priority: -5,
+      maxAttempts: 2,
+      payload: {
+        olderThanHours
+      },
+      eventType: "rate_limit_bucket.cleanup_queued"
+    });
+
+    await this.audit.write({
+      actorUserId: auth.sub,
+      actorRole: auth.role,
+      action: "rate_limit_bucket.cleanup_queued",
+      targetType: "RateLimitBucket",
+      outcome: "SUCCESS",
+      metadata: {
+        jobId: job.jobId,
+        olderThanHours
+      }
+    });
+
+    return {
+      ...job,
+      olderThanHours
     };
   }
 
@@ -2748,6 +2795,68 @@ export class AdminService {
     }
   }
 
+  private async checkRateLimitBuckets() {
+    const startedAt = Date.now();
+    try {
+      if (!this.rateLimit) {
+        return {
+          name: "Rate Limit Buckets",
+          status: "PENDING_CONFIGURATION" as HealthStatus,
+          responseTimeMs: 0,
+          message: "Rate-limit service is not available in this context.",
+          metadata: {
+            recentHours: 24,
+            staleAfterHours: 24,
+            totalBuckets: 0,
+            recentBuckets: 0,
+            staleBuckets: 0,
+            totalRequests: 0,
+            recentRequests: 0,
+            topScopes: []
+          }
+        };
+      }
+      const summary = await this.rateLimitManager().readBucketSummary({ recentHours: 24, staleAfterHours: 24 });
+      const status: HealthStatus = summary.staleBuckets > 100_000 ? "DEGRADED" : "OPERATIONAL";
+      return {
+        name: "Rate Limit Buckets",
+        status,
+        responseTimeMs: Date.now() - startedAt,
+        message:
+          status === "OPERATIONAL"
+            ? `${summary.recentBuckets} recent bucket(s), ${summary.staleBuckets} stale bucket(s).`
+            : `${summary.staleBuckets} stale bucket(s) should be cleaned by the maintenance worker.`,
+        metadata: {
+          recentHours: summary.recentHours,
+          staleAfterHours: summary.staleAfterHours,
+          totalBuckets: summary.totalBuckets,
+          recentBuckets: summary.recentBuckets,
+          staleBuckets: summary.staleBuckets,
+          totalRequests: summary.totalRequests,
+          recentRequests: summary.recentRequests,
+          topScopes: summary.topScopes
+        }
+      };
+    } catch (error) {
+      return {
+        name: "Rate Limit Buckets",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Rate-limit bucket health check failed."),
+        metadata: {
+          recentHours: 24,
+          staleAfterHours: 24,
+          totalBuckets: 0,
+          recentBuckets: 0,
+          staleBuckets: 0,
+          totalRequests: 0,
+          recentRequests: 0,
+          topScopes: []
+        }
+      };
+    }
+  }
+
   private async readGatewayMetrics() {
     const startedAt = Date.now();
     const since = this.hoursAgo(24);
@@ -2911,6 +3020,19 @@ export class AdminService {
 
   private hoursAgo(hours: number) {
     return new Date(Date.now() - hours * 60 * 60 * 1000);
+  }
+
+  private parseBoundedNumber(value: unknown, min: number, max: number, fallback: number) {
+    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(parsed)));
+  }
+
+  private rateLimitManager() {
+    if (!this.rateLimit) {
+      throw new BadRequestException("Rate limit service is unavailable.");
+    }
+    return this.rateLimit;
   }
 
   private daysAgo(days: number) {

@@ -266,6 +266,7 @@ enum BackgroundJobType {
   PUSH_NOTIFICATION
   LIVE_RESULTS_CALLBACK
   EXAM_BODY_INGEST
+  RATE_LIMIT_BUCKET_CLEANUP
 }
 
 enum BackgroundJobStatus {
