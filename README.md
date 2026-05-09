@@ -111,6 +111,15 @@ Observability:
 - HTTP failures and worker failures are captured by `ErrorObservabilityService` and also written as durable audit events.
 - Log metadata is redacted for passwords, secrets, tokens, authorization material, credentials, private keys, NIN, and BVN fields.
 
+Notifications:
+
+- `SMS_EMAIL_DELIVERY` and `PUSH_NOTIFICATION` jobs now use `NotificationDeliveryService`.
+- Email supports Resend via `RESEND_API_KEY` or SendGrid via `SENDGRID_API_KEY`.
+- SMS supports Termii via `TERMII_API_KEY` or Twilio via `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
+- Push supports Expo push tokens through the Expo push API.
+- Local development defaults to safe dry-run for email/SMS when providers are not configured; set `ACADID_REQUIRE_NOTIFICATION_PROVIDER=true` in production-like environments.
+- Notification destinations can come from the related user/learner record or from notification payload fields such as `email`, `phone`, `pushToken`, or `expoPushToken`.
+
 Credential signing:
 
 - Local development may run with an ephemeral Ed25519 key and will show Credential Signing as degraded.

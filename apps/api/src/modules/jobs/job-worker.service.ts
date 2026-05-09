@@ -4,6 +4,7 @@ import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDelive
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
+import { NotificationDeliveryService } from "../platform/services/notification-delivery.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { RateLimitService } from "../platform/services/rate-limit.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
@@ -64,7 +65,8 @@ export class JobWorkerService {
     private readonly bulkUploadParser: BulkUploadParserService,
     private readonly observability?: ErrorObservabilityService,
     private readonly webhookSecrets?: WebhookSecretService,
-    private readonly rateLimit?: RateLimitService
+    private readonly rateLimit?: RateLimitService,
+    private readonly notificationDelivery?: NotificationDeliveryService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -310,6 +312,9 @@ export class JobWorkerService {
   }
 
   private async processNotificationDelivery(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
+    if (this.notificationDelivery) {
+      return this.toJson(await this.notificationDelivery.deliverPendingForJob(job.uuid));
+    }
     await this.prisma.notification.updateMany({
       where: { jobId: job.uuid, status: "PENDING" },
       data: { status: "SENT", sentAt: new Date() }

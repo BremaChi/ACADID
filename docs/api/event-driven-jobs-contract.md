@@ -84,9 +84,11 @@ Current worker processors:
 
 - `BULK_STUDENT_UPLOAD`: parses inline rows, CSV text/base64/local files, readable `file://` URLs, worker-only `storage://bucket/key` objects, readable HTTP(S) CSV files, and XLSX workbooks before calling the student ingestion workflow.
 - `RESULT_BATCH_VALIDATION`: creates the draft result batch and academic records in the background.
-- `WEBHOOK_DELIVERY`, `PUSH_NOTIFICATION`, and `SMS_EMAIL_DELIVERY`: have durable placeholder processors that update records without blocking product requests.
+- `WEBHOOK_DELIVERY`: signs and sends callbacks with idempotency headers, retry backoff, and failed/dead-letter state.
+- `PUSH_NOTIFICATION`: sends Expo push notifications when a push token is present.
+- `SMS_EMAIL_DELIVERY`: sends email through Resend/SendGrid and SMS through Termii/Twilio when configured; otherwise it uses safe local dry-run unless provider enforcement is enabled.
 - Other integrations use deferred adapter results until their provider-specific handlers are implemented.
 
 Next worker step:
 
-- Add real notification transports and signed webhook delivery transports.
+- Add notification delivery dashboards, provider health checks, and failed-notification retry controls.

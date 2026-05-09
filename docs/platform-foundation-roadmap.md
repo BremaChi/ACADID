@@ -122,6 +122,7 @@ Implemented foundation:
 - Bulk upload parser for CSV/XLSX.
 - Worker-only object storage downloads.
 - Result-batch validation job processor.
+- Notification delivery transports for email, SMS, and push: Resend/SendGrid, Termii/Twilio, Expo push, and local dry-run safety.
 
 Required next:
 
@@ -129,6 +130,7 @@ Required next:
 - Separate named queues if load increases.
 - Worker heartbeat/last-seen tracking.
 - Worker metrics in System Health.
+- Failed-notification retry controls and delivery dashboards.
 
 ### 7. Monitoring And Health Checks
 
@@ -216,8 +218,8 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Dedicated worker heartbeat table if worker pool scale requires it.
-2. Rate-limit bucket cleanup job and Founder Console controls.
-3. Idempotency enforcement for payments, credential generation, PDF generation, and public/gateway requests.
-4. Distributed cache adapter before multi-instance production deployment.
-5. Webhook receiver documentation for partners.
+1. Staff assigned-scope management endpoints and UI for Registrar staff assignment.
+2. Distributed cache adapter before multi-instance production deployment.
+3. Webhook receiver documentation for partners.
+4. Idempotency cleanup/retention job and Founder Console visibility.
+5. Notification delivery dashboards, provider health checks, and failed-notification retry controls.

@@ -8,6 +8,7 @@ import { RateLimitService } from "./services/rate-limit.service.js";
 import { RateLimitGuard } from "./guards/rate-limit.guard.js";
 import { ErrorObservabilityService } from "./services/error-observability.service.js";
 import { IdempotencyService } from "./services/idempotency.service.js";
+import { NotificationDeliveryService } from "./services/notification-delivery.service.js";
 import { StructuredLoggerService } from "./services/structured-logger.service.js";
 import { CacheService } from "./services/cache.service.js";
 import { WebhookSecretService } from "./services/webhook-secret.service.js";
@@ -22,6 +23,7 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     RateLimitService,
     RateLimitGuard,
     IdempotencyService,
+    NotificationDeliveryService,
     StructuredLoggerService,
     ErrorObservabilityService,
     CacheService,
@@ -36,6 +38,7 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     RateLimitService,
     RateLimitGuard,
     IdempotencyService,
+    NotificationDeliveryService,
     StructuredLoggerService,
     ErrorObservabilityService,
     CacheService,
