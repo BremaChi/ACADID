@@ -267,6 +267,7 @@ enum BackgroundJobType {
   LIVE_RESULTS_CALLBACK
   EXAM_BODY_INGEST
   RATE_LIMIT_BUCKET_CLEANUP
+  IDEMPOTENCY_RECORD_CLEANUP
 }
 
 enum IdempotencyRecordStatus {

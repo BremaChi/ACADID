@@ -85,12 +85,14 @@ Implemented foundation:
 - `QueueService` supports explicit idempotency keys and automatic request-fingerprint protection for bulk upload, result validation, credential generation, PDF generation, and Paystack payment confirmation jobs.
 - Gateway async result validation and bulk upload accept `x-idempotency-key`.
 - Institution application and learner record-request POST flows replay through the idempotency ledger when a client sends `x-idempotency-key`.
+- `IDEMPOTENCY_RECORD_CLEANUP` maintenance jobs delete expired ledger rows asynchronously.
+- Founder APIs expose idempotency ledger summary through `/api/admin/idempotency-records` and queue cleanup through `/api/admin/idempotency-records/cleanup`.
+- Founder System Health shows idempotency ledger totals, expired records, stale in-progress records, failed records, top operations, recent records, and a cleanup control.
 
 Required next:
 
 - Unique constraints for external event IDs such as Paystack references and exam-body callback IDs.
-- Retention cleanup for expired `IdempotencyRecord` rows.
-- Founder Console visibility for idempotency replay/failure records.
+- Direct retry/replay operator actions for failed idempotent operations only after product-specific semantics are defined.
 
 ### 5. Structured Audit Logging
 
@@ -220,14 +222,15 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Idempotency cleanup/retention job and Founder Console visibility.
-2. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
-3. Worker deployment topology and heartbeat design for multi-worker production.
-4. Central retry policy module by job type, including jitter.
-5. Dead-letter queue/listing for operator review.
+1. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
+2. Worker deployment topology and heartbeat design for multi-worker production.
+3. Central retry policy module by job type, including jitter.
+4. Dead-letter queue/listing for operator review.
+5. Per-institution and per-product rate-limit defaults and emergency overrides.
 
 Completed:
 
 - Staff assigned-scope management endpoints and Founder Console UI for institution staff assignment.
 - Distributed cache adapter with in-process L1 and optional Upstash Redis REST L2.
 - Webhook receiver documentation for partners.
+- Idempotency cleanup/retention job, API visibility, System Health component, and Founder Console controls.

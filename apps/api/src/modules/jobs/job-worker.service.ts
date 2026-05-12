@@ -4,6 +4,7 @@ import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDelive
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
+import { IdempotencyService } from "../platform/services/idempotency.service.js";
 import { NotificationDeliveryService } from "../platform/services/notification-delivery.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { RateLimitService } from "../platform/services/rate-limit.service.js";
@@ -66,7 +67,8 @@ export class JobWorkerService {
     private readonly observability?: ErrorObservabilityService,
     private readonly webhookSecrets?: WebhookSecretService,
     private readonly rateLimit?: RateLimitService,
-    private readonly notificationDelivery?: NotificationDeliveryService
+    private readonly notificationDelivery?: NotificationDeliveryService,
+    private readonly idempotency?: IdempotencyService
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -172,6 +174,8 @@ export class JobWorkerService {
         return this.processDeferredIntegration(job);
       case BackgroundJobType.RATE_LIMIT_BUCKET_CLEANUP:
         return this.processRateLimitBucketCleanup(job);
+      case BackgroundJobType.IDEMPOTENCY_RECORD_CLEANUP:
+        return this.processIdempotencyRecordCleanup(job);
     }
   }
 
@@ -338,6 +342,34 @@ export class JobWorkerService {
       cutoff: result.cutoff.toISOString(),
       deletedBuckets: result.deletedBuckets
     });
+  }
+
+  private async processIdempotencyRecordCleanup(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
+    const payload = this.asRecord(job.payload);
+    const olderThanHours = this.asNumber(payload.olderThanHours, 1, 2160, 24);
+    const result = this.idempotency
+      ? await this.idempotency.cleanupExpiredRecords({ olderThanHours })
+      : await this.cleanupExpiredIdempotencyRecords(olderThanHours);
+    return this.toJson({
+      mode: "idempotency_record_cleanup",
+      olderThanHours: result.olderThanHours,
+      cutoff: result.cutoff.toISOString(),
+      deletedRecords: result.deletedRecords
+    });
+  }
+
+  private async cleanupExpiredIdempotencyRecords(olderThanHours: number) {
+    const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
+    const result = await this.prisma.idempotencyRecord.deleteMany({
+      where: {
+        expiresAt: { lt: cutoff }
+      }
+    });
+    return {
+      olderThanHours,
+      cutoff,
+      deletedRecords: result.count
+    };
   }
 
   private async processDeferredIntegration(job: ClaimedJob): Promise<Prisma.InputJsonValue> {

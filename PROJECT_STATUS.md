@@ -100,6 +100,7 @@ The API has these first modules:
 - Rate-limit bucket operations are now maintainable: `/api/admin/rate-limits` exposes bucket summary/top scopes, `/api/admin/rate-limits/cleanup` queues a `RATE_LIMIT_BUCKET_CLEANUP` background job, the worker deletes stale buckets asynchronously, and Founder System Health includes bucket counts plus a cleanup control.
 - Durable idempotency protection is implemented with `IdempotencyRecord`; job-producing flows can deduplicate by `x-idempotency-key` or automatic request fingerprints, with coverage for bulk uploads, async result validation, credential generation, PDF generation, and Paystack payment confirmation jobs.
 - Public/gateway POST roots now have idempotency hooks for institution applications and learner record requests when clients send `x-idempotency-key`.
+- Idempotency ledger maintenance is implemented: `/api/admin/idempotency-records` exposes summary/recent records, `/api/admin/idempotency-records/cleanup` queues `IDEMPOTENCY_RECORD_CLEANUP`, workers delete expired rows asynchronously, and Founder System Health includes idempotency metrics plus cleanup controls.
 - Notification delivery transports are implemented for worker-driven email, SMS, and push notifications: Resend/SendGrid for email, Termii/Twilio for SMS, Expo push for mobile, and safe local dry-run when providers are not configured.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
@@ -278,11 +279,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add idempotency cleanup/retention job and Founder Console visibility for idempotency replay/failure records.
-2. Add notification delivery dashboards, provider health checks, and failed notification retry controls.
-3. Define worker deployment topology and heartbeat design for multi-worker production.
-4. Add a central retry policy module by job type, including jitter.
-5. Add dead-letter queue/listing for operator review.
+1. Add notification delivery dashboards, provider health checks, and failed notification retry controls.
+2. Define worker deployment topology and heartbeat design for multi-worker production.
+3. Add a central retry policy module by job type, including jitter.
+4. Add dead-letter queue/listing for operator review.
+5. Add per-institution and per-product rate-limit defaults plus emergency overrides.
 6. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

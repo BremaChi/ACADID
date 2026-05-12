@@ -4,16 +4,15 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## Active Build Order
 
-1. Idempotency cleanup/retention job and Founder Console visibility.
-2. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
-3. Worker deployment topology and heartbeat design for multi-worker production.
-4. Central retry policy module by job type, including jitter.
-5. Dead-letter queue/listing for operator review.
-6. Per-institution and per-product rate-limit defaults and emergency overrides.
-7. Supabase storage download health check.
-8. Error alert thresholds and external log sink adapter.
-9. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-10. Cache hit/miss metrics once external monitoring is connected.
+1. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
+2. Worker deployment topology and heartbeat design for multi-worker production.
+3. Central retry policy module by job type, including jitter.
+4. Dead-letter queue/listing for operator review.
+5. Per-institution and per-product rate-limit defaults and emergency overrides.
+6. Supabase storage download health check.
+7. Error alert thresholds and external log sink adapter.
+8. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+9. Cache hit/miss metrics once external monitoring is connected.
 
 ## Product API Roots To Keep Stable
 
@@ -37,3 +36,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Institution staff invitation, status, permissions, TOTP requirement, assigned scopes, and Founder Console controls.
 - Distributed cache adapter with in-process L1 and optional Upstash Redis REST L2.
 - Webhook receiver contract for partners, including signature verification, idempotency, retries, and replay handling.
+- Idempotency cleanup/retention job, Supabase migration, API visibility endpoint, System Health component, and Founder Console maintenance controls.

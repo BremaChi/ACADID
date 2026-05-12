@@ -175,6 +175,63 @@ test("worker processes rate-limit bucket cleanup jobs through maintenance queue"
   assert.equal(calls[2].data.type, "rate_limit_bucket_cleanup.succeeded");
 });
 
+test("worker processes idempotency record cleanup jobs through maintenance queue", async () => {
+  const calls = [];
+  const service = new JobWorkerService(
+    {
+      $transaction: async (callback) =>
+        callback({
+          $queryRaw: async () => [{ uuid: "job-idempotency-cleanup" }],
+          backgroundJob: {
+            update: async ({ where, data, select }) => {
+              calls.push({ table: "BackgroundJob", where, data });
+              if (select) {
+                return {
+                  uuid: "job-idempotency-cleanup",
+                  type: "IDEMPOTENCY_RECORD_CLEANUP",
+                  queue: "platform.maintenance",
+                  institutionId: null,
+                  createdById: "founder-1",
+                  payload: { olderThanHours: 72 },
+                  attempts: 1,
+                  maxAttempts: 2
+                };
+              }
+              return { uuid: where.uuid };
+            }
+          },
+          domainEvent: {
+            create: async ({ data }) => {
+              calls.push({ table: "DomainEvent", data });
+              return { uuid: "event-idempotency-cleanup", ...data };
+            }
+          }
+        })
+    },
+    {},
+    {},
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      cleanupExpiredRecords: async ({ olderThanHours }) => ({
+        cutoff: new Date("2026-05-06T10:00:00.000Z"),
+        olderThanHours,
+        deletedRecords: 7
+      })
+    }
+  );
+
+  const result = await service.runOnce("worker-test", 1);
+
+  assert.deepEqual(result, { processed: 1, succeeded: 1, failed: 0 });
+  assert.equal(calls[1].data.status, "SUCCEEDED");
+  assert.equal(calls[1].data.result.mode, "idempotency_record_cleanup");
+  assert.equal(calls[1].data.result.deletedRecords, 7);
+  assert.equal(calls[2].data.type, "idempotency_record_cleanup.succeeded");
+});
+
 test("worker delivers webhooks with signed idempotent headers", async () => {
   const previousSecret = process.env.ACADID_WEBHOOK_SECRET;
   process.env.ACADID_WEBHOOK_SECRET = "test-webhook-secret";

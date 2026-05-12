@@ -180,6 +180,16 @@ export class AdminController {
     return this.adminService.queueRateLimitBucketCleanup(request.auth, body);
   }
 
+  @Get("idempotency-records")
+  readIdempotencyRecords() {
+    return this.adminService.readIdempotencyRecords();
+  }
+
+  @Post("idempotency-records/cleanup")
+  queueIdempotencyRecordCleanup(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.queueIdempotencyRecordCleanup(request.auth, body);
+  }
+
   @Get("revenue")
   readRevenueOverview() {
     return this.adminService.readRevenueOverview();

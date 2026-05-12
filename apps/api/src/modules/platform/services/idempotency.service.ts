@@ -26,6 +26,90 @@ export class IdempotencyService {
     return raw?.trim() || undefined;
   }
 
+  async readSummary(options: { recentHours?: number; staleAfterHours?: number; take?: number } = {}) {
+    const now = new Date();
+    const recentHours = this.clampHours(options.recentHours ?? 24);
+    const staleAfterHours = this.clampHours(options.staleAfterHours ?? 2);
+    const take = Math.min(100, Math.max(1, Math.floor(options.take ?? 25)));
+    const recentSince = new Date(now.getTime() - recentHours * 60 * 60 * 1000);
+    const staleBefore = new Date(now.getTime() - staleAfterHours * 60 * 60 * 1000);
+
+    const [totalRecords, recentRecords, expiredRecords, staleInProgressRecords, failedRecords, succeededRecords, byStatus, topOperations, latestRecords] =
+      await Promise.all([
+        this.prisma.idempotencyRecord.count(),
+        this.prisma.idempotencyRecord.count({ where: { createdAt: { gte: recentSince } } }),
+        this.prisma.idempotencyRecord.count({ where: { expiresAt: { lt: now } } }),
+        this.prisma.idempotencyRecord.count({ where: { status: "IN_PROGRESS", updatedAt: { lt: staleBefore } } }),
+        this.prisma.idempotencyRecord.count({ where: { status: "FAILED" } }),
+        this.prisma.idempotencyRecord.count({ where: { status: "SUCCEEDED" } }),
+        this.prisma.idempotencyRecord.groupBy({
+          by: ["status"],
+          _count: { _all: true },
+          orderBy: { status: "asc" }
+        }),
+        this.prisma.idempotencyRecord.groupBy({
+          by: ["operation"],
+          _count: { _all: true }
+        }),
+        this.prisma.idempotencyRecord.findMany({
+          select: {
+            uuid: true,
+            scope: true,
+            keyHash: true,
+            operation: true,
+            status: true,
+            actorType: true,
+            actorUserId: true,
+            clientId: true,
+            institutionId: true,
+            jobId: true,
+            error: true,
+            expiresAt: true,
+            createdAt: true,
+            updatedAt: true
+          },
+          orderBy: { updatedAt: "desc" },
+          take
+        })
+      ]);
+
+    return {
+      generatedAt: now,
+      retention: {
+        recentHours,
+        staleAfterHours
+      },
+      totalRecords,
+      recentRecords,
+      expiredRecords,
+      staleInProgressRecords,
+      failedRecords,
+      succeededRecords,
+      byStatus: byStatus.map((row) => ({ status: row.status, count: row._count._all })),
+      topOperations: topOperations
+        .map((row) => ({ operation: row.operation, count: row._count._all }))
+        .sort((left, right) => right.count - left.count)
+        .slice(0, 10),
+      latestRecords: latestRecords.map((record) => this.safeRecord(record))
+    };
+  }
+
+  async cleanupExpiredRecords(options: { olderThanHours?: number } = {}) {
+    const olderThanHours = this.clampHours(options.olderThanHours ?? 24);
+    const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
+    const result = await this.prisma.idempotencyRecord.deleteMany({
+      where: {
+        expiresAt: { lt: cutoff }
+      }
+    });
+
+    return {
+      deletedRecords: result.count,
+      olderThanHours,
+      cutoff
+    };
+  }
+
   async execute<Response extends Prisma.InputJsonValue | Record<string, unknown>>(input: IdempotencyInput<Response>): Promise<Response> {
     const key = this.normaliseKey(input.key);
     const keyHash = this.hash(key);
@@ -130,6 +214,40 @@ export class IdempotencyService {
 
   private toJson(value: unknown) {
     return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  }
+
+  private safeRecord(record: {
+    uuid: string;
+    scope: string;
+    keyHash: string;
+    operation: string;
+    status: string;
+    actorType: string | null;
+    actorUserId: string | null;
+    clientId: string | null;
+    institutionId: string | null;
+    jobId: string | null;
+    error: string | null;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: record.uuid,
+      scope: record.scope,
+      keyHashPreview: `${record.keyHash.slice(0, 12)}...`,
+      operation: record.operation,
+      status: record.status,
+      actorType: record.actorType,
+      actorUserId: record.actorUserId,
+      clientId: record.clientId,
+      institutionId: record.institutionId,
+      jobId: record.jobId,
+      error: record.error,
+      expiresAt: record.expiresAt,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    };
   }
 
   private clampHours(value: number | undefined) {

@@ -370,6 +370,27 @@ type SystemHealth = {
       recentHours?: number;
       staleAfterHours?: number;
       topScopes?: Array<{ scope: string; buckets: number; requests: number }>;
+      totalRecords?: number;
+      recentRecords?: number;
+      expiredRecords?: number;
+      staleInProgressRecords?: number;
+      failedRecords?: number;
+      succeededRecords?: number;
+      topOperations?: Array<{ operation: string; count: number }>;
+      latestRecords?: Array<{
+        id: string;
+        scope: string;
+        keyHashPreview: string;
+        operation: string;
+        status: string;
+        actorType: string | null;
+        clientId: string | null;
+        jobId: string | null;
+        error: string | null;
+        expiresAt: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
     };
   }>;
   metrics: {
@@ -788,6 +809,7 @@ export function FounderConsole() {
   const [verificationSearch, setVerificationSearch] = useState("");
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
   const [rateLimitCleanupHours, setRateLimitCleanupHours] = useState(24);
+  const [idempotencyCleanupHours, setIdempotencyCleanupHours] = useState(24);
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -1092,6 +1114,23 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Rate-limit cleanup could not be queued.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function queueIdempotencyCleanup() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ jobId: string; olderThanHours: number }>("/admin/idempotency-records/cleanup", token, {
+        method: "POST",
+        body: JSON.stringify({ olderThanHours: idempotencyCleanupHours })
+      });
+      setNotice({ tone: "success", text: `Idempotency cleanup queued for expired records older than ${response.olderThanHours} hour(s). Job ${response.jobId}.` });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Unable to queue idempotency cleanup." });
     } finally {
       setLoading(false);
     }
@@ -1842,8 +1881,11 @@ export function FounderConsole() {
         <SystemHealthPage
           cleanupHours={rateLimitCleanupHours}
           health={systemHealth}
+          idempotencyCleanupHours={idempotencyCleanupHours}
           loading={loading}
           onCleanupHours={setRateLimitCleanupHours}
+          onIdempotencyCleanupHours={setIdempotencyCleanupHours}
+          onQueueIdempotencyCleanup={queueIdempotencyCleanup}
           onQueueRateLimitCleanup={queueRateLimitCleanup}
         />
       );
@@ -2790,14 +2832,20 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
 function SystemHealthPage({
   cleanupHours,
   health,
+  idempotencyCleanupHours,
   loading,
   onCleanupHours,
+  onIdempotencyCleanupHours,
+  onQueueIdempotencyCleanup,
   onQueueRateLimitCleanup
 }: {
   cleanupHours: number;
   health: SystemHealth | null;
+  idempotencyCleanupHours: number;
   loading: boolean;
   onCleanupHours: (value: number) => void;
+  onIdempotencyCleanupHours: (value: number) => void;
+  onQueueIdempotencyCleanup: () => void;
   onQueueRateLimitCleanup: () => void;
 }) {
   const metrics = health?.metrics;
@@ -2814,6 +2862,7 @@ function SystemHealthPage({
   const queueHealth = services.find((service) => service.name === "Background Workers")?.metadata;
   const webhookHealth = services.find((service) => service.name === "Webhook Delivery")?.metadata;
   const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
+  const idempotencyHealth = services.find((service) => service.name === "Idempotency Ledger")?.metadata;
 
   return (
     <div className="space-y-5">
@@ -2923,6 +2972,51 @@ function SystemHealthPage({
           />
         </Card>
       </div>
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Idempotency Ledger" subtitle="Retry-safe POST and background-job dedupe records." />
+          <StatusBadge status={services.find((service) => service.name === "Idempotency Ledger")?.status ?? "PENDING_CONFIGURATION"} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <MetricLine label="Total records" value={String(idempotencyHealth?.totalRecords ?? "--")} />
+          <MetricLine label="Recent records" value={String(idempotencyHealth?.recentRecords ?? "--")} />
+          <MetricLine label="Expired records" value={String(idempotencyHealth?.expiredRecords ?? "--")} />
+          <MetricLine label="Stale in progress" value={String(idempotencyHealth?.staleInProgressRecords ?? "--")} />
+          <MetricLine label="Succeeded" value={String(idempotencyHealth?.succeededRecords ?? "--")} />
+          <MetricLine label="Failed" value={String(idempotencyHealth?.failedRecords ?? "--")} />
+        </div>
+        <div className="mt-4 rounded-md border border-borderLight bg-soft p-3">
+          <label className="text-xs font-medium text-textSecondary" htmlFor="idempotency-cleanup-hours">Clean expired records older than</label>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input id="idempotency-cleanup-hours" className={inputClass} min={1} max={2160} type="number" value={idempotencyCleanupHours} onChange={(event) => onIdempotencyCleanupHours(Number(event.target.value))} />
+            <button className={primaryButtonClass} disabled={loading} onClick={onQueueIdempotencyCleanup} type="button">Queue Cleanup Job</button>
+          </div>
+          <p className="mt-2 text-xs text-textSecondary">The API returns immediately; the maintenance worker removes expired dedupe rows in the background.</p>
+        </div>
+        <div className="mt-4 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+          <div>
+            <p className="text-sm font-semibold text-primary">Top operations</p>
+            <div className="mt-3 grid gap-2">
+              {(idempotencyHealth?.topOperations ?? []).length ? (
+                (idempotencyHealth?.topOperations ?? []).map((item) => <MetricLine key={item.operation} label={item.operation} value={item.count.toLocaleString()} />)
+              ) : (
+                <EmptyState text="No idempotency activity yet." />
+              )}
+            </div>
+          </div>
+          <ResponsiveTable
+            empty="No recent idempotency records yet."
+            headers={["Operation", "Status", "Scope", "Key", "Updated"]}
+            rows={(idempotencyHealth?.latestRecords ?? []).map((record) => [
+              record.operation,
+              <StatusBadge key="status" status={record.status} />,
+              record.scope,
+              record.keyHashPreview,
+              formatDate(record.updatedAt)
+            ])}
+          />
+        </div>
+      </Card>
       <Card>
         <SectionTitle title="Recent Incidents" subtitle="Derived from component degradation and gateway risk events." />
         <ResponsiveTable

@@ -122,6 +122,66 @@ test("queue service replays idempotent background job responses", async () => {
   assert.equal(createdJobs, 1);
 });
 
+test("idempotency service summarizes and cleans expired records safely", async () => {
+  let cleanupWhere;
+  const service = new IdempotencyService({
+    idempotencyRecord: {
+      count: async ({ where } = {}) => {
+        if (where?.expiresAt) return 2;
+        if (where?.status === "IN_PROGRESS") return 1;
+        if (where?.status === "FAILED") return 3;
+        if (where?.status === "SUCCEEDED") return 8;
+        if (where?.createdAt) return 4;
+        return 12;
+      },
+      groupBy: async ({ by }) => {
+        if (by.includes("status")) {
+          return [
+            { status: "SUCCEEDED", _count: { _all: 8 } },
+            { status: "FAILED", _count: { _all: 3 } }
+          ];
+        }
+        return [
+          { operation: "bulk_upload.queued", _count: { _all: 5 } },
+          { operation: "pdf_generation.queued", _count: { _all: 2 } }
+        ];
+      },
+      findMany: async () => [
+        {
+          uuid: "idem-1",
+          scope: "job:BULK_STUDENT_UPLOAD",
+          keyHash: "1234567890abcdef",
+          operation: "bulk_upload.queued",
+          status: "SUCCEEDED",
+          actorType: "API_KEY",
+          actorUserId: null,
+          clientId: "ak_test",
+          institutionId: "institution-1",
+          jobId: "job-1",
+          error: null,
+          expiresAt: new Date("2026-05-10T00:00:00Z"),
+          createdAt: new Date("2026-05-09T00:00:00Z"),
+          updatedAt: new Date("2026-05-09T01:00:00Z")
+        }
+      ],
+      deleteMany: async ({ where }) => {
+        cleanupWhere = where;
+        return { count: 2 };
+      }
+    }
+  });
+
+  const summary = await service.readSummary({ recentHours: 24, staleAfterHours: 2 });
+  assert.equal(summary.totalRecords, 12);
+  assert.equal(summary.expiredRecords, 2);
+  assert.equal(summary.staleInProgressRecords, 1);
+  assert.equal(summary.latestRecords[0].keyHashPreview, "1234567890ab...");
+
+  const cleanup = await service.cleanupExpiredRecords({ olderThanHours: 24 });
+  assert.equal(cleanup.deletedRecords, 2);
+  assert.ok(cleanupWhere.expiresAt.lt instanceof Date);
+});
+
 test("queue service creates a durable webhook delivery job", async () => {
   const created = {};
   const service = new QueueService(

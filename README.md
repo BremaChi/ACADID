@@ -101,6 +101,8 @@ Idempotency:
 - Job-producing operations replay the original job response for duplicate keys and reject key reuse with a different request payload.
 - Bulk uploads, async result validation, credential generation, PDF generation, and Paystack confirmation jobs also receive automatic request-fingerprint protection for accidental duplicate enqueues.
 - Institution application and learner record-request POST flows use the same idempotency ledger when clients provide `x-idempotency-key`.
+- Founder admins can inspect ledger health at `GET /api/admin/idempotency-records` and queue asynchronous retention cleanup through `POST /api/admin/idempotency-records/cleanup`.
+- Cleanup runs as the `IDEMPOTENCY_RECORD_CLEANUP` background job on the `platform.maintenance` queue, so HTTP requests return quickly with a job ID.
 
 Caching:
 

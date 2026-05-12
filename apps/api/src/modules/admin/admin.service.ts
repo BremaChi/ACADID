@@ -30,6 +30,7 @@ import { PrismaService } from "../platform/services/prisma.service.js";
 import { AuditService } from "../platform/services/audit.service.js";
 import { CredentialSigningService } from "../platform/services/credential-signing.service.js";
 import { CacheService } from "../platform/services/cache.service.js";
+import { IdempotencyService } from "../platform/services/idempotency.service.js";
 import { QueueService } from "../platform/services/queue.service.js";
 import { RateLimitService } from "../platform/services/rate-limit.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
@@ -87,6 +88,7 @@ export class AdminService {
     private readonly webhookSecrets?: WebhookSecretService,
     private readonly queue?: QueueService,
     private readonly rateLimit?: RateLimitService,
+    private readonly idempotency?: IdempotencyService,
     @Optional() private readonly authService?: AuthService
   ) {}
 
@@ -1232,7 +1234,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, cache, queue, webhook, signing, rateLimitBuckets, metrics] = await Promise.all([
+    const [database, auth, storage, email, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService(
@@ -1245,6 +1247,7 @@ export class AdminService {
       this.checkWebhookDelivery(),
       this.checkCredentialSigning(),
       this.checkRateLimitBuckets(),
+      this.checkIdempotencyRecords(),
       this.readGatewayMetrics()
     ]);
 
@@ -1263,7 +1266,8 @@ export class AdminService {
       queue,
       webhook,
       signing,
-      rateLimitBuckets
+      rateLimitBuckets,
+      idempotencyRecords
     ];
     const incidents = this.deriveIncidents(services, metrics);
     const overallStatus = services.some((service) => service.status === "DOWN")
@@ -1284,6 +1288,10 @@ export class AdminService {
 
   async readRateLimitBuckets() {
     return this.rateLimitManager().readBucketSummary({ recentHours: 24, staleAfterHours: 24 });
+  }
+
+  async readIdempotencyRecords() {
+    return this.idempotencyManager().readSummary({ recentHours: 24, staleAfterHours: 2, take: 50 });
   }
 
   async queueRateLimitBucketCleanup(auth: AuthTokenPayload, input: unknown) {
@@ -1310,6 +1318,43 @@ export class AdminService {
       actorRole: auth.role,
       action: "rate_limit_bucket.cleanup_queued",
       targetType: "RateLimitBucket",
+      outcome: "SUCCESS",
+      metadata: {
+        jobId: job.jobId,
+        olderThanHours
+      }
+    });
+
+    return {
+      ...job,
+      olderThanHours
+    };
+  }
+
+  async queueIdempotencyRecordCleanup(auth: AuthTokenPayload, input: unknown) {
+    if (!this.queue) {
+      throw new BadRequestException("Queue service is unavailable.");
+    }
+
+    const body = typeof input === "object" && input ? (input as Record<string, unknown>) : {};
+    const olderThanHours = this.parseBoundedNumber(body.olderThanHours, 1, 2160, 24);
+    const job = await this.queue.enqueueJob({
+      type: BackgroundJobType.IDEMPOTENCY_RECORD_CLEANUP,
+      createdById: auth.sub,
+      relatedEntityType: "IdempotencyRecord",
+      priority: -5,
+      maxAttempts: 2,
+      payload: {
+        olderThanHours
+      },
+      eventType: "idempotency_record.cleanup_queued"
+    });
+
+    await this.audit.write({
+      actorUserId: auth.sub,
+      actorRole: auth.role,
+      action: "idempotency_record.cleanup_queued",
+      targetType: "IdempotencyRecord",
       outcome: "SUCCESS",
       metadata: {
         jobId: job.jobId,
@@ -3115,6 +3160,51 @@ export class AdminService {
     }
   }
 
+  private async checkIdempotencyRecords() {
+    const startedAt = Date.now();
+    try {
+      if (!this.idempotency) {
+        return {
+          name: "Idempotency Ledger",
+          status: "PENDING_CONFIGURATION" as HealthStatus,
+          responseTimeMs: 0,
+          message: "Idempotency service is not configured.",
+          metadata: {
+            totalRecords: 0,
+            expiredRecords: 0,
+            staleInProgressRecords: 0,
+            failedRecords: 0
+          }
+        };
+      }
+      const summary = await this.idempotencyManager().readSummary({ recentHours: 24, staleAfterHours: 2, take: 5 });
+      const status: HealthStatus = summary.staleInProgressRecords > 100 || summary.failedRecords > 1000 ? "DEGRADED" : "OPERATIONAL";
+      return {
+        name: "Idempotency Ledger",
+        status,
+        responseTimeMs: Date.now() - startedAt,
+        message:
+          status === "OPERATIONAL"
+            ? "Retry-safe POST/job dedupe ledger is active."
+            : "Idempotency ledger has stale or failed records requiring review.",
+        metadata: summary
+      };
+    } catch (error) {
+      return {
+        name: "Idempotency Ledger",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Idempotency ledger check failed."),
+        metadata: {
+          totalRecords: 0,
+          expiredRecords: 0,
+          staleInProgressRecords: 0,
+          failedRecords: 0
+        }
+      };
+    }
+  }
+
   private async readGatewayMetrics() {
     const startedAt = Date.now();
     const since = this.hoursAgo(24);
@@ -3291,6 +3381,13 @@ export class AdminService {
       throw new BadRequestException("Rate limit service is unavailable.");
     }
     return this.rateLimit;
+  }
+
+  private idempotencyManager() {
+    if (!this.idempotency) {
+      throw new BadRequestException("Idempotency service is unavailable.");
+    }
+    return this.idempotency;
   }
 
   private daysAgo(days: number) {
