@@ -185,6 +185,16 @@ export class AdminController {
     return this.adminService.readIdempotencyRecords();
   }
 
+  @Get("dead-letters")
+  listDeadLetters() {
+    return this.adminService.listDeadLetters();
+  }
+
+  @Post("dead-letters/jobs/:id/retry")
+  retryDeadLetterJob(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.retryDeadLetterJob(request.auth, id);
+  }
+
   @Post("idempotency-records/cleanup")
   queueIdempotencyRecordCleanup(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.adminService.queueIdempotencyRecordCleanup(request.auth, body);

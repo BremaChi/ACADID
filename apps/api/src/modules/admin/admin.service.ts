@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { BackgroundJobType, InstitutionUserStatus, NotificationChannel, UserRole, WorkerHeartbeatStatus } from "@prisma/client";
+import { BackgroundJobStatus, BackgroundJobType, InstitutionUserStatus, NotificationChannel, UserRole, WorkerHeartbeatStatus } from "@prisma/client";
 import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
@@ -1296,6 +1296,128 @@ export class AdminService {
 
   async readIdempotencyRecords() {
     return this.idempotencyManager().readSummary({ recentHours: 24, staleAfterHours: 2, take: 50 });
+  }
+
+  async listDeadLetters() {
+    const jobs = await this.prisma.backgroundJob.findMany({
+      where: { status: BackgroundJobStatus.FAILED },
+      include: this.deadLetterJobInclude(),
+      orderBy: [{ failedAt: "desc" }, { updatedAt: "desc" }],
+      take: 100
+    });
+    const webhookDeliveries = await this.prisma.webhookDelivery.findMany({
+      where: { status: "FAILED" },
+      include: this.webhookDeliveryInclude(),
+      orderBy: { updatedAt: "desc" },
+      take: 100
+    });
+    const failedNotifications = await this.prisma.notification.findMany({
+      where: { status: "FAILED" },
+      include: this.notificationInclude(),
+      orderBy: { updatedAt: "desc" },
+      take: 50
+    });
+    const failedJobsTotal = await this.prisma.backgroundJob.count({ where: { status: BackgroundJobStatus.FAILED } });
+    const failedWebhookDeliveriesTotal = await this.prisma.webhookDelivery.count({ where: { status: "FAILED" } });
+    const failedNotificationsTotal = await this.prisma.notification.count({ where: { status: "FAILED" } });
+
+    return {
+      generatedAt: new Date(),
+      summary: {
+        failedJobs: failedJobsTotal,
+        failedWebhookDeliveries: failedWebhookDeliveriesTotal,
+        failedNotifications: failedNotificationsTotal,
+        oldestFailedAt: jobs.reduce<Date | null>((oldest, job) => {
+          const failedAt = job.failedAt ?? job.updatedAt;
+          return !oldest || failedAt < oldest ? failedAt : oldest;
+        }, null)
+      },
+      jobs: jobs.map((job) => this.safeDeadLetterJob(job)),
+      webhookDeliveries: webhookDeliveries.map((delivery) => this.safeWebhookDelivery(delivery)),
+      notifications: failedNotifications.map((notification) => this.safeNotification(notification))
+    };
+  }
+
+  async retryDeadLetterJob(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.backgroundJob.findUnique({
+      where: { uuid: id },
+      include: this.deadLetterJobInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Dead-letter job not found.");
+    }
+    if (existing.status !== BackgroundJobStatus.FAILED) {
+      throw new BadRequestException("Only failed dead-letter jobs can be retried.");
+    }
+
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const nextMaxAttempts = Math.max(existing.maxAttempts, existing.attempts + 1, this.retryPolicy.maxAttemptsFor(existing.type));
+      const job = await tx.backgroundJob.update({
+        where: { uuid: existing.uuid },
+        data: {
+          status: BackgroundJobStatus.RETRYING,
+          error: null,
+          progress: 0,
+          lockedAt: null,
+          lockedBy: null,
+          runAfter: new Date(),
+          failedAt: null,
+          maxAttempts: nextMaxAttempts
+        },
+        include: this.deadLetterJobInclude()
+      });
+
+      if (existing.type === BackgroundJobType.WEBHOOK_DELIVERY) {
+        await tx.webhookDelivery.updateMany({
+          where: { jobId: existing.uuid, status: "FAILED" },
+          data: {
+            status: "RETRYING",
+            nextAttemptAt: new Date(),
+            lastError: null
+          }
+        });
+      }
+
+      await tx.domainEvent.create({
+        data: {
+          type: "background_job.dead_letter_retry_queued",
+          aggregateType: "BackgroundJob",
+          aggregateId: existing.uuid,
+          institutionId: existing.institutionId,
+          jobId: existing.uuid,
+          payload: {
+            jobId: existing.uuid,
+            type: existing.type,
+            queue: existing.queue,
+            previousAttempts: existing.attempts,
+            maxAttempts: nextMaxAttempts
+          }
+        }
+      });
+
+      return job;
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorUserId: auth.sub,
+      actorRole: auth.role,
+      action: "background_job.dead_letter_retry_queued",
+      targetType: "BackgroundJob",
+      targetId: existing.uuid,
+      institutionId: existing.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        type: existing.type,
+        queue: existing.queue,
+        attempts: existing.attempts
+      }
+    });
+
+    return {
+      accepted: true,
+      job: this.safeDeadLetterJob(result)
+    };
   }
 
   async queueRateLimitBucketCleanup(auth: AuthTokenPayload, input: unknown) {
@@ -2819,6 +2941,51 @@ export class AdminService {
     } as const;
   }
 
+  private deadLetterJobInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true
+        }
+      },
+      createdBy: {
+        select: {
+          uuid: true,
+          fullName: true,
+          email: true
+        }
+      },
+      webhookDeliveries: {
+        select: {
+          uuid: true,
+          status: true,
+          eventType: true,
+          attempts: true,
+          lastStatusCode: true,
+          lastError: true,
+          updatedAt: true
+        },
+        orderBy: { updatedAt: "desc" as const },
+        take: 3
+      },
+      notifications: {
+        select: {
+          uuid: true,
+          channel: true,
+          type: true,
+          title: true,
+          status: true,
+          error: true,
+          updatedAt: true
+        },
+        orderBy: { updatedAt: "desc" as const },
+        take: 3
+      }
+    } as const;
+  }
+
   private safeWebhookEndpoint(endpoint: Prisma.WebhookEndpointGetPayload<{ include: ReturnType<AdminService["webhookEndpointInclude"]> }>) {
     return {
       id: endpoint.uuid,
@@ -2859,6 +3026,34 @@ export class AdminService {
       createdAt: delivery.createdAt,
       updatedAt: delivery.updatedAt,
       job: delivery.job
+    };
+  }
+
+  private safeDeadLetterJob(job: Prisma.BackgroundJobGetPayload<{ include: ReturnType<AdminService["deadLetterJobInclude"]> }>) {
+    return {
+      id: job.uuid,
+      type: job.type,
+      queue: job.queue,
+      status: job.status,
+      institutionUuid: job.institutionId,
+      institutionId: job.institution?.institutionId ?? null,
+      institutionName: job.institution?.officialName ?? null,
+      createdBy: job.createdBy,
+      relatedEntityType: job.relatedEntityType,
+      relatedEntityId: job.relatedEntityId,
+      priority: job.priority,
+      progress: job.progress,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      runAfter: job.runAfter,
+      error: job.error,
+      failedAt: job.failedAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      linkedWebhookDeliveries: job.webhookDeliveries,
+      linkedNotifications: job.notifications
     };
   }
 

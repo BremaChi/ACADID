@@ -105,6 +105,8 @@ The API has these first modules:
 - Notification delivery operations are visible in Founder System Health: provider health, pending/sent/failed counts, channel breakdown, recent failed notifications, failed-notification retry API, and audit events for retry queueing.
 - Worker deployment topology now has a durable heartbeat registry: each worker can use a stable `ACADID_WORKER_ID`, records queues/concurrency/current job/last-seen status, marks itself stopped during graceful shutdown, and surfaces active/stale/stopped worker counts in Founder System Health.
 - Central retry policy is implemented through `RetryPolicyService`, giving each background job type an explicit max-attempt and capped exponential backoff policy with jitter to prevent retry spikes at high scale.
+- Dead-letter operator review is implemented through `/api/admin/dead-letters` and `/api/admin/dead-letters/jobs/:id/retry`, with Founder System Health visibility for failed jobs, failed webhooks, and failed notifications.
+- v5 implementation audit is documented in `docs/architecture-v5-implementation-audit.md`; v5 is partially implemented, not complete end to end.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
 - Distributed cache support is implemented with an in-process L1 cache plus optional Upstash Redis REST L2 adapter for multi-instance pilot/production deployments; configuration is documented in `docs/runbooks/distributed-cache.md`.
@@ -178,6 +180,8 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Verification Logs page backed by the Data Center API, with cross-institution search, outcome filters, metrics, and CSV export.
 - Live System Health page backed by the Data Center API, with service status, gateway metrics, and recent incidents.
 - Live System Health worker registry shows active, stale, and stopped background workers plus recent heartbeat rows for multi-worker production operations.
+- Live System Health dead-letter review shows failed background jobs, failed webhook deliveries, failed notifications, and a safe retry action for failed background jobs.
+- Founder Console data refresh is batched to avoid spiking the Supabase connection pool during full dashboard loads.
 - Live Revenue page backed by the Data Center API, with ledger totals, subscription status, recent entries, and CSV export.
 - Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
 - Live Security page includes founder recovery-code status and TOTP-protected rotation with one-time display.

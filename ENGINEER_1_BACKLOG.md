@@ -4,12 +4,20 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## Active Build Order
 
-1. Dead-letter queue/listing for operator review.
-2. Per-institution and per-product rate-limit defaults and emergency overrides.
-3. Supabase storage download health check.
-4. Error alert thresholds and external log sink adapter.
-5. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-6. Cache hit/miss metrics once external monitoring is connected.
+1. Per-institution and per-product rate-limit defaults and emergency overrides.
+2. Supabase storage download health check.
+3. Error alert thresholds and external log sink adapter.
+4. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+5. Cache hit/miss metrics once external monitoring is connected.
+
+## v5 Implementation Gaps To Track
+
+- Registrar-facing staff assigned-scope management inside Institution Portal.
+- Modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
+- Invitation leads for unregistered institutions with graduate demand.
+- RecordRequest payment escrow/release and publication into learner passport.
+- Transfer workflows and disputed rollover surfaces.
+- Founder Console v5 setup-health gaps: missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, storage use, and invitation leads.
 
 ## Product API Roots To Keep Stable
 
@@ -37,3 +45,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Notification delivery dashboard in Founder System Health, provider health checks, failed-notification retry API, and retry audit events.
 - Worker heartbeat registry for multi-worker production, including active/stale/stopped counts and Founder System Health visibility.
 - Central retry policy module by job type, including capped exponential backoff and jitter.
+- Dead-letter listing and retry controls for failed background jobs, failed webhook deliveries, and failed notifications.

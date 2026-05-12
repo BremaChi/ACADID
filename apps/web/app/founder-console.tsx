@@ -459,6 +459,58 @@ type SystemHealth = {
   }>;
 };
 
+type DeadLetterOverview = {
+  generatedAt: string;
+  summary: {
+    failedJobs: number;
+    failedWebhookDeliveries: number;
+    failedNotifications: number;
+    oldestFailedAt: string | null;
+  };
+  jobs: Array<{
+    id: string;
+    type: string;
+    queue: string;
+    status: string;
+    institutionId: string | null;
+    institutionName: string | null;
+    relatedEntityType: string | null;
+    relatedEntityId: string | null;
+    attempts: number;
+    maxAttempts: number;
+    error: string | null;
+    failedAt: string | null;
+    updatedAt: string;
+    linkedWebhookDeliveries: Array<{ uuid: string; status: string; eventType: string; lastError: string | null; updatedAt: string }>;
+    linkedNotifications: Array<{ uuid: string; status: string; channel: string; type: string; title: string; error: string | null; updatedAt: string }>;
+  }>;
+  webhookDeliveries: Array<{
+    id: string;
+    jobId: string;
+    institutionId: string | null;
+    institutionName: string | null;
+    targetUrl: string;
+    eventType: string;
+    status: string;
+    attempts: number;
+    lastStatusCode: number | null;
+    lastError: string | null;
+    updatedAt: string;
+  }>;
+  notifications: Array<{
+    id: string;
+    jobId: string | null;
+    institutionId: string | null;
+    institutionName: string | null;
+    channel: string;
+    type: string;
+    title: string;
+    status: string;
+    error: string | null;
+    updatedAt: string;
+  }>;
+};
+
 type AuditEvent = {
   id: string;
   requestId: string | null;
@@ -750,6 +802,10 @@ async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
 
+async function loadDeadLetters(token: string): Promise<DeadLetterOverview> {
+  return apiRequest<DeadLetterOverview>("/admin/dead-letters", token);
+}
+
 async function loadDashboardSummary(token: string): Promise<DashboardSummary> {
   return apiRequest<DashboardSummary>("/admin/dashboard-summary", token);
 }
@@ -795,6 +851,7 @@ export function FounderConsole() {
   const [recordRequests, setRecordRequests] = useState<RecordRequest[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [deadLetters, setDeadLetters] = useState<DeadLetterOverview | null>(null);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [academicOperations, setAcademicOperations] = useState<AcademicOperations | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -1013,37 +1070,22 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [
-        nextInstitutions,
-        nextGlobalKeys,
-        nextApplications,
-        nextDeveloperRequests,
-        nextDisputes,
-        nextRecordRequests,
-        nextVerificationLogs,
-        nextSystemHealth,
-        nextDashboardSummary,
-        nextAcademicOperations,
-        nextAuditEvents,
-        nextRevenueOverview,
-        nextPlatformSettings,
-        nextRecoveryCodeStatus
-      ] = await Promise.all([
+      const [nextInstitutions, nextGlobalKeys] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
-        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
-        apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
-        loadDeveloperAccessRequests(activeToken),
-        loadDisputes(activeToken),
-        loadRecordRequests(activeToken),
-        loadVerificationLogs(activeToken),
-        loadSystemHealth(activeToken),
-        loadDashboardSummary(activeToken),
-        loadAcademicOperations(activeToken),
-        loadAuditEvents(activeToken),
-        loadRevenueOverview(activeToken),
-        loadPlatformSettings(activeToken),
-        loadRecoveryCodeStatus(activeToken)
+        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken)
       ]);
+      const [nextApplications, nextDeveloperRequests] = await Promise.all([
+        apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
+        loadDeveloperAccessRequests(activeToken)
+      ]);
+      const [nextDisputes, nextRecordRequests] = await Promise.all([loadDisputes(activeToken), loadRecordRequests(activeToken)]);
+      const [nextVerificationLogs, nextAuditEvents] = await Promise.all([loadVerificationLogs(activeToken), loadAuditEvents(activeToken)]);
+      const nextSystemHealth = await loadSystemHealth(activeToken);
+      const nextDeadLetters = await loadDeadLetters(activeToken);
+      const nextDashboardSummary = await loadDashboardSummary(activeToken);
+      const nextAcademicOperations = await loadAcademicOperations(activeToken);
+      const nextRevenueOverview = await loadRevenueOverview(activeToken);
+      const [nextPlatformSettings, nextRecoveryCodeStatus] = await Promise.all([loadPlatformSettings(activeToken), loadRecoveryCodeStatus(activeToken)]);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
       setInstitutionApplications(nextApplications);
@@ -1052,6 +1094,7 @@ export function FounderConsole() {
       setRecordRequests(nextRecordRequests);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
+      setDeadLetters(nextDeadLetters);
       setDashboardSummary(nextDashboardSummary);
       setAcademicOperations(nextAcademicOperations);
       setAuditEvents(nextAuditEvents);
@@ -1113,6 +1156,7 @@ export function FounderConsole() {
     setSelectedRecordRequestId("");
     setVerificationLogs([]);
     setSystemHealth(null);
+    setDeadLetters(null);
     setDashboardSummary(null);
     setAcademicOperations(null);
     setAuditEvents([]);
@@ -1186,6 +1230,22 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Unable to retry notification." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function retryDeadLetterJob(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ job: { id: string; type: string } }>(`/admin/dead-letters/jobs/${id}/retry`, token, {
+        method: "POST"
+      });
+      setNotice({ tone: "success", text: `Dead-letter job ${response.job.id} was requeued for ${titleCase(response.job.type)}.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to retry dead-letter job.");
     } finally {
       setLoading(false);
     }
@@ -1935,6 +1995,7 @@ export function FounderConsole() {
       return (
         <SystemHealthPage
           cleanupHours={rateLimitCleanupHours}
+          deadLetters={deadLetters}
           health={systemHealth}
           idempotencyCleanupHours={idempotencyCleanupHours}
           loading={loading}
@@ -1942,6 +2003,7 @@ export function FounderConsole() {
           onIdempotencyCleanupHours={setIdempotencyCleanupHours}
           onQueueIdempotencyCleanup={queueIdempotencyCleanup}
           onQueueRateLimitCleanup={queueRateLimitCleanup}
+          onRetryDeadLetterJob={retryDeadLetterJob}
           onRetryNotification={retryNotification}
         />
       );
@@ -2887,6 +2949,7 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
 
 function SystemHealthPage({
   cleanupHours,
+  deadLetters,
   health,
   idempotencyCleanupHours,
   loading,
@@ -2894,9 +2957,11 @@ function SystemHealthPage({
   onIdempotencyCleanupHours,
   onQueueIdempotencyCleanup,
   onQueueRateLimitCleanup,
+  onRetryDeadLetterJob,
   onRetryNotification
 }: {
   cleanupHours: number;
+  deadLetters: DeadLetterOverview | null;
   health: SystemHealth | null;
   idempotencyCleanupHours: number;
   loading: boolean;
@@ -2904,6 +2969,7 @@ function SystemHealthPage({
   onIdempotencyCleanupHours: (value: number) => void;
   onQueueIdempotencyCleanup: () => void;
   onQueueRateLimitCleanup: () => void;
+  onRetryDeadLetterJob: (id: string) => void;
   onRetryNotification: (id: string) => void;
 }) {
   const metrics = health?.metrics;
@@ -2999,6 +3065,41 @@ function SystemHealthPage({
           </div>
         </Card>
       </div>
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Dead-Letter Review" subtitle="Exhausted jobs and failed deliveries needing operator action." />
+          <StatusBadge status={(deadLetters?.summary.failedJobs ?? 0) + (deadLetters?.summary.failedWebhookDeliveries ?? 0) > 0 ? "ACTION NEEDED" : "CLEAR"} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <MetricLine label="Failed jobs" value={String(deadLetters?.summary.failedJobs ?? "--")} />
+          <MetricLine label="Failed webhooks" value={String(deadLetters?.summary.failedWebhookDeliveries ?? "--")} />
+          <MetricLine label="Failed notifications" value={String(deadLetters?.summary.failedNotifications ?? "--")} />
+          <MetricLine label="Oldest failure" value={deadLetters?.summary.oldestFailedAt ? formatDate(deadLetters.summary.oldestFailedAt) : "--"} />
+        </div>
+        <ResponsiveTable
+          empty="No dead-letter jobs need operator review."
+          headers={["Job", "Institution", "Attempts", "Error", "Failed", "Action"]}
+          rows={(deadLetters?.jobs ?? []).slice(0, 12).map((job) => [
+            <div key="job"><p className="font-medium text-primary">{titleCase(job.type)}</p><p className="text-xs text-textSecondary">{job.queue}</p></div>,
+            job.institutionName ?? job.institutionId ?? "Platform",
+            `${job.attempts}/${job.maxAttempts}`,
+            job.error ?? "Failed",
+            job.failedAt ? formatDate(job.failedAt) : formatDate(job.updatedAt),
+            <button key="retry" className={primarySmallButtonClass} disabled={loading} onClick={() => onRetryDeadLetterJob(job.id)} type="button">Retry</button>
+          ])}
+        />
+        <ResponsiveTable
+          empty="No failed webhook deliveries."
+          headers={["Webhook", "Institution", "Attempts", "Error", "Updated"]}
+          rows={(deadLetters?.webhookDeliveries ?? []).slice(0, 8).map((delivery) => [
+            <div key="delivery"><p className="font-medium text-primary">{delivery.eventType}</p><p className="text-xs text-textSecondary">{delivery.targetUrl}</p></div>,
+            delivery.institutionName ?? delivery.institutionId ?? "Platform",
+            delivery.attempts.toLocaleString(),
+            delivery.lastError ?? `HTTP ${delivery.lastStatusCode ?? "unknown"}`,
+            formatDate(delivery.updatedAt)
+          ])}
+        />
+      </Card>
       <Card>
         <SectionTitle title="Worker Registry" subtitle="Live worker heartbeat registry for scaled background processing." />
         <div className="mt-4 grid gap-3 md:grid-cols-4">

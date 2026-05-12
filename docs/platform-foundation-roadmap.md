@@ -67,11 +67,11 @@ Implemented foundation:
 - Retry delays include bounded jitter so large batches do not retry at the same instant.
 - Webhook dead-letter state after exhausted attempts.
 - Founder retry/replay APIs for operator-controlled webhook recovery.
+- Founder dead-letter review API and System Health panel list failed background jobs, failed webhooks, and failed notifications, with requeue support for failed background jobs.
 
 Required next:
 
-- Dedicated dead-letter queue/listing for operator review.
-- Founder Console controls for dead-letter review.
+- Product-specific dead-letter playbooks for jobs that require manual data correction before retry.
 
 ### 4. Idempotency Protection
 
@@ -222,11 +222,11 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Dead-letter queue/listing for operator review.
-2. Per-institution and per-product rate-limit defaults and emergency overrides.
-3. Supabase storage download health check.
-4. Error alert thresholds and external log sink adapter.
-5. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+1. Per-institution and per-product rate-limit defaults and emergency overrides.
+2. Supabase storage download health check.
+3. Error alert thresholds and external log sink adapter.
+4. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+5. Cache hit/miss metrics once external monitoring is connected.
 
 Completed:
 
@@ -237,3 +237,4 @@ Completed:
 - Notification delivery dashboard, provider health checks, and failed-notification retry controls.
 - Worker heartbeat registry, shutdown marking, stable `ACADID_WORKER_ID` support, and Founder System Health worker table.
 - Central retry policy by job type with capped exponential backoff and jitter.
+- Dead-letter review and retry controls for failed background jobs, webhook deliveries, and notifications.

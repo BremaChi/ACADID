@@ -83,6 +83,7 @@ Webhook worker delivery:
 - Workers write durable heartbeats to `WorkerHeartbeat` with queues, concurrency, active/stale/stopped status, current job hints, and last-seen timestamps.
 - Founder System Health shows worker active/stale/stopped counts and the recent worker registry, which is required before scaling many worker processes.
 - Retry timing is centralized in `RetryPolicyService`; each job type has explicit max attempts, capped exponential backoff, and jitter so large batches do not retry together.
+- Failed exhausted work is visible through `GET /api/admin/dead-letters`; Founder admins can requeue failed background jobs with `POST /api/admin/dead-letters/jobs/:id/retry`.
 - Configure `ACADID_WEBHOOK_SECRET` before enabling outbound webhook jobs.
 - The worker signs each delivery with `x-acadid-signature`, sends a stable `x-acadid-idempotency-key`, retries with exponential backoff, and marks exhausted deliveries as failed for operator review.
 - Prefer institution-scoped webhook endpoints created through the Founder API; each endpoint receives a one-time `whsec_...` secret, stores only an encrypted copy, and signs deliveries with that endpoint secret.
