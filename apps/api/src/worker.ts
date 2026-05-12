@@ -11,9 +11,13 @@ async function bootstrap() {
   const once = process.argv.includes("--once") || process.env.ACADID_WORKER_ONCE === "true";
   const intervalMs = Number(process.env.ACADID_WORKER_INTERVAL_MS ?? 5000);
   const batchSize = Number(process.env.ACADID_WORKER_BATCH_SIZE ?? 5);
+  const workerId = worker.resolveWorkerId(process.env.ACADID_WORKER_ID);
 
   const shutdown = async () => {
     logger.log("Stopping AcadID worker.");
+    await worker.markWorkerStopped(workerId).catch((error) => {
+      logger.warn(error instanceof Error ? error.message : String(error));
+    });
     await app.close();
     process.exit(0);
   };
@@ -22,7 +26,7 @@ async function bootstrap() {
   process.on("SIGTERM", () => void shutdown());
 
   try {
-    const result = await worker.startLoop({ once, intervalMs, batchSize });
+    const result = await worker.startLoop({ workerId, once, intervalMs, batchSize });
     if (once) {
       logger.log(`Worker once processed ${result?.processed ?? 0} job(s).`);
       await app.close();

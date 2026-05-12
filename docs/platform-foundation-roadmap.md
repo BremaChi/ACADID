@@ -127,13 +127,11 @@ Implemented foundation:
 - Result-batch validation job processor.
 - Notification delivery transports for email, SMS, and push: Resend/SendGrid, Termii/Twilio, Expo push, and local dry-run safety.
 - Founder System Health notification operations: provider health, pending/sent/failed counts, channel breakdown, recent failed notifications, and failed-notification retry controls.
+- Durable `WorkerHeartbeat` registry for multi-worker deployments, with stable worker IDs, queues, concurrency, active/stale/stopped states, current job hints, and last-seen timestamps.
 
 Required next:
 
-- Worker deployment topology.
 - Separate named queues if load increases.
-- Worker heartbeat/last-seen tracking.
-- Worker metrics in System Health.
 - Delivery templates, localisation, user preferences, and opt-out rules.
 
 ### 7. Monitoring And Health Checks
@@ -148,10 +146,10 @@ Implemented foundation:
 - Background queue metrics: ready backlog, scheduled backlog, running jobs, failed jobs, stale running jobs, queue breakdown, and recent worker activity.
 - Webhook delivery metrics: pending/retrying, due now, delivered in 24h, failed in 24h, signing-secret readiness, and status breakdown.
 - Notification delivery metrics: provider configuration, pending/sent/failed counts, channel breakdown, and recent failed notifications.
+- Worker registry metrics: active workers, stale workers, stopped workers, stale-after threshold, and recent worker heartbeat rows.
 
 Required next:
 
-- Dedicated worker heartbeat table if multiple worker pools are deployed.
 - Supabase storage download health.
 - Error-rate windows by route and queue.
 
@@ -224,11 +222,11 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Worker deployment topology and heartbeat design for multi-worker production.
-2. Central retry policy module by job type, including jitter.
-3. Dead-letter queue/listing for operator review.
-4. Per-institution and per-product rate-limit defaults and emergency overrides.
-5. Supabase storage download health check.
+1. Central retry policy module by job type, including jitter.
+2. Dead-letter queue/listing for operator review.
+3. Per-institution and per-product rate-limit defaults and emergency overrides.
+4. Supabase storage download health check.
+5. Error alert thresholds and external log sink adapter.
 
 Completed:
 
@@ -237,3 +235,4 @@ Completed:
 - Webhook receiver documentation for partners.
 - Idempotency cleanup/retention job, API visibility, System Health component, and Founder Console controls.
 - Notification delivery dashboard, provider health checks, and failed-notification retry controls.
+- Worker heartbeat registry, shutdown marking, stable `ACADID_WORKER_ID` support, and Founder System Health worker table.

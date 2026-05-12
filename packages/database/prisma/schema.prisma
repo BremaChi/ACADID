@@ -285,6 +285,12 @@ enum BackgroundJobStatus {
   CANCELLED
 }
 
+enum WorkerHeartbeatStatus {
+  ACTIVE
+  DRAINING
+  STOPPED
+}
+
 enum DomainEventStatus {
   PENDING
   PUBLISHED
@@ -1056,6 +1062,25 @@ model BackgroundJob {
   @@index([institutionId, status, createdAt])
   @@index([type, status, createdAt])
   @@index([relatedEntityType, relatedEntityId])
+}
+
+model WorkerHeartbeat {
+  workerId      String                @id
+  hostname      String?
+  processId     Int?
+  queues        String[]
+  status        WorkerHeartbeatStatus @default(ACTIVE)
+  concurrency   Int                   @default(1)
+  currentJobId  String?               @db.Uuid
+  currentQueue  String?
+  lastStartedAt DateTime?
+  lastSeenAt    DateTime              @default(now())
+  metadata      Json?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status, lastSeenAt])
+  @@index([currentQueue])
 }
 
 model DomainEvent {

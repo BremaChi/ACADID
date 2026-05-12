@@ -3,8 +3,6 @@ import { resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 const baseUrl = process.env.ACADID_API_URL ?? "http://localhost:4000/api";
-const email = process.env.SEED_SUPER_ADMIN_EMAIL ?? "founder@acadid.local";
-const password = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "ChangeMe123!";
 const runId = Date.now().toString(36);
 
 function loadRootEnv() {
@@ -54,6 +52,8 @@ async function request(path, options = {}) {
 
 async function main() {
   loadRootEnv();
+  const email = process.env.SEED_SUPER_ADMIN_EMAIL ?? "founder@acadid.local";
+  const password = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "ChangeMe123!";
 
   const health = await request("/health");
   if (health.status !== "ok") {

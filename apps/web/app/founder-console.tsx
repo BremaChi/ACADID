@@ -354,8 +354,25 @@ type SystemHealth = {
       runningJobs?: number;
       failedJobs24h?: number;
       staleRunningJobs?: number;
+      activeWorkers?: number;
+      staleWorkers?: number;
+      stoppedWorkers?: number;
+      workerStaleAfterSeconds?: number;
       queues?: Array<{ queue: string; queued: number; retrying: number; running: number; failed: number; total: number }>;
       recentWorkers?: Array<{ jobId: string; queue: string; type: string; status: string; lockedBy: string | null; updatedAt: string }>;
+      workerHeartbeats?: Array<{
+        workerId: string;
+        hostname: string | null;
+        processId: number | null;
+        queues: string[];
+        status: string;
+        concurrency: number;
+        currentJobId: string | null;
+        currentQueue: string | null;
+        lastStartedAt: string | null;
+        lastSeenAt: string;
+        updatedAt: string;
+      }>;
       pendingOrRetrying?: number;
       dueNow?: number;
       failed24h?: number;
@@ -2944,6 +2961,8 @@ function SystemHealthPage({
           <MetricLine label="Denied verifications" value={String(metrics?.deniedVerificationEvents ?? "--")} />
           <MetricLine label="Revoked/discrepancy" value={String((metrics?.revokedVerificationEvents ?? 0) + (metrics?.discrepancyEvents ?? 0))} />
           <MetricLine label="Worker running jobs" value={String(queueHealth?.runningJobs ?? "--")} />
+          <MetricLine label="Active workers" value={String(queueHealth?.activeWorkers ?? "--")} />
+          <MetricLine label="Stale workers" value={String(queueHealth?.staleWorkers ?? "--")} />
           <MetricLine label="Webhook delivered 24h" value={String(webhookHealth?.delivered24h ?? "--")} />
           <MetricLine label="Recent incidents" value={`${incidents.length} open`} />
           <MetricLine label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} />
@@ -2980,6 +2999,30 @@ function SystemHealthPage({
           </div>
         </Card>
       </div>
+      <Card>
+        <SectionTitle title="Worker Registry" subtitle="Live worker heartbeat registry for scaled background processing." />
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <MetricLine label="Active" value={String(queueHealth?.activeWorkers ?? "--")} />
+          <MetricLine label="Stale" value={String(queueHealth?.staleWorkers ?? "--")} />
+          <MetricLine label="Stopped 24h" value={String(queueHealth?.stoppedWorkers ?? "--")} />
+          <MetricLine label="Stale after" value={queueHealth?.workerStaleAfterSeconds ? `${queueHealth.workerStaleAfterSeconds}s` : "--"} />
+        </div>
+        <ResponsiveTable
+          empty="No worker heartbeat has been recorded yet. Start an AcadID worker to register it."
+          headers={["Worker", "Status", "Concurrency", "Current Queue", "Queues", "Last Seen"]}
+          rows={(queueHealth?.workerHeartbeats ?? []).map((worker) => [
+            <div key="worker">
+              <p className="font-medium text-primary">{worker.workerId}</p>
+              <p className="text-xs text-textSecondary">{worker.hostname ?? "Unknown host"}{worker.processId ? ` / pid ${worker.processId}` : ""}</p>
+            </div>,
+            <StatusBadge key="status" status={worker.status} />,
+            worker.concurrency.toLocaleString(),
+            worker.currentQueue ?? "Idle",
+            worker.queues.slice(0, 3).join(", ") + (worker.queues.length > 3 ? ` +${worker.queues.length - 3}` : ""),
+            formatDate(worker.lastSeenAt)
+          ])}
+        />
+      </Card>
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <SectionTitle title="Notification Delivery" subtitle="Email, SMS, and push provider health with failed-delivery retry." />

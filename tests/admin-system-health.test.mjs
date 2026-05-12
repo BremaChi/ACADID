@@ -56,6 +56,29 @@ test("founder system health returns component and gateway metrics", async () => 
           }
         ]
       },
+      workerHeartbeat: {
+        count: async ({ where }) => {
+          if (where?.status === "ACTIVE" && where?.lastSeenAt?.gte) return 2;
+          if (where?.status === "ACTIVE" && where?.lastSeenAt?.lt) return 0;
+          if (where?.status === "STOPPED") return 1;
+          return 2;
+        },
+        findMany: async () => [
+          {
+            workerId: "worker-1",
+            hostname: "acadid-worker-a",
+            processId: 4201,
+            queues: ["ingestion.bulk", "webhooks.delivery", "platform.maintenance"],
+            status: "ACTIVE",
+            concurrency: 5,
+            currentJobId: "job-1",
+            currentQueue: "webhooks.delivery",
+            lastStartedAt: new Date("2026-05-08T09:58:00.000Z"),
+            lastSeenAt: new Date("2026-05-08T10:01:30.000Z"),
+            updatedAt: new Date("2026-05-08T10:01:30.000Z")
+          }
+        ]
+      },
       webhookDelivery: {
         count: async ({ where }) => {
           if (where?.status === "DELIVERED") return 9;
@@ -99,6 +122,7 @@ test("founder system health returns component and gateway metrics", async () => 
   assert.equal(health.overallStatus, "OPERATIONAL");
   assert.equal(health.services.some((service) => service.name === "Database" && service.status === "OPERATIONAL"), true);
   assert.equal(health.services.some((service) => service.name === "Background Workers" && service.status === "OPERATIONAL"), true);
+  assert.equal(health.services.find((service) => service.name === "Background Workers").metadata.activeWorkers, 2);
   assert.equal(health.services.some((service) => service.name === "Webhook Delivery" && service.status === "OPERATIONAL"), true);
   assert.equal(health.services.some((service) => service.name === "Credential Signing" && service.status === "OPERATIONAL"), true);
   assert.equal(health.metrics.gatewayRequestsToday, 32);

@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
+import { hostname } from "node:os";
 import { Injectable, Logger } from "@nestjs/common";
-import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDeliveryStatus } from "@prisma/client";
+import { BackgroundJobStatus, BackgroundJobType, Prisma, UserRole, WebhookDeliveryStatus, WorkerHeartbeatStatus } from "@prisma/client";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { IngestionService } from "../gateway/ingestion/ingestion.service.js";
 import { ErrorObservabilityService } from "../platform/services/error-observability.service.js";
@@ -73,14 +74,17 @@ export class JobWorkerService {
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
     const result: WorkerRunResult = { processed: 0, succeeded: 0, failed: 0 };
+    await this.recordHeartbeat(workerId, { concurrency: batchSize });
 
     for (let index = 0; index < batchSize; index += 1) {
       const job = await this.claimNextJob(workerId);
       if (!job) {
+        await this.recordHeartbeat(workerId, { concurrency: batchSize });
         break;
       }
 
       result.processed += 1;
+      await this.recordHeartbeat(workerId, { concurrency: batchSize, currentJob: job });
       try {
         const processorResult = await this.processJob(job);
         await this.completeJob(job, processorResult);
@@ -88,6 +92,8 @@ export class JobWorkerService {
       } catch (error) {
         await this.failOrRetryJob(job, error);
         result.failed += 1;
+      } finally {
+        await this.recordHeartbeat(workerId, { concurrency: batchSize });
       }
     }
 
@@ -100,15 +106,25 @@ export class JobWorkerService {
     const batchSize = options.batchSize ?? 5;
 
     this.logger.log(`AcadID worker started as ${workerId}`);
+    await this.recordHeartbeat(workerId, { concurrency: batchSize, status: WorkerHeartbeatStatus.ACTIVE, started: true });
     do {
       const result = await this.runOnce(workerId, batchSize);
       if (options.once) {
+        await this.markWorkerStopped(workerId);
         return result;
       }
       if (result.processed === 0) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     } while (true);
+  }
+
+  resolveWorkerId(workerId?: string) {
+    return workerId ?? this.defaultWorkerId();
+  }
+
+  async markWorkerStopped(workerId: string) {
+    await this.recordHeartbeat(workerId, { status: WorkerHeartbeatStatus.STOPPED });
   }
 
   async claimNextJob(workerId: string): Promise<ClaimedJob | null> {
@@ -152,6 +168,62 @@ export class JobWorkerService {
         }
       });
     });
+  }
+
+  private async recordHeartbeat(
+    workerId: string,
+    options: {
+      concurrency?: number;
+      status?: WorkerHeartbeatStatus;
+      started?: boolean;
+      currentJob?: ClaimedJob;
+    } = {}
+  ) {
+    const now = new Date();
+    const workerHeartbeat = (this.prisma as unknown as { workerHeartbeat?: { upsert: (args: unknown) => Promise<unknown> } }).workerHeartbeat;
+    if (!workerHeartbeat) {
+      return;
+    }
+    try {
+      await workerHeartbeat.upsert({
+        where: { workerId },
+        create: {
+          workerId,
+          hostname: hostname(),
+          processId: process.pid,
+          queues: workerQueues,
+          status: options.status ?? WorkerHeartbeatStatus.ACTIVE,
+          concurrency: options.concurrency ?? 1,
+          currentJobId: options.currentJob?.uuid,
+          currentQueue: options.currentJob?.queue,
+          lastStartedAt: options.started ? now : undefined,
+          lastSeenAt: now,
+          metadata: this.toJson({
+            nodeVersion: process.version,
+            platform: process.platform,
+            runtime: "node"
+          })
+        },
+        update: {
+          hostname: hostname(),
+          processId: process.pid,
+          queues: workerQueues,
+          status: options.status ?? WorkerHeartbeatStatus.ACTIVE,
+          concurrency: options.concurrency ?? 1,
+          currentJobId: options.currentJob?.uuid ?? null,
+          currentQueue: options.currentJob?.queue ?? null,
+          ...(options.started ? { lastStartedAt: now } : {}),
+          lastSeenAt: now,
+          metadata: this.toJson({
+            nodeVersion: process.version,
+            platform: process.platform,
+            runtime: "node"
+          })
+        }
+      });
+    } catch (error) {
+      this.logger.warn(`Worker heartbeat failed for ${workerId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async processJob(job: ClaimedJob): Promise<Prisma.InputJsonValue> {

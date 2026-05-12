@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { BackgroundJobType, InstitutionUserStatus, NotificationChannel, UserRole } from "@prisma/client";
+import { BackgroundJobType, InstitutionUserStatus, NotificationChannel, UserRole, WorkerHeartbeatStatus } from "@prisma/client";
 import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
@@ -2985,8 +2985,43 @@ export class AdminService {
     const startedAt = Date.now();
     const now = new Date();
     const staleLockedBefore = new Date(now.getTime() - 15 * 60 * 1000);
+    const staleWorkerBefore = new Date(now.getTime() - 2 * 60 * 1000);
+    const workerHeartbeat = (
+      this.prisma as unknown as {
+        workerHeartbeat?: {
+          count: (args: unknown) => Promise<number>;
+          findMany: (args: unknown) => Promise<
+            Array<{
+              workerId: string;
+              hostname: string | null;
+              processId: number | null;
+              queues: string[];
+              status: string;
+              concurrency: number;
+              currentJobId: string | null;
+              currentQueue: string | null;
+              lastStartedAt: Date | null;
+              lastSeenAt: Date;
+              updatedAt: Date;
+            }>
+          >;
+        };
+      }
+    ).workerHeartbeat;
     try {
-      const [readyBacklog, scheduledBacklog, runningJobs, failedJobs24h, staleRunningJobs, byQueue, recentWorkers] = await Promise.all([
+      const [
+        readyBacklog,
+        scheduledBacklog,
+        runningJobs,
+        failedJobs24h,
+        staleRunningJobs,
+        byQueue,
+        recentWorkers,
+        activeWorkers,
+        staleWorkers,
+        stoppedWorkers,
+        workerHeartbeats
+      ] = await Promise.all([
         this.prisma.backgroundJob.count({
           where: {
             status: { in: ["QUEUED", "RETRYING"] },
@@ -3038,14 +3073,44 @@ export class AdminService {
           },
           orderBy: { updatedAt: "desc" },
           take: 10
-        })
+        }),
+        workerHeartbeat
+          ? workerHeartbeat.count({
+              where: {
+                status: WorkerHeartbeatStatus.ACTIVE,
+                lastSeenAt: { gte: staleWorkerBefore }
+              }
+            })
+          : Promise.resolve(0),
+        workerHeartbeat
+          ? workerHeartbeat.count({
+              where: {
+                status: WorkerHeartbeatStatus.ACTIVE,
+                lastSeenAt: { lt: staleWorkerBefore }
+              }
+            })
+          : Promise.resolve(0),
+        workerHeartbeat
+          ? workerHeartbeat.count({
+              where: {
+                status: WorkerHeartbeatStatus.STOPPED,
+                updatedAt: { gte: this.hoursAgo(24) }
+              }
+            })
+          : Promise.resolve(0),
+        workerHeartbeat
+          ? workerHeartbeat.findMany({
+              orderBy: { lastSeenAt: "desc" },
+              take: 20
+            })
+          : Promise.resolve([])
       ]);
 
-      const status: HealthStatus = staleRunningJobs > 0 || failedJobs24h > 0 || readyBacklog > 500 ? "DEGRADED" : "OPERATIONAL";
+      const status: HealthStatus = staleWorkers > 0 || staleRunningJobs > 0 || failedJobs24h > 0 || readyBacklog > 500 ? "DEGRADED" : "OPERATIONAL";
       const message =
         status === "OPERATIONAL"
-          ? `${readyBacklog} ready job(s), ${runningJobs} running, ${scheduledBacklog} scheduled.`
-          : `${readyBacklog} ready job(s), ${failedJobs24h} failed in 24h, ${staleRunningJobs} stale running job(s).`;
+          ? `${readyBacklog} ready job(s), ${runningJobs} running, ${activeWorkers} active worker(s).`
+          : `${readyBacklog} ready job(s), ${failedJobs24h} failed in 24h, ${staleRunningJobs} stale job(s), ${staleWorkers} stale worker(s).`;
 
       return {
         name: "Background Workers",
@@ -3058,6 +3123,10 @@ export class AdminService {
           runningJobs,
           failedJobs24h,
           staleRunningJobs,
+          activeWorkers,
+          staleWorkers,
+          stoppedWorkers,
+          workerStaleAfterSeconds: 120,
           queues: this.normaliseQueueBreakdown(byQueue),
           recentWorkers: recentWorkers.map((job) => ({
             jobId: job.uuid,
@@ -3070,6 +3139,19 @@ export class AdminService {
             completedAt: job.completedAt,
             failedAt: job.failedAt,
             updatedAt: job.updatedAt
+          })),
+          workerHeartbeats: workerHeartbeats.map((worker) => ({
+            workerId: worker.workerId,
+            hostname: worker.hostname,
+            processId: worker.processId,
+            queues: worker.queues,
+            status: worker.status,
+            concurrency: worker.concurrency,
+            currentJobId: worker.currentJobId,
+            currentQueue: worker.currentQueue,
+            lastStartedAt: worker.lastStartedAt,
+            lastSeenAt: worker.lastSeenAt,
+            updatedAt: worker.updatedAt
           }))
         }
       };
@@ -3085,8 +3167,13 @@ export class AdminService {
           runningJobs: 0,
           failedJobs24h: 0,
           staleRunningJobs: 0,
+          activeWorkers: 0,
+          staleWorkers: 0,
+          stoppedWorkers: 0,
+          workerStaleAfterSeconds: 120,
           queues: [],
-          recentWorkers: []
+          recentWorkers: [],
+          workerHeartbeats: []
         }
       };
     }

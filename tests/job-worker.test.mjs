@@ -66,6 +66,41 @@ test("worker leases one queued job and completes it with a domain event", async 
   assert.equal(calls[2].data.type, "bulk_student_upload.succeeded");
 });
 
+test("worker records heartbeat state for production worker registry", async () => {
+  const heartbeats = [];
+  const service = new JobWorkerService(
+    {
+      workerHeartbeat: {
+        upsert: async (args) => {
+          heartbeats.push(args);
+          return args.update;
+        }
+      },
+      $transaction: async (callback) =>
+        callback({
+          $queryRaw: async () => [],
+          backgroundJob: {
+            update: async () => {
+              throw new Error("no job should be claimed");
+            }
+          }
+        })
+    },
+    {},
+    {}
+  );
+
+  const result = await service.runOnce("worker-heartbeat-test", 3);
+
+  assert.deepEqual(result, { processed: 0, succeeded: 0, failed: 0 });
+  assert.equal(heartbeats.length, 2);
+  assert.equal(heartbeats[0].where.workerId, "worker-heartbeat-test");
+  assert.equal(heartbeats[0].create.status, "ACTIVE");
+  assert.equal(heartbeats[0].create.concurrency, 3);
+  assert.equal(Array.isArray(heartbeats[0].create.queues), true);
+  assert.equal(heartbeats[0].create.queues.includes("platform.maintenance"), true);
+});
+
 test("worker retries failed jobs until max attempts", async () => {
   const calls = [];
   const service = new JobWorkerService(

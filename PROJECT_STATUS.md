@@ -103,6 +103,7 @@ The API has these first modules:
 - Idempotency ledger maintenance is implemented: `/api/admin/idempotency-records` exposes summary/recent records, `/api/admin/idempotency-records/cleanup` queues `IDEMPOTENCY_RECORD_CLEANUP`, workers delete expired rows asynchronously, and Founder System Health includes idempotency metrics plus cleanup controls.
 - Notification delivery transports are implemented for worker-driven email, SMS, and push notifications: Resend/SendGrid for email, Termii/Twilio for SMS, Expo push for mobile, and safe local dry-run when providers are not configured.
 - Notification delivery operations are visible in Founder System Health: provider health, pending/sent/failed counts, channel breakdown, recent failed notifications, failed-notification retry API, and audit events for retry queueing.
+- Worker deployment topology now has a durable heartbeat registry: each worker can use a stable `ACADID_WORKER_ID`, records queues/concurrency/current job/last-seen status, marks itself stopped during graceful shutdown, and surfaces active/stale/stopped worker counts in Founder System Health.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
 - Distributed cache support is implemented with an in-process L1 cache plus optional Upstash Redis REST L2 adapter for multi-instance pilot/production deployments; configuration is documented in `docs/runbooks/distributed-cache.md`.
@@ -153,6 +154,7 @@ The Prisma schema includes the core AcadID model:
 - WebhookDelivery.
 - WebhookEndpoint.
 - Notification.
+- WorkerHeartbeat.
 
 ### Web
 
@@ -174,6 +176,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Live Disputes page backed by the Data Center API, with status filters, detail panel, founder assignment, institution notice text, escalation, and resolution notes.
 - Live Verification Logs page backed by the Data Center API, with cross-institution search, outcome filters, metrics, and CSV export.
 - Live System Health page backed by the Data Center API, with service status, gateway metrics, and recent incidents.
+- Live System Health worker registry shows active, stale, and stopped background workers plus recent heartbeat rows for multi-worker production operations.
 - Live Revenue page backed by the Data Center API, with ledger totals, subscription status, recent entries, and CSV export.
 - Live Settings page backed by the Data Center API, with editable approval rules, API defaults, notifications, and email template subjects.
 - Live Security page includes founder recovery-code status and TOTP-protected rotation with one-time display.
@@ -218,6 +221,7 @@ Completed successfully:
 - Credential signing readiness validates with `npm run typecheck`, `npm test`, and authenticated `/api/admin/system-health`; local development reports `Credential Signing` as degraded until stable deployment keys are configured.
 - Credential signing operator tooling validates with `npm run crypto:keygen` shape checks and `npm run crypto:validate` failure checks when configured keys are missing.
 - Live Supabase smoke validation passes with `npm run smoke:api`: founder login, institution creation, developer access approval, API key auth, learner ingestion, result publishing, credential issuance, and credential verification.
+- Worker heartbeat registry validates with `npm run worker:once` using a stable worker ID; Founder System Health reports the worker registry from Supabase.
 - Founder MFA recovery workflow validates with `npm run typecheck`, `npm test`, `npm run db:deploy`, and authenticated `/api/auth/mfa/recovery-codes` status check.
 - Verification billing writer validates with `npm run typecheck`, `npm test`, and local API health checks; billing stays disabled when `ACADID_VERIFICATION_FEE_MINOR` is not configured.
 - Founder dashboard completion validates with `npm run typecheck`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/dashboard-summary` plus `/api/admin/audit-events` checks.
