@@ -69,6 +69,11 @@ test("founder system health returns component and gateway metrics", async () => 
       },
       webhookEndpoint: {
         count: async () => 2
+      },
+      notification: {
+        count: async () => 0,
+        groupBy: async () => [],
+        findMany: async () => []
       }
     },
     {},

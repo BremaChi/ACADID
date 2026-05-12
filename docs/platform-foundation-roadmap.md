@@ -126,6 +126,7 @@ Implemented foundation:
 - Worker-only object storage downloads.
 - Result-batch validation job processor.
 - Notification delivery transports for email, SMS, and push: Resend/SendGrid, Termii/Twilio, Expo push, and local dry-run safety.
+- Founder System Health notification operations: provider health, pending/sent/failed counts, channel breakdown, recent failed notifications, and failed-notification retry controls.
 
 Required next:
 
@@ -133,7 +134,7 @@ Required next:
 - Separate named queues if load increases.
 - Worker heartbeat/last-seen tracking.
 - Worker metrics in System Health.
-- Failed-notification retry controls and delivery dashboards.
+- Delivery templates, localisation, user preferences, and opt-out rules.
 
 ### 7. Monitoring And Health Checks
 
@@ -146,6 +147,7 @@ Implemented foundation:
 - Credential signing readiness.
 - Background queue metrics: ready backlog, scheduled backlog, running jobs, failed jobs, stale running jobs, queue breakdown, and recent worker activity.
 - Webhook delivery metrics: pending/retrying, due now, delivered in 24h, failed in 24h, signing-secret readiness, and status breakdown.
+- Notification delivery metrics: provider configuration, pending/sent/failed counts, channel breakdown, and recent failed notifications.
 
 Required next:
 
@@ -222,11 +224,11 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Notification delivery dashboards, provider health checks, and failed-notification retry controls.
-2. Worker deployment topology and heartbeat design for multi-worker production.
-3. Central retry policy module by job type, including jitter.
-4. Dead-letter queue/listing for operator review.
-5. Per-institution and per-product rate-limit defaults and emergency overrides.
+1. Worker deployment topology and heartbeat design for multi-worker production.
+2. Central retry policy module by job type, including jitter.
+3. Dead-letter queue/listing for operator review.
+4. Per-institution and per-product rate-limit defaults and emergency overrides.
+5. Supabase storage download health check.
 
 Completed:
 
@@ -234,3 +236,4 @@ Completed:
 - Distributed cache adapter with in-process L1 and optional Upstash Redis REST L2.
 - Webhook receiver documentation for partners.
 - Idempotency cleanup/retention job, API visibility, System Health component, and Founder Console controls.
+- Notification delivery dashboard, provider health checks, and failed-notification retry controls.

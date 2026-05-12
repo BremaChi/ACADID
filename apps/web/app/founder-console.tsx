@@ -391,6 +391,28 @@ type SystemHealth = {
         createdAt: string;
         updatedAt: string;
       }>;
+      pending?: number;
+      sent24h?: number;
+      providers?: {
+        email: { configured: boolean; provider: string };
+        sms: { configured: boolean; provider: string };
+        push: { configured: boolean; provider: string };
+        requireProvider: boolean;
+      };
+      channelBreakdown?: Array<{ channel: string; status: string; count: number }>;
+      recentFailures?: Array<{
+        id: string;
+        institutionId: string | null;
+        institutionName: string | null;
+        learnerAin: string | null;
+        learnerName: string | null;
+        channel: string;
+        type: string;
+        title: string;
+        status: string;
+        error: string | null;
+        updatedAt: string;
+      }>;
     };
   }>;
   metrics: {
@@ -1131,6 +1153,22 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Unable to queue idempotency cleanup." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function retryNotification(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ jobId: string; notificationId: string }>(`/admin/notifications/${id}/retry`, token, {
+        method: "POST"
+      });
+      setNotice({ tone: "success", text: `Notification retry queued. Job ${response.jobId}.` });
+      await refreshData();
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Unable to retry notification." });
     } finally {
       setLoading(false);
     }
@@ -1887,6 +1925,7 @@ export function FounderConsole() {
           onIdempotencyCleanupHours={setIdempotencyCleanupHours}
           onQueueIdempotencyCleanup={queueIdempotencyCleanup}
           onQueueRateLimitCleanup={queueRateLimitCleanup}
+          onRetryNotification={retryNotification}
         />
       );
     }
@@ -2837,7 +2876,8 @@ function SystemHealthPage({
   onCleanupHours,
   onIdempotencyCleanupHours,
   onQueueIdempotencyCleanup,
-  onQueueRateLimitCleanup
+  onQueueRateLimitCleanup,
+  onRetryNotification
 }: {
   cleanupHours: number;
   health: SystemHealth | null;
@@ -2847,6 +2887,7 @@ function SystemHealthPage({
   onIdempotencyCleanupHours: (value: number) => void;
   onQueueIdempotencyCleanup: () => void;
   onQueueRateLimitCleanup: () => void;
+  onRetryNotification: (id: string) => void;
 }) {
   const metrics = health?.metrics;
   const services = health?.services ?? [
@@ -2861,6 +2902,7 @@ function SystemHealthPage({
   const incidents = health?.incidents ?? [];
   const queueHealth = services.find((service) => service.name === "Background Workers")?.metadata;
   const webhookHealth = services.find((service) => service.name === "Webhook Delivery")?.metadata;
+  const notificationHealth = services.find((service) => service.name === "Notification Delivery")?.metadata;
   const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
   const idempotencyHealth = services.find((service) => service.name === "Idempotency Ledger")?.metadata;
 
@@ -2938,6 +2980,36 @@ function SystemHealthPage({
           </div>
         </Card>
       </div>
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Notification Delivery" subtitle="Email, SMS, and push provider health with failed-delivery retry." />
+          <StatusBadge status={services.find((service) => service.name === "Notification Delivery")?.status ?? "PENDING_CONFIGURATION"} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <MetricLine label="Pending" value={String(notificationHealth?.pending ?? "--")} />
+          <MetricLine label="Sent 24h" value={String(notificationHealth?.sent24h ?? "--")} />
+          <MetricLine label="Failed 24h" value={String(notificationHealth?.failed24h ?? "--")} />
+          <MetricLine label="Email provider" value={notificationHealth?.providers?.email.provider ?? "--"} />
+          <MetricLine label="SMS provider" value={notificationHealth?.providers?.sms.provider ?? "--"} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(notificationHealth?.channelBreakdown ?? []).map((item) => (
+            <StatusBadge key={`${item.channel}-${item.status}`} status={`${item.channel} ${titleCase(item.status)} ${item.count}`} />
+          ))}
+        </div>
+        <ResponsiveTable
+          empty="No failed notifications need attention."
+          headers={["Notification", "Channel", "Institution", "Error", "Updated", "Action"]}
+          rows={(notificationHealth?.recentFailures ?? []).map((notification) => [
+            <div key="title"><p className="font-medium text-primary">{notification.title}</p><p className="text-xs text-textSecondary">{notification.type}</p></div>,
+            <StatusBadge key="channel" status={notification.channel} />,
+            notification.institutionName ?? notification.learnerName ?? notification.learnerAin ?? "Platform",
+            notification.error ?? "Failed",
+            formatDate(notification.updatedAt),
+            <button key="retry" className={primarySmallButtonClass} disabled={loading} onClick={() => onRetryNotification(notification.id)} type="button">Retry</button>
+          ])}
+        />
+      </Card>
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <Card>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

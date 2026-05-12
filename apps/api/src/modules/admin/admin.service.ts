@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { BackgroundJobType, InstitutionUserStatus, UserRole } from "@prisma/client";
+import { BackgroundJobType, InstitutionUserStatus, NotificationChannel, UserRole } from "@prisma/client";
 import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
@@ -1234,7 +1234,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, metrics] = await Promise.all([
+    const [database, auth, storage, email, notificationDelivery, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkConfiguredService(
@@ -1242,6 +1242,7 @@ export class AdminService {
         Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.OBJECT_STORAGE_BUCKET || process.env.STORAGE_BUCKET)
       ),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
+      this.checkNotificationDelivery(),
       this.checkCacheService(),
       this.checkQueueWorkers(),
       this.checkWebhookDelivery(),
@@ -1262,6 +1263,7 @@ export class AdminService {
       auth,
       storage,
       email,
+      notificationDelivery,
       cache,
       queue,
       webhook,
@@ -1365,6 +1367,111 @@ export class AdminService {
     return {
       ...job,
       olderThanHours
+    };
+  }
+
+  async listNotifications(options: { status?: string; channel?: string } = {}) {
+    const status = this.optionalEnum(options.status, ["PENDING", "SENT", "FAILED", "CANCELLED"]);
+    const channel = this.optionalEnum(options.channel, ["PUSH", "EMAIL", "SMS", "WEBHOOK"]);
+    const notifications = await this.prisma.notification.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(channel ? { channel } : {})
+      },
+      include: this.notificationInclude(),
+      orderBy: { updatedAt: "desc" },
+      take: 250
+    });
+
+    return notifications.map((notification) => this.safeNotification(notification));
+  }
+
+  async retryNotification(auth: AuthTokenPayload, id: string) {
+    const existing = await this.prisma.notification.findUnique({
+      where: { uuid: id },
+      include: this.notificationInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Notification not found.");
+    }
+    if (existing.status !== "FAILED") {
+      throw new BadRequestException("Only failed notifications can be retried.");
+    }
+    if (existing.channel === "WEBHOOK") {
+      throw new BadRequestException("Webhook notifications must be retried from webhook delivery controls.");
+    }
+
+    const jobType = existing.channel === "PUSH" ? BackgroundJobType.PUSH_NOTIFICATION : BackgroundJobType.SMS_EMAIL_DELIVERY;
+    const queue = existing.channel === "PUSH" ? "notifications.push" : "notifications.delivery";
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const job = await tx.backgroundJob.create({
+        data: {
+          type: jobType,
+          queue,
+          institutionId: existing.institutionId,
+          relatedEntityType: "Notification",
+          relatedEntityId: existing.uuid,
+          createdById: auth.sub,
+          priority: 1,
+          maxAttempts: 3,
+          payload: {
+            notificationId: existing.uuid,
+            channel: existing.channel,
+            retry: true
+          }
+        }
+      });
+
+      await tx.notification.update({
+        where: { uuid: existing.uuid },
+        data: {
+          jobId: job.uuid,
+          status: "PENDING",
+          failedAt: null,
+          error: null
+        }
+      });
+
+      await tx.domainEvent.create({
+        data: {
+          type: "notification.retry_queued",
+          aggregateType: "Notification",
+          aggregateId: existing.uuid,
+          institutionId: existing.institutionId,
+          jobId: job.uuid,
+          payload: {
+            notificationId: existing.uuid,
+            channel: existing.channel,
+            jobId: job.uuid
+          }
+        }
+      });
+
+      return job;
+    });
+
+    await this.audit.write({
+      actorUserId: auth.sub,
+      actorRole: auth.role,
+      action: "notification.retry_queued",
+      targetType: "Notification",
+      targetId: existing.uuid,
+      institutionId: existing.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        jobId: result.uuid,
+        channel: existing.channel
+      }
+    });
+
+    return {
+      id: result.uuid,
+      jobId: result.uuid,
+      type: result.type,
+      queue: result.queue,
+      status: result.status,
+      notificationId: existing.uuid,
+      pollingUrl: `/jobs/${result.uuid}`
     };
   }
 
@@ -3205,6 +3312,65 @@ export class AdminService {
     }
   }
 
+  private async checkNotificationDelivery() {
+    const startedAt = Date.now();
+    try {
+      const since = this.hoursAgo(24);
+      const [pending, failed24h, sent24h, byChannelStatus, recentFailures] = await Promise.all([
+        this.prisma.notification.count({ where: { status: "PENDING" } }),
+        this.prisma.notification.count({ where: { status: "FAILED", failedAt: { gte: since } } }),
+        this.prisma.notification.count({ where: { status: "SENT", sentAt: { gte: since } } }),
+        this.prisma.notification.groupBy({
+          by: ["channel", "status"],
+          _count: { _all: true },
+          orderBy: [{ channel: "asc" }, { status: "asc" }]
+        }),
+        this.prisma.notification.findMany({
+          where: { status: "FAILED" },
+          include: this.notificationInclude(),
+          orderBy: { updatedAt: "desc" },
+          take: 10
+        })
+      ]);
+      const providers = this.notificationProviderHealth();
+      const requireProvider = process.env.ACADID_REQUIRE_NOTIFICATION_PROVIDER === "true";
+      const missingRequiredProvider = requireProvider && (!providers.email.configured || !providers.sms.configured);
+      const status: HealthStatus = failed24h > 0 || pending > 500 || missingRequiredProvider ? "DEGRADED" : "OPERATIONAL";
+      return {
+        name: "Notification Delivery",
+        status,
+        responseTimeMs: Date.now() - startedAt,
+        message:
+          status === "OPERATIONAL"
+            ? "Email, SMS, and push delivery queues are healthy."
+            : "Notification delivery needs review for failed, pending, or missing provider configuration.",
+        metadata: {
+          pending,
+          failed24h,
+          sent24h,
+          providers,
+          channelBreakdown: byChannelStatus.map((row) => ({ channel: row.channel, status: row.status, count: row._count._all })),
+          recentFailures: recentFailures.map((notification) => this.safeNotification(notification))
+        }
+      };
+    } catch (error) {
+      return {
+        name: "Notification Delivery",
+        status: "DEGRADED" as HealthStatus,
+        responseTimeMs: Date.now() - startedAt,
+        message: this.safeErrorMessage(error, "Notification delivery check failed."),
+        metadata: {
+          pending: 0,
+          failed24h: 0,
+          sent24h: 0,
+          providers: this.notificationProviderHealth(),
+          channelBreakdown: [],
+          recentFailures: []
+        }
+      };
+    }
+  }
+
   private async readGatewayMetrics() {
     const startedAt = Date.now();
     const since = this.hoursAgo(24);
@@ -3374,6 +3540,70 @@ export class AdminService {
     const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
     if (!Number.isFinite(parsed)) return fallback;
     return Math.min(max, Math.max(min, Math.floor(parsed)));
+  }
+
+  private optionalEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+    if (typeof value !== "string" || !value.trim()) {
+      return undefined;
+    }
+    const normalised = value.trim().toUpperCase() as T;
+    return allowed.includes(normalised) ? normalised : undefined;
+  }
+
+  private notificationProviderHealth() {
+    const emailProvider = process.env.RESEND_API_KEY ? "resend" : process.env.SENDGRID_API_KEY ? "sendgrid" : null;
+    const smsProvider = process.env.TERMII_API_KEY
+      ? "termii"
+      : process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
+        ? "twilio"
+        : null;
+    return {
+      email: {
+        configured: Boolean(emailProvider),
+        provider: emailProvider ?? (process.env.ACADID_REQUIRE_NOTIFICATION_PROVIDER === "true" ? "missing" : "dry-run-email")
+      },
+      sms: {
+        configured: Boolean(smsProvider),
+        provider: smsProvider ?? (process.env.ACADID_REQUIRE_NOTIFICATION_PROVIDER === "true" ? "missing" : "dry-run-sms")
+      },
+      push: {
+        configured: true,
+        provider: process.env.EXPO_ACCESS_TOKEN ? "expo-authenticated" : "expo"
+      },
+      requireProvider: process.env.ACADID_REQUIRE_NOTIFICATION_PROVIDER === "true"
+    };
+  }
+
+  private notificationInclude() {
+    return {
+      institution: { select: { uuid: true, institutionId: true, officialName: true } },
+      learner: { select: { uuid: true, ain: true, fullName: true } },
+      user: { select: { uuid: true, email: true, fullName: true } },
+      job: { select: { uuid: true, status: true, type: true, queue: true } }
+    };
+  }
+
+  private safeNotification(notification: Prisma.NotificationGetPayload<{ include: ReturnType<AdminService["notificationInclude"]> }>) {
+    return {
+      id: notification.uuid,
+      jobId: notification.jobId,
+      job: notification.job,
+      institutionId: notification.institution?.institutionId ?? null,
+      institutionName: notification.institution?.officialName ?? null,
+      learnerAin: notification.learner?.ain ?? null,
+      learnerName: notification.learner?.fullName ?? null,
+      userEmail: notification.user?.email ?? null,
+      userName: notification.user?.fullName ?? null,
+      channel: notification.channel,
+      type: notification.type,
+      title: notification.title,
+      status: notification.status,
+      sentAt: notification.sentAt,
+      failedAt: notification.failedAt,
+      error: notification.error,
+      createdAt: notification.createdAt,
+      updatedAt: notification.updatedAt
+    };
   }
 
   private rateLimitManager() {

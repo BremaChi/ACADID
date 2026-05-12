@@ -190,6 +190,16 @@ export class AdminController {
     return this.adminService.queueIdempotencyRecordCleanup(request.auth, body);
   }
 
+  @Get("notifications")
+  listNotifications(@Query("status") status?: string, @Query("channel") channel?: string) {
+    return this.adminService.listNotifications({ status, channel });
+  }
+
+  @Post("notifications/:id/retry")
+  retryNotification(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.adminService.retryNotification(request.auth, id);
+  }
+
   @Get("revenue")
   readRevenueOverview() {
     return this.adminService.readRevenueOverview();

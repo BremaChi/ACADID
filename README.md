@@ -127,6 +127,8 @@ Notifications:
 - Push supports Expo push tokens through the Expo push API.
 - Local development defaults to safe dry-run for email/SMS when providers are not configured; set `ACADID_REQUIRE_NOTIFICATION_PROVIDER=true` in production-like environments.
 - Notification destinations can come from the related user/learner record or from notification payload fields such as `email`, `phone`, `pushToken`, or `expoPushToken`.
+- Founder System Health shows notification provider status, delivery counts, channel breakdown, and recent failed notifications.
+- Failed email/SMS/push notifications can be retried through `POST /api/admin/notifications/:id/retry`; retries queue background jobs and write audit events.
 
 Credential signing:
 
