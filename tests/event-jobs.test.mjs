@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IdempotencyService } from "../apps/api/dist/apps/api/src/modules/platform/services/idempotency.service.js";
 import { QueueService } from "../apps/api/dist/apps/api/src/modules/platform/services/queue.service.js";
+import { RetryPolicyService } from "../apps/api/dist/apps/api/src/modules/platform/services/retry-policy.service.js";
 
 test("queue service creates a background job with an outbox domain event", async () => {
   const created = {};
@@ -45,6 +46,52 @@ test("queue service creates a background job with an outbox domain event", async
   assert.equal(created.job.type, "BULK_STUDENT_UPLOAD");
   assert.equal(created.event.type, "bulk_student_upload.queued");
   assert.equal(created.event.aggregateId, "job-1");
+});
+
+test("queue service applies central retry policy defaults by job type", async () => {
+  const created = {};
+  const service = new QueueService(
+    {
+      $transaction: async (callback) =>
+        callback({
+          backgroundJob: {
+            create: async ({ data }) => {
+              created.job = data;
+              return {
+                uuid: "job-credential-1",
+                status: "QUEUED",
+                ...data
+              };
+            }
+          },
+          domainEvent: {
+            create: async ({ data }) => ({ uuid: "event-credential-1", ...data })
+          }
+        })
+    },
+    {}
+  );
+
+  const result = await service.enqueueJob({
+    type: "CREDENTIAL_GENERATION",
+    institutionId: "institution-1",
+    payload: { credentialId: "credential-1" }
+  });
+
+  assert.equal(result.jobId, "job-credential-1");
+  assert.equal(created.job.maxAttempts, 5);
+});
+
+test("retry policy uses capped exponential delay with bounded jitter", () => {
+  const service = new RetryPolicyService();
+
+  assert.equal(service.maxAttemptsFor("WEBHOOK_DELIVERY"), 8);
+  assert.equal(service.shouldRetry({ type: "WEBHOOK_DELIVERY", attempts: 7, maxAttempts: 8 }), true);
+  assert.equal(service.shouldRetry({ type: "WEBHOOK_DELIVERY", attempts: 8, maxAttempts: 8 }), false);
+  assert.equal(service.shouldRetry({ type: "BULK_STUDENT_UPLOAD", attempts: 1, nonRetryable: true }), false);
+  assert.equal(service.delayMs("WEBHOOK_DELIVERY", 1, () => 0), 30_000);
+  assert.equal(service.delayMs("WEBHOOK_DELIVERY", 1, () => 1), 36_000);
+  assert.equal(service.delayMs("WEBHOOK_DELIVERY", 20, () => 1), 2_160_000);
 });
 
 test("queue service replays idempotent background job responses", async () => {

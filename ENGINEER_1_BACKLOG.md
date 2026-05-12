@@ -4,13 +4,12 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## Active Build Order
 
-1. Central retry policy module by job type, including jitter.
-2. Dead-letter queue/listing for operator review.
-3. Per-institution and per-product rate-limit defaults and emergency overrides.
-4. Supabase storage download health check.
-5. Error alert thresholds and external log sink adapter.
-6. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-7. Cache hit/miss metrics once external monitoring is connected.
+1. Dead-letter queue/listing for operator review.
+2. Per-institution and per-product rate-limit defaults and emergency overrides.
+3. Supabase storage download health check.
+4. Error alert thresholds and external log sink adapter.
+5. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+6. Cache hit/miss metrics once external monitoring is connected.
 
 ## Product API Roots To Keep Stable
 
@@ -37,3 +36,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Idempotency cleanup/retention job, Supabase migration, API visibility endpoint, System Health component, and Founder Console maintenance controls.
 - Notification delivery dashboard in Founder System Health, provider health checks, failed-notification retry API, and retry audit events.
 - Worker heartbeat registry for multi-worker production, including active/stale/stopped counts and Founder System Health visibility.
+- Central retry policy module by job type, including capped exponential backoff and jitter.

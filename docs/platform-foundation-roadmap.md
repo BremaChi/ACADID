@@ -63,13 +63,13 @@ Implemented foundation:
 - Retry status and run-after scheduling.
 - Non-retryable errors for malformed imports.
 - Exponential backoff for worker retry scheduling.
+- `RetryPolicyService` centralizes max attempts and capped exponential retry timing by job type.
+- Retry delays include bounded jitter so large batches do not retry at the same instant.
 - Webhook dead-letter state after exhausted attempts.
 - Founder retry/replay APIs for operator-controlled webhook recovery.
 
 Required next:
 
-- Central retry policy module by job type.
-- Retry jitter.
 - Dedicated dead-letter queue/listing for operator review.
 - Founder Console controls for dead-letter review.
 
@@ -222,11 +222,11 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Central retry policy module by job type, including jitter.
-2. Dead-letter queue/listing for operator review.
-3. Per-institution and per-product rate-limit defaults and emergency overrides.
-4. Supabase storage download health check.
-5. Error alert thresholds and external log sink adapter.
+1. Dead-letter queue/listing for operator review.
+2. Per-institution and per-product rate-limit defaults and emergency overrides.
+3. Supabase storage download health check.
+4. Error alert thresholds and external log sink adapter.
+5. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
 
 Completed:
 
@@ -236,3 +236,4 @@ Completed:
 - Idempotency cleanup/retention job, API visibility, System Health component, and Founder Console controls.
 - Notification delivery dashboard, provider health checks, and failed-notification retry controls.
 - Worker heartbeat registry, shutdown marking, stable `ACADID_WORKER_ID` support, and Founder System Health worker table.
+- Central retry policy by job type with capped exponential backoff and jitter.

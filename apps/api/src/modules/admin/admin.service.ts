@@ -33,6 +33,7 @@ import { CacheService } from "../platform/services/cache.service.js";
 import { IdempotencyService } from "../platform/services/idempotency.service.js";
 import { QueueService } from "../platform/services/queue.service.js";
 import { RateLimitService } from "../platform/services/rate-limit.service.js";
+import { RetryPolicyService } from "../platform/services/retry-policy.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 
 const allowedApiKeyScopes = new Set([
@@ -89,7 +90,8 @@ export class AdminService {
     private readonly queue?: QueueService,
     private readonly rateLimit?: RateLimitService,
     private readonly idempotency?: IdempotencyService,
-    @Optional() private readonly authService?: AuthService
+    @Optional() private readonly authService?: AuthService,
+    private readonly retryPolicy: RetryPolicyService = new RetryPolicyService()
   ) {}
 
   async createInstitution(input: unknown) {
@@ -1413,7 +1415,7 @@ export class AdminService {
           relatedEntityId: existing.uuid,
           createdById: auth.sub,
           priority: 1,
-          maxAttempts: 3,
+          maxAttempts: this.retryPolicy.maxAttemptsFor(jobType),
           payload: {
             notificationId: existing.uuid,
             channel: existing.channel,
@@ -1860,7 +1862,7 @@ export class AdminService {
           institutionId: existing.institutionId,
           relatedEntityType: "WebhookDelivery",
           priority: 1,
-          maxAttempts: 8,
+          maxAttempts: this.retryPolicy.maxAttemptsFor(BackgroundJobType.WEBHOOK_DELIVERY),
           payload: {
             replayOfDeliveryId: existing.uuid,
             webhookEndpointId: existing.webhookEndpointId,
@@ -2879,7 +2881,7 @@ export class AdminService {
         relatedEntityType: "WebhookDelivery",
         relatedEntityId: delivery.uuid,
         priority: 1,
-        maxAttempts: 8,
+        maxAttempts: this.retryPolicy.maxAttemptsFor(BackgroundJobType.WEBHOOK_DELIVERY),
         payload: {
           deliveryId: delivery.uuid,
           webhookEndpointId: delivery.webhookEndpointId,

@@ -5,6 +5,7 @@ import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuthorityService } from "./authority.service.js";
 import { IdempotencyService } from "./idempotency.service.js";
 import { PrismaService } from "./prisma.service.js";
+import { RetryPolicyService } from "./retry-policy.service.js";
 
 const queueByJobType: Record<BackgroundJobType, string> = {
   BULK_STUDENT_UPLOAD: "ingestion.bulk",
@@ -67,7 +68,8 @@ export class QueueService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authority: AuthorityService,
-    private readonly idempotency?: IdempotencyService
+    private readonly idempotency?: IdempotencyService,
+    private readonly retryPolicy: RetryPolicyService = new RetryPolicyService()
   ) {}
 
   async enqueueJob(input: EnqueueJobInput) {
@@ -105,7 +107,7 @@ export class QueueService {
           relatedEntityType: input.relatedEntityType,
           relatedEntityId: input.relatedEntityId,
           priority: input.priority ?? 0,
-          maxAttempts: input.maxAttempts ?? 3,
+          maxAttempts: input.maxAttempts ?? this.retryPolicy.maxAttemptsFor(input.type),
           runAfter: input.runAfter ?? new Date(),
           payload: input.payload
         }
@@ -144,7 +146,7 @@ export class QueueService {
           institutionId: input.institutionId,
           relatedEntityType: "WebhookDelivery",
           priority: 1,
-          maxAttempts: 8,
+          maxAttempts: this.retryPolicy.maxAttemptsFor(BackgroundJobType.WEBHOOK_DELIVERY),
           payload: {
             eventId: input.eventId ?? null,
             sourceJobId: input.jobId ?? null,

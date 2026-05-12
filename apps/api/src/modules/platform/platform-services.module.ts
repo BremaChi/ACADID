@@ -11,6 +11,7 @@ import { IdempotencyService } from "./services/idempotency.service.js";
 import { NotificationDeliveryService } from "./services/notification-delivery.service.js";
 import { StructuredLoggerService } from "./services/structured-logger.service.js";
 import { CacheService } from "./services/cache.service.js";
+import { RetryPolicyService } from "./services/retry-policy.service.js";
 import { WebhookSecretService } from "./services/webhook-secret.service.js";
 
 @Module({
@@ -27,6 +28,7 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     StructuredLoggerService,
     ErrorObservabilityService,
     CacheService,
+    RetryPolicyService,
     WebhookSecretService
   ],
   exports: [
@@ -42,6 +44,7 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     StructuredLoggerService,
     ErrorObservabilityService,
     CacheService,
+    RetryPolicyService,
     WebhookSecretService
   ]
 })

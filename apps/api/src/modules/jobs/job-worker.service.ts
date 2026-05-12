@@ -9,6 +9,7 @@ import { IdempotencyService } from "../platform/services/idempotency.service.js"
 import { NotificationDeliveryService } from "../platform/services/notification-delivery.service.js";
 import { PrismaService } from "../platform/services/prisma.service.js";
 import { RateLimitService } from "../platform/services/rate-limit.service.js";
+import { RetryPolicyService } from "../platform/services/retry-policy.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 import { BulkUploadParserService, NonRetryableJobError } from "./bulk-upload-parser.service.js";
 
@@ -69,7 +70,8 @@ export class JobWorkerService {
     private readonly webhookSecrets?: WebhookSecretService,
     private readonly rateLimit?: RateLimitService,
     private readonly notificationDelivery?: NotificationDeliveryService,
-    private readonly idempotency?: IdempotencyService
+    private readonly idempotency?: IdempotencyService,
+    private readonly retryPolicy: RetryPolicyService = new RetryPolicyService()
   ) {}
 
   async runOnce(workerId = this.defaultWorkerId(), batchSize = 5): Promise<WorkerRunResult> {
@@ -328,7 +330,7 @@ export class JobWorkerService {
         attempts: { increment: 1 },
         lastStatusCode: null,
         lastError: null,
-        nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+        nextAttemptAt: this.nextRetryRunAfter(job)
       }
     });
 
@@ -347,7 +349,7 @@ export class JobWorkerService {
         data: {
           status: WebhookDeliveryStatus.RETRYING,
           lastError: message,
-          nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+          nextAttemptAt: this.nextRetryRunAfter(job)
         }
       });
       throw new Error(`Webhook delivery ${delivery.uuid} failed: ${message}`);
@@ -362,7 +364,7 @@ export class JobWorkerService {
           status: WebhookDeliveryStatus.RETRYING,
           lastStatusCode: response.status,
           lastError: message,
-          nextAttemptAt: new Date(Date.now() + this.retryDelayMs(job.attempts))
+          nextAttemptAt: this.nextRetryRunAfter(job)
         }
       });
       throw new Error(`Webhook delivery ${delivery.uuid} failed: ${message}`);
@@ -481,8 +483,13 @@ export class JobWorkerService {
 
   private async failOrRetryJob(job: ClaimedJob, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    const shouldRetry = !(error instanceof NonRetryableJobError) && job.attempts < job.maxAttempts;
-    const nextRunAfter = shouldRetry ? new Date(Date.now() + this.retryDelayMs(job.attempts)) : undefined;
+    const shouldRetry = this.retryPolicy.shouldRetry({
+      type: job.type,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      nonRetryable: error instanceof NonRetryableJobError
+    });
+    const nextRunAfter = shouldRetry ? this.nextRetryRunAfter(job) : undefined;
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.backgroundJob.update({
         where: { uuid: job.uuid },
@@ -535,9 +542,8 @@ export class JobWorkerService {
       });
   }
 
-  private retryDelayMs(attempts: number) {
-    const exponent = Math.max(0, attempts - 1);
-    return Math.min(15 * 60 * 1000, 30 * 1000 * 2 ** exponent);
+  private nextRetryRunAfter(job: ClaimedJob) {
+    return this.retryPolicy.nextRunAfter(job.type, job.attempts);
   }
 
   private serializeWebhookBody(delivery: WebhookDeliveryRecord, attempt: number) {
