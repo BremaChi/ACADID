@@ -82,6 +82,7 @@ The API has these first modules:
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
 - Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
+- v5 InvitationLead foundation is implemented: unregistered-institution RecordRequests now create/update durable invitation leads, Founder Admin can list and mark leads through `/api/admin/invitation-leads`, and all lead review actions write audit events.
 - Founder Console now has a dedicated Record Requests section with search, status filters, open/escalated/fulfilled metrics, request detail review, and governance status updates connected to `/govern/record-requests/:id/review`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
 - Credential signing operator tooling now includes `npm run crypto:keygen`, `npm run crypto:validate`, and `docs/runbooks/credential-signing-keys.md`.
@@ -124,6 +125,7 @@ The API has these first modules:
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
 - v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
 - Founder v5 Academic Operations visibility is implemented through `/api/admin/academic-operations` and a dedicated Founder Console page for setup health, active/sealed sessions, structure mix, rollover activity, sealed-session escalations, and institution flags.
+- Founder v5 Academic Operations now includes invitation leads for unregistered institutions with graduate demand, including Contacted, Invited, and Dismissed controls.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
 - Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
@@ -202,6 +204,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
+- Founder Academic Operations page now surfaces Invitation Leads captured from RecordRequests for unregistered schools.
 
 ## Validation Completed
 
@@ -262,6 +265,7 @@ Completed successfully:
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, institution readiness flags, recent rollover data, and sealed-session escalation events.
+- Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -295,11 +299,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Define worker deployment topology and heartbeat design for multi-worker production.
-2. Add a central retry policy module by job type, including jitter.
-3. Add dead-letter queue/listing for operator review.
-4. Add per-institution and per-product rate-limit defaults plus emergency overrides.
-5. Add Supabase storage download health checks for private object retrieval.
+1. Implement Registrar-facing staff assigned-scope management inside the Institution Portal.
+2. Add modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
+3. Implement RecordRequest payment escrow/release and publication into the learner passport.
+4. Add transfer workflows and disputed rollover surfaces.
+5. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
 6. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

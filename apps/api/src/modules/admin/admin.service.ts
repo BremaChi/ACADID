@@ -5,6 +5,7 @@ import type {
   ApiKeyEnvironment,
   DeveloperAccessRequestStatus,
   DisputeStatus,
+  InvitationLeadStatus,
   Prisma,
   RecordRequestStatus,
   RevenueCategory,
@@ -21,7 +22,8 @@ import {
   escalateDisputeSchema,
   platformSettingsSchema,
   reviewDeveloperAccessRequestSchema,
-  sendDisputeNoticeSchema
+  sendDisputeNoticeSchema,
+  updateInvitationLeadSchema
 } from "@acadid/shared";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { AuthService } from "../auth/auth.service.js";
@@ -997,6 +999,74 @@ export class AdminService {
       orderBy: { createdAt: "desc" },
       take: 250
     });
+  }
+
+  async listInvitationLeads(options: { status?: InvitationLeadStatus; search?: string } = {}) {
+    const search = options.search?.trim();
+    return this.prisma.invitationLead.findMany({
+      where: {
+        ...(options.status ? { status: options.status } : {}),
+        ...(search
+          ? {
+              OR: [
+                { institutionName: { contains: search, mode: "insensitive" } },
+                { latestRecordRequestCode: { contains: search, mode: "insensitive" } },
+                { educationLevel: { contains: search, mode: "insensitive" } },
+                { stateHint: { contains: search, mode: "insensitive" } },
+                { reviewNote: { contains: search, mode: "insensitive" } }
+              ]
+            }
+          : {})
+      },
+      orderBy: [{ status: "asc" }, { demandCount: "desc" }, { lastRequestedAt: "desc" }],
+      take: 250
+    });
+  }
+
+  async updateInvitationLead(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = updateInvitationLeadSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.invitationLead.findUnique({ where: { uuid: id } });
+    if (!existing) {
+      throw new BadRequestException("Invitation lead was not found.");
+    }
+
+    const now = new Date();
+    const status = parsed.data.status ?? existing.status;
+    const lead = await this.prisma.invitationLead.update({
+      where: { uuid: id },
+      data: {
+        status,
+        reviewNote: parsed.data.note ?? existing.reviewNote,
+        sourceApplicationId: parsed.data.sourceApplicationId ?? existing.sourceApplicationId,
+        convertedInstitutionId: parsed.data.convertedInstitutionId ?? existing.convertedInstitutionId,
+        reviewedById: auth.sub,
+        ...(status === "CONTACTED" ? { lastContactedAt: now } : {}),
+        ...(status === "INVITED" ? { invitedAt: now } : {}),
+        ...(status === "DISMISSED" ? { dismissedAt: now } : {}),
+        ...(status === "CONVERTED" ? { convertedAt: now } : {})
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "invitation_lead.review",
+      targetType: "InvitationLead",
+      targetId: lead.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        institutionName: lead.institutionName,
+        previousStatus: existing.status,
+        nextStatus: lead.status,
+        latestRecordRequestCode: lead.latestRecordRequestCode
+      }
+    });
+
+    return { accepted: true, lead };
   }
 
   async readDashboardSummary() {

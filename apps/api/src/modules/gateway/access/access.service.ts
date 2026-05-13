@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
-import { createAccessGrantSchema, createRecordRequestSchema, revokeAccessGrantSchema } from "@acadid/shared";
+import { createAccessGrantSchema, createRecordRequestSchema, revokeAccessGrantSchema, type CreateRecordRequestInput } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { IdempotencyService } from "../../platform/services/idempotency.service.js";
@@ -264,7 +264,9 @@ export class AccessService {
       }
     });
 
-    return { accepted: true, request };
+    const invitationLead = await this.createInvitationLeadForUnregisteredInstitution(auth, request, parsed.data);
+
+    return { accepted: true, request, invitationLead };
   }
 
   async listRecordRequests(auth: AuthTokenPayload) {
@@ -301,6 +303,84 @@ export class AccessService {
     }
 
     throw new BadRequestException("Could not allocate a record request ID.");
+  }
+
+  private async createInvitationLeadForUnregisteredInstitution(
+    auth: AuthTokenPayload,
+    request: { uuid: string; requestId: string; institutionId?: string | null },
+    input: CreateRecordRequestInput
+  ) {
+    if (input.institutionId || request.institutionId) {
+      return null;
+    }
+
+    const institutionName = input.institutionNameSubmitted.trim();
+    const institutionNameKey = this.invitationLeadKey(institutionName);
+    const existing = await this.prisma.invitationLead.findUnique({ where: { institutionNameKey } });
+    const now = new Date();
+    const requesterCountIncrement = input.requesterEmail || auth.email ? 1 : 0;
+    const metadata = {
+      source: "record_request",
+      latestEducationLevel: input.educationLevel,
+      latestRequesterEmail: input.requesterEmail ?? auth.email ?? null
+    };
+
+    const lead = existing
+      ? await this.prisma.invitationLead.update({
+          where: { uuid: existing.uuid },
+          data: {
+            demandCount: { increment: 1 },
+            requesterCount: { increment: requesterCountIncrement },
+            latestRecordRequestId: request.uuid,
+            latestRecordRequestCode: request.requestId,
+            recordRequestIds: Array.from(new Set([...existing.recordRequestIds, request.uuid])),
+            educationLevel: input.educationLevel,
+            lastRequestedAt: now,
+            status: existing.status === "DISMISSED" ? "NEW" : existing.status,
+            metadata
+          }
+        })
+      : await this.prisma.invitationLead.create({
+          data: {
+            institutionName,
+            institutionNameKey,
+            educationLevel: input.educationLevel,
+            demandCount: 1,
+            requesterCount: requesterCountIncrement,
+            latestRecordRequestId: request.uuid,
+            latestRecordRequestCode: request.requestId,
+            recordRequestIds: [request.uuid],
+            lastRequestedAt: now,
+            metadata
+          }
+        });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: existing ? "invitation_lead.update" : "invitation_lead.create",
+      targetType: "InvitationLead",
+      targetId: lead.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        institutionName,
+        requestId: request.requestId,
+        demandCount: lead.demandCount
+      }
+    });
+
+    return lead;
+  }
+
+  private invitationLeadKey(name: string) {
+    const normalized = name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120);
+
+    return normalized || createHash("sha256").update(name).digest("hex").slice(0, 32);
   }
 
   private recordRequestInclude() {

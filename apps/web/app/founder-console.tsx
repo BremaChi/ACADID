@@ -285,6 +285,8 @@ type RecordRequestStatus =
   | "ESCALATED"
   | "CANCELLED";
 
+type InvitationLeadStatus = "NEW" | "CONTACTED" | "INVITED" | "CONVERTED" | "DISMISSED";
+
 type RecordRequest = {
   uuid: string;
   requestId: string;
@@ -317,6 +319,31 @@ type RecordRequest = {
   learner: { uuid: string; ain: string; fullName: string; identityStatus: string } | null;
   institution: { uuid: string; institutionId: string; officialName: string; state: string; status: string } | null;
   assignedTo: { uuid: string; fullName: string; email: string; role: string } | null;
+};
+
+type InvitationLead = {
+  uuid: string;
+  institutionName: string;
+  institutionNameKey: string;
+  educationLevel: string | null;
+  stateHint: string | null;
+  demandCount: number;
+  requesterCount: number;
+  latestRecordRequestId: string | null;
+  latestRecordRequestCode: string | null;
+  recordRequestIds: string[];
+  status: InvitationLeadStatus;
+  lastRequestedAt: string;
+  lastContactedAt: string | null;
+  invitedAt: string | null;
+  dismissedAt: string | null;
+  convertedAt: string | null;
+  convertedInstitutionId: string | null;
+  sourceApplicationId: string | null;
+  reviewedById: string | null;
+  reviewNote: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type VerificationLog = {
@@ -906,6 +933,10 @@ async function loadRecordRequests(token: string): Promise<RecordRequest[]> {
   return apiRequest<RecordRequest[]>("/admin/record-requests", token);
 }
 
+async function loadInvitationLeads(token: string): Promise<InvitationLead[]> {
+  return apiRequest<InvitationLead[]>("/admin/invitation-leads", token);
+}
+
 async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
@@ -969,6 +1000,7 @@ export function FounderConsole() {
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccessRequest[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [recordRequests, setRecordRequests] = useState<RecordRequest[]>([]);
+  const [invitationLeads, setInvitationLeads] = useState<InvitationLead[]>([]);
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [deadLetters, setDeadLetters] = useState<DeadLetterOverview | null>(null);
@@ -1208,7 +1240,11 @@ export function FounderConsole() {
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
         loadDeveloperAccessRequests(activeToken)
       ]);
-      const [nextDisputes, nextRecordRequests] = await Promise.all([loadDisputes(activeToken), loadRecordRequests(activeToken)]);
+      const [nextDisputes, nextRecordRequests, nextInvitationLeads] = await Promise.all([
+        loadDisputes(activeToken),
+        loadRecordRequests(activeToken),
+        loadInvitationLeads(activeToken)
+      ]);
       const [nextVerificationLogs, nextAuditEvents] = await Promise.all([loadVerificationLogs(activeToken), loadAuditEvents(activeToken)]);
       const nextSystemHealth = await loadSystemHealth(activeToken);
       const nextRateLimitPolicy = await loadRateLimitPolicy(activeToken);
@@ -1223,6 +1259,7 @@ export function FounderConsole() {
       setDeveloperRequests(nextDeveloperRequests);
       setDisputes(nextDisputes);
       setRecordRequests(nextRecordRequests);
+      setInvitationLeads(nextInvitationLeads);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
       setRateLimitPolicy(nextRateLimitPolicy);
@@ -1288,6 +1325,7 @@ export function FounderConsole() {
     setDisputes([]);
     setSelectedDisputeId("");
     setRecordRequests([]);
+    setInvitationLeads([]);
     setSelectedRecordRequestId("");
     setVerificationLogs([]);
     setSystemHealth(null);
@@ -1773,6 +1811,27 @@ export function FounderConsole() {
     }
   }
 
+  async function updateInvitationLead(id: string, status: InvitationLeadStatus) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<{ accepted: boolean; lead: InvitationLead }>(`/admin/invitation-leads/${id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+          note: `Marked ${titleCase(status)} from Founder Console.`
+        })
+      });
+      setInvitationLeads((current) => current.map((lead) => (lead.uuid === response.lead.uuid ? response.lead : lead)));
+      setNotice({ tone: "success", text: `${response.lead.institutionName} invitation lead moved to ${titleCase(status)}.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Invitation lead update failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCreateProductApiKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) return;
@@ -2130,7 +2189,15 @@ export function FounderConsole() {
       );
     }
     if (activePage === "Academic Operations") {
-      return <AcademicOperationsPage operations={academicOperations} onViewHealth={() => setActivePage("System Health")} />;
+      return (
+        <AcademicOperationsPage
+          invitationLeads={invitationLeads}
+          loading={loading}
+          onUpdateInvitationLead={updateInvitationLead}
+          onViewHealth={() => setActivePage("System Health")}
+          operations={academicOperations}
+        />
+      );
     }
     if (activePage === "Institution Applications") {
       return (
@@ -2481,22 +2548,65 @@ function InstitutionsPage(props: {
   );
 }
 
-function AcademicOperationsPage({ operations, onViewHealth }: { operations: AcademicOperations | null; onViewHealth: () => void }) {
+function AcademicOperationsPage({
+  invitationLeads,
+  loading,
+  onUpdateInvitationLead,
+  operations,
+  onViewHealth
+}: {
+  invitationLeads: InvitationLead[];
+  loading: boolean;
+  onUpdateInvitationLead: (id: string, status: InvitationLeadStatus) => void;
+  operations: AcademicOperations | null;
+  onViewHealth: () => void;
+}) {
   const metrics = operations?.metrics;
   const institutionHealth = operations?.institutionHealth ?? [];
   const atRiskInstitutions = institutionHealth.filter((institution) => institution.flags.length > 0).slice(0, 12);
+  const activeInvitationLeads = invitationLeads.filter((lead) => !["CONVERTED", "DISMISSED"].includes(lead.status));
   const completionAverage = institutionHealth.length
     ? Math.round(institutionHealth.reduce((sum, institution) => sum + institution.completionScore, 0) / institutionHealth.length)
     : 0;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Active Sessions" value={metrics?.activeSessions ?? "--"} helper="Open academic periods" tone="success" icon="Academic Operations" />
         <MetricCard label="Structure Nodes" value={metrics?.structureNodes ?? "--"} helper="Classes, subjects, departments, courses" tone="accent" icon="Institutions" />
         <MetricCard label="Pending Rollovers" value={metrics?.pendingRollovers ?? "--"} helper="Manual progression queue" tone={metrics?.pendingRollovers ? "warning" : "success"} icon="Record Requests" />
         <MetricCard label="Sealed Sessions" value={metrics?.sealedSessions ?? "--"} helper="Locked academic periods" tone={metrics?.sealedSessions ? "warning" : "accent"} icon="Security" />
+        <MetricCard label="Invitation Leads" value={activeInvitationLeads.length} helper="Unregistered schools with learner demand" tone={activeInvitationLeads.length ? "warning" : "success"} icon="Institution Applications" />
       </div>
+
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <SectionTitle title="Invitation Leads" subtitle="Unregistered institutions graduates are requesting records from." />
+          <StatusBadge status={`${activeInvitationLeads.length} Active`} />
+        </div>
+        <ResponsiveTable
+          empty="No unregistered institution demand has been captured yet."
+          headers={["Institution", "Demand", "Latest Request", "Status", "Last Activity", "Actions"]}
+          rows={invitationLeads.slice(0, 12).map((lead) => [
+            <div key="institution">
+              <p className="font-medium text-primary">{lead.institutionName}</p>
+              <p className="text-xs text-textSecondary">{lead.educationLevel ?? "Education level pending"}{lead.stateHint ? ` / ${lead.stateHint}` : ""}</p>
+            </div>,
+            <div key="demand">
+              <p className="font-medium text-primary">{lead.demandCount.toLocaleString()} request{lead.demandCount === 1 ? "" : "s"}</p>
+              <p className="text-xs text-textSecondary">{lead.requesterCount.toLocaleString()} requester signal{lead.requesterCount === 1 ? "" : "s"}</p>
+            </div>,
+            <span key="request" className="font-mono text-xs text-primary">{lead.latestRecordRequestCode ?? "No request code"}</span>,
+            <StatusBadge key="status" status={lead.status} />,
+            formatDate(lead.lastRequestedAt),
+            <div key="actions" className="flex flex-wrap gap-2">
+              <button className={secondaryButtonClass} disabled={loading || lead.status === "CONTACTED"} onClick={() => onUpdateInvitationLead(lead.uuid, "CONTACTED")} type="button">Contacted</button>
+              <button className={primarySmallButtonClass} disabled={loading || lead.status === "INVITED"} onClick={() => onUpdateInvitationLead(lead.uuid, "INVITED")} type="button">Invited</button>
+              <button className={secondaryButtonClass} disabled={loading || lead.status === "DISMISSED"} onClick={() => onUpdateInvitationLead(lead.uuid, "DISMISSED")} type="button">Dismiss</button>
+            </div>
+          ])}
+        />
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>

@@ -10,10 +10,9 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 - Registrar-facing staff assigned-scope management inside Institution Portal.
 - Modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
-- Invitation leads for unregistered institutions with graduate demand.
 - RecordRequest payment escrow/release and publication into learner passport.
 - Transfer workflows and disputed rollover surfaces.
-- Founder Console v5 setup-health gaps: missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, storage use, and invitation leads.
+- Founder Console v5 setup-health gaps: missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
 
 ## Product API Roots To Keep Stable
 
@@ -47,3 +46,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Error alert thresholds, external HTTP log sink adapter, and Log Sink System Health visibility.
 - Founder Console UI for webhook endpoint setup, one-time secret display, secret rotation, endpoint status control, delivery retry, and replay.
 - Cache hit/miss/load metrics with Founder System Health visibility.
+- Invitation leads for unregistered institutions with graduate demand are implemented with Supabase schema, RecordRequest auto-capture, founder list/update APIs, audit logging, tests, and Founder Academic Operations controls.

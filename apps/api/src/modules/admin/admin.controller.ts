@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from
 import {
   DeveloperAccessRequestStatus,
   DisputeStatus,
+  InvitationLeadStatus,
   RecordRequestStatus,
   UserRole,
   VerificationOutcome,
@@ -143,6 +144,16 @@ export class AdminController {
   @Get("record-requests")
   listRecordRequests(@Query("status") status?: RecordRequestStatus, @Query("search") search?: string) {
     return this.adminService.listRecordRequests({ status, search });
+  }
+
+  @Get("invitation-leads")
+  listInvitationLeads(@Query("status") status?: InvitationLeadStatus, @Query("search") search?: string) {
+    return this.adminService.listInvitationLeads({ status, search });
+  }
+
+  @Patch("invitation-leads/:id")
+  updateInvitationLead(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.adminService.updateInvitationLead(request.auth, id, body);
   }
 
   @Get("dashboard-summary")

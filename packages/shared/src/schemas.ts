@@ -293,6 +293,8 @@ export const recordRequestStatuses = [
 
 export const recordRequestPaymentStatuses = ["NOT_REQUIRED", "PENDING", "PAID", "WAIVED", "REFUNDED"] as const;
 
+export const invitationLeadStatuses = ["NEW", "CONTACTED", "INVITED", "CONVERTED", "DISMISSED"] as const;
+
 export const createRecordRequestSchema = z
   .object({
     learnerId: z.string().uuid().optional(),
@@ -327,6 +329,18 @@ export const reviewRecordRequestSchema = z.object({
   escalationReason: z.string().max(1000).optional(),
   resolutionNote: z.string().max(2000).optional()
 });
+
+export const updateInvitationLeadSchema = z
+  .object({
+    status: z.enum(invitationLeadStatuses).optional(),
+    note: z.string().max(2000).optional(),
+    sourceApplicationId: z.string().uuid().optional(),
+    convertedInstitutionId: z.string().uuid().optional()
+  })
+  .refine(
+    (value) => Boolean(value.status || value.note || value.sourceApplicationId || value.convertedInstitutionId),
+    "At least one invitation lead update field is required."
+  );
 
 export const platformSettingsSchema = z.object({
   approval: z.object({
@@ -403,4 +417,5 @@ export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
 export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
 export type CreateRecordRequestInput = z.infer<typeof createRecordRequestSchema>;
 export type ReviewRecordRequestInput = z.infer<typeof reviewRecordRequestSchema>;
+export type UpdateInvitationLeadInput = z.infer<typeof updateInvitationLeadSchema>;
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;

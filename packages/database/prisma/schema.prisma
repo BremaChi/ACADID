@@ -67,6 +67,14 @@ enum RecordRequestPaymentStatus {
   REFUNDED
 }
 
+enum InvitationLeadStatus {
+  NEW
+  CONTACTED
+  INVITED
+  CONVERTED
+  DISMISSED
+}
+
 enum DisputeStatus {
   OPEN
   RESOLVED
@@ -968,6 +976,36 @@ model RecordRequest {
   @@index([learnerId, createdAt])
   @@index([requestId])
   @@index([assignedToId, status])
+}
+
+model InvitationLead {
+  uuid                    String               @id @default(uuid()) @db.Uuid
+  institutionName         String
+  institutionNameKey      String               @unique
+  educationLevel          String?
+  stateHint               String?
+  demandCount             Int                  @default(1)
+  requesterCount          Int                  @default(0)
+  latestRecordRequestId   String?              @db.Uuid
+  latestRecordRequestCode String?
+  recordRequestIds        String[]             @default([])
+  status                  InvitationLeadStatus @default(NEW)
+  lastRequestedAt         DateTime             @default(now())
+  lastContactedAt         DateTime?
+  invitedAt               DateTime?
+  dismissedAt             DateTime?
+  convertedAt             DateTime?
+  convertedInstitutionId  String?              @db.Uuid
+  sourceApplicationId     String?              @db.Uuid
+  reviewedById            String?              @db.Uuid
+  reviewNote              String?
+  metadata                Json?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@index([status, lastRequestedAt])
+  @@index([convertedInstitutionId])
+  @@index([latestRecordRequestId])
 }
 
 model ImportFile {

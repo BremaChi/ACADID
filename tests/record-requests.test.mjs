@@ -7,6 +7,7 @@ import { GovernanceService } from "../apps/api/dist/apps/api/src/modules/gateway
 function createRecordRequestHarness() {
   const auditEvents = [];
   const requests = [];
+  const invitationLeads = [];
   const prisma = {
     recordRequest: {
       findUnique: async ({ where }) =>
@@ -32,14 +33,52 @@ function createRecordRequestHarness() {
         requests[index] = row;
         return row;
       }
+    },
+    invitationLead: {
+      findUnique: async ({ where }) =>
+        invitationLeads.find((lead) => lead.uuid === where.uuid || lead.institutionNameKey === where.institutionNameKey) ?? null,
+      create: async ({ data }) => {
+        const row = {
+          uuid: "invitation-lead-1",
+          status: "NEW",
+          lastContactedAt: null,
+          invitedAt: null,
+          dismissedAt: null,
+          convertedAt: null,
+          convertedInstitutionId: null,
+          sourceApplicationId: null,
+          reviewedById: null,
+          reviewNote: null,
+          stateHint: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        invitationLeads.push(row);
+        return row;
+      },
+      update: async ({ where, data }) => {
+        const index = invitationLeads.findIndex((lead) => lead.uuid === where.uuid);
+        const current = invitationLeads[index];
+        const row = {
+          ...current,
+          ...data,
+          demandCount: typeof data.demandCount?.increment === "number" ? current.demandCount + data.demandCount.increment : data.demandCount ?? current.demandCount,
+          requesterCount:
+            typeof data.requesterCount?.increment === "number" ? current.requesterCount + data.requesterCount.increment : data.requesterCount ?? current.requesterCount,
+          updatedAt: new Date()
+        };
+        invitationLeads[index] = row;
+        return row;
+      }
     }
   };
   const audit = { write: async (event) => auditEvents.push(event) };
-  return { accessService: new AccessService(prisma, audit), auditEvents, prisma, requests };
+  return { accessService: new AccessService(prisma, audit), auditEvents, invitationLeads, prisma, requests };
 }
 
 test("learner creates a record request and governance can review it", async () => {
-  const { accessService, auditEvents, prisma } = createRecordRequestHarness();
+  const { accessService, auditEvents, invitationLeads, prisma } = createRecordRequestHarness();
   const studentAuth = {
     sub: "student-user",
     email: "student@example.com",
@@ -65,7 +104,11 @@ test("learner creates a record request and governance can review it", async () =
   assert.match(created.request.requestId, /^REQ-\d{4}-[A-F0-9]{8}$/);
   assert.equal(created.request.status, "SUBMITTED");
   assert.equal(created.request.paymentStatus, "PENDING");
+  assert.equal(invitationLeads.length, 1);
+  assert.equal(invitationLeads[0].institutionName, "Old Federal Secondary School");
+  assert.equal(invitationLeads[0].latestRecordRequestCode, created.request.requestId);
   assert.equal(auditEvents.some((event) => event.action === "record_request.create"), true);
+  assert.equal(auditEvents.some((event) => event.action === "invitation_lead.create"), true);
 
   const governance = new GovernanceService(
     prisma,
