@@ -49,11 +49,12 @@ Implemented foundation:
 - Endpoint-specific worker signing through `x-acadid-webhook-endpoint`.
 - Founder retry controls for failed/pending deliveries.
 - Founder replay controls that create a new delivery and idempotency key from an existing payload.
+- Founder Console UI surfaces for endpoint setup, one-time secret display, secret rotation, endpoint suspension/reactivation, delivery retry, and replay.
 - Partner receiver contract covering signatures, idempotency, retry behavior, replay behavior, and response rules.
 
 Required next:
 
-- Founder Console UI surfaces for endpoint setup, secret rotation, retry, and replay.
+- Product-specific webhook playbooks for partner onboarding and support.
 
 ### 3. Retry Policies
 
@@ -148,6 +149,8 @@ Implemented foundation:
 - Webhook delivery metrics: pending/retrying, due now, delivered in 24h, failed in 24h, signing-secret readiness, and status breakdown.
 - Notification delivery metrics: provider configuration, pending/sent/failed counts, channel breakdown, and recent failed notifications.
 - Worker registry metrics: active workers, stale workers, stopped workers, stale-after threshold, and recent worker heartbeat rows.
+- Configurable alert thresholds for gateway error rate, queue backlog, webhook backlog, failed jobs, and failed webhooks.
+- Optional external HTTP log sink readiness with redacted structured log mirroring.
 
 Required next:
 
@@ -181,13 +184,14 @@ Implemented foundation:
 - Platform settings use a 60-second cache and are invalidated immediately after founder settings updates.
 - Founder institution metadata uses a 20-second cache and is invalidated after institution creation, status changes, and application approval.
 - Founder System Health reports cache availability, adapter status, distributed-cache configuration, and current cache stats.
+- Cache hit/miss/load/set metrics are tracked in-process and shown in Founder System Health.
 
 Required next:
 
 - Enable the distributed cache adapter in pilot/production environment variables before multi-instance deployment.
 - Add explicit cache invalidation to the full credential amendment/revocation implementation when those placeholder routes become real writes.
 - Keep secret-bearing payloads, API secrets, unconsented student record data, and share-token verification bodies out of cache.
-- Add cache-hit/cache-miss metrics when external monitoring is connected.
+- Export cache metrics to the external monitoring sink when the production dashboard is connected.
 
 ### 10. Error Observability
 
@@ -198,12 +202,13 @@ Implemented foundation:
 - Redaction rules for passwords, secrets, tokens, authorization material, credentials, private keys, NIN, and BVN fields.
 - HTTP failure capture through `ErrorObservabilityService` with durable `error.observed` audit events.
 - Worker failure capture through `ErrorObservabilityService` with durable `worker.error` audit events and retry context.
+- Optional `ACADID_LOG_SINK_URL` adapter mirrors already-redacted structured logs to an external HTTP collector.
+- Founder System Health reports Log Sink configuration, delivery/failure counts, and last delivery status.
 
 Required next:
 
-- Webhook failure dashboards.
-- Error alert thresholds.
-- External log sink/monitoring adapter for production alerts.
+- Webhook failure dashboards by partner/institution.
+- External monitoring dashboards and paging rules outside the app runtime.
 
 ## Engineering Rules
 
@@ -222,10 +227,7 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Supabase storage download health check.
-2. Error alert thresholds and external log sink adapter.
-3. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-4. Cache hit/miss metrics once external monitoring is connected.
+1. Move into v5 Engineer 1 implementation gaps.
 
 Completed:
 
@@ -238,3 +240,7 @@ Completed:
 - Central retry policy by job type with capped exponential backoff and jitter.
 - Dead-letter review and retry controls for failed background jobs, webhook deliveries, and notifications.
 - Per-product and institution rate-limit defaults, emergency throttle caps, Founder Console controls, and audit trail.
+- Supabase/object-storage download health checks.
+- Alert thresholds, external HTTP log sink adapter, and Log Sink System Health visibility.
+- Founder Console webhook endpoint setup, secret rotation, status, retry, and replay controls.
+- Cache hit/miss/load metrics in Founder System Health.

@@ -393,6 +393,24 @@ type SystemHealth = {
       staleInProgressRecords?: number;
       failedRecords?: number;
       succeededRecords?: number;
+      metrics?: {
+        localHits?: number;
+        localMisses?: number;
+        remoteHits?: number;
+        remoteMisses?: number;
+        totalHits?: number;
+        totalMisses?: number;
+        hitRate?: number;
+        loads?: number;
+        sets?: number;
+      };
+      configured?: boolean;
+      provider?: string;
+      endpointHost?: string | null;
+      lastStatusCode?: number | null;
+      lastError?: string | null;
+      delivered?: number;
+      failed?: number;
       topOperations?: Array<{ operation: string; count: number }>;
       latestRecords?: Array<{
         id: string;
@@ -410,8 +428,6 @@ type SystemHealth = {
       }>;
       pending?: number;
       sent24h?: number;
-      provider?: string;
-      configured?: boolean;
       bucket?: string | null;
       downloadBaseConfigured?: boolean;
       supabaseUrlConfigured?: boolean;
@@ -521,6 +537,45 @@ type DeadLetterOverview = {
     error: string | null;
     updatedAt: string;
   }>;
+};
+
+type WebhookEndpoint = {
+  id: string;
+  institutionUuid: string;
+  institutionId: string;
+  institutionName: string;
+  label: string;
+  targetUrl: string;
+  eventTypes: string[];
+  status: string;
+  secretPreview: string | null;
+  createdAt: string;
+  rotatedAt: string | null;
+  disabledAt: string | null;
+};
+
+type WebhookDelivery = {
+  id: string;
+  jobId: string | null;
+  institutionUuid: string | null;
+  institutionId: string | null;
+  institutionName: string | null;
+  webhookEndpointId: string | null;
+  targetUrl: string;
+  eventType: string;
+  status: string;
+  attempts: number;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  nextAttemptAt: string | null;
+  deliveredAt: string | null;
+  updatedAt: string;
+};
+
+type WebhookSecretResponse = {
+  endpoint: WebhookEndpoint;
+  secret: string;
+  warning: string;
 };
 
 type AuditEvent = {
@@ -863,6 +918,14 @@ async function loadDeadLetters(token: string): Promise<DeadLetterOverview> {
   return apiRequest<DeadLetterOverview>("/admin/dead-letters", token);
 }
 
+async function loadWebhookEndpoints(token: string): Promise<WebhookEndpoint[]> {
+  return apiRequest<WebhookEndpoint[]>("/admin/webhook-endpoints", token);
+}
+
+async function loadWebhookDeliveries(token: string): Promise<WebhookDelivery[]> {
+  return apiRequest<WebhookDelivery[]>("/admin/webhook-deliveries", token);
+}
+
 async function loadDashboardSummary(token: string): Promise<DashboardSummary> {
   return apiRequest<DashboardSummary>("/admin/dashboard-summary", token);
 }
@@ -909,6 +972,8 @@ export function FounderConsole() {
   const [verificationLogs, setVerificationLogs] = useState<VerificationLog[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [deadLetters, setDeadLetters] = useState<DeadLetterOverview | null>(null);
+  const [webhookEndpoints, setWebhookEndpoints] = useState<WebhookEndpoint[]>([]);
+  const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDelivery[]>([]);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [academicOperations, setAcademicOperations] = useState<AcademicOperations | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -965,6 +1030,12 @@ export function FounderConsole() {
   const [rateLimitCleanupHours, setRateLimitCleanupHours] = useState(24);
   const [idempotencyCleanupHours, setIdempotencyCleanupHours] = useState(24);
   const [rateLimitPolicyForm, setRateLimitPolicyForm] = useState<RateLimitPolicyControl>(defaultRateLimitPolicy);
+  const [webhookSecret, setWebhookSecret] = useState<WebhookSecretResponse | null>(null);
+  const [webhookEndpointForm, setWebhookEndpointForm] = useState({
+    label: "Institution Partner Webhook",
+    targetUrl: "https://partner.example.com/acadid/webhooks",
+    eventTypes: "result.published, credential.issued, credential.revoked"
+  });
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -1141,7 +1212,7 @@ export function FounderConsole() {
       const [nextVerificationLogs, nextAuditEvents] = await Promise.all([loadVerificationLogs(activeToken), loadAuditEvents(activeToken)]);
       const nextSystemHealth = await loadSystemHealth(activeToken);
       const nextRateLimitPolicy = await loadRateLimitPolicy(activeToken);
-      const nextDeadLetters = await loadDeadLetters(activeToken);
+      const [nextDeadLetters, nextWebhookEndpoints, nextWebhookDeliveries] = await Promise.all([loadDeadLetters(activeToken), loadWebhookEndpoints(activeToken), loadWebhookDeliveries(activeToken)]);
       const nextDashboardSummary = await loadDashboardSummary(activeToken);
       const nextAcademicOperations = await loadAcademicOperations(activeToken);
       const nextRevenueOverview = await loadRevenueOverview(activeToken);
@@ -1157,6 +1228,8 @@ export function FounderConsole() {
       setRateLimitPolicy(nextRateLimitPolicy);
       setRateLimitPolicyForm(nextRateLimitPolicy.policy);
       setDeadLetters(nextDeadLetters);
+      setWebhookEndpoints(nextWebhookEndpoints);
+      setWebhookDeliveries(nextWebhookDeliveries);
       setDashboardSummary(nextDashboardSummary);
       setAcademicOperations(nextAcademicOperations);
       setAuditEvents(nextAuditEvents);
@@ -1221,6 +1294,9 @@ export function FounderConsole() {
     setRateLimitPolicy(null);
     setRateLimitPolicyForm(defaultRateLimitPolicy);
     setDeadLetters(null);
+    setWebhookEndpoints([]);
+    setWebhookDeliveries([]);
+    setWebhookSecret(null);
     setDashboardSummary(null);
     setAcademicOperations(null);
     setAuditEvents([]);
@@ -1280,6 +1356,94 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Unable to update rate-limit policy.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createWebhookEndpoint() {
+    if (!token || !selectedInstitutionId) {
+      setNotice({ tone: "error", text: "Select an institution before creating a webhook endpoint." });
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await apiRequest<WebhookSecretResponse>(`/admin/institutions/${selectedInstitutionId}/webhook-endpoints`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          label: webhookEndpointForm.label,
+          targetUrl: webhookEndpointForm.targetUrl,
+          eventTypes: webhookEndpointForm.eventTypes
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        })
+      });
+      setWebhookSecret(response);
+      setNotice({ tone: "success", text: "Webhook endpoint created. Copy the secret now; it is shown once." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to create webhook endpoint.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function rotateWebhookEndpointSecret(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<WebhookSecretResponse>(`/admin/webhook-endpoints/${id}/rotate-secret`, token, { method: "POST" });
+      setWebhookSecret(response);
+      setNotice({ tone: "success", text: "Webhook secret rotated. Update the partner system with the new secret." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to rotate webhook secret.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateWebhookEndpointStatus(id: string, status: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest<WebhookEndpoint>(`/admin/webhook-endpoints/${id}/status`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ status })
+      });
+      setNotice({ tone: "success", text: `Webhook endpoint marked ${status.toLowerCase()}.` });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to update webhook endpoint.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function retryWebhookDelivery(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/webhook-deliveries/${id}/retry`, token, { method: "POST" });
+      setNotice({ tone: "success", text: "Webhook delivery retry queued." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to retry webhook delivery.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function replayWebhookDelivery(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/admin/webhook-deliveries/${id}/replay`, token, { method: "POST" });
+      setNotice({ tone: "success", text: "Webhook replay queued with a new delivery idempotency key." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to replay webhook delivery.");
     } finally {
       setLoading(false);
     }
@@ -2087,11 +2251,22 @@ export function FounderConsole() {
           onQueueIdempotencyCleanup={queueIdempotencyCleanup}
           onQueueRateLimitCleanup={queueRateLimitCleanup}
           onRateLimitPolicyChange={setRateLimitPolicyForm}
+          onCreateWebhookEndpoint={createWebhookEndpoint}
+          onReplayWebhookDelivery={replayWebhookDelivery}
+          onRetryWebhookDelivery={retryWebhookDelivery}
+          onRotateWebhookEndpointSecret={rotateWebhookEndpointSecret}
           onSaveRateLimitPolicy={saveRateLimitPolicy}
           onRetryDeadLetterJob={retryDeadLetterJob}
           onRetryNotification={retryNotification}
+          onUpdateWebhookEndpointForm={setWebhookEndpointForm}
+          onUpdateWebhookEndpointStatus={updateWebhookEndpointStatus}
           rateLimitPolicy={rateLimitPolicy}
           rateLimitPolicyForm={rateLimitPolicyForm}
+          selectedInstitutionId={selectedInstitutionId}
+          webhookDeliveries={webhookDeliveries}
+          webhookEndpointForm={webhookEndpointForm}
+          webhookEndpoints={webhookEndpoints}
+          webhookSecret={webhookSecret}
         />
       );
     }
@@ -3045,11 +3220,22 @@ function SystemHealthPage({
   onQueueIdempotencyCleanup,
   onQueueRateLimitCleanup,
   onRateLimitPolicyChange,
+  onCreateWebhookEndpoint,
+  onReplayWebhookDelivery,
+  onRetryWebhookDelivery,
+  onRotateWebhookEndpointSecret,
   onRetryDeadLetterJob,
   onRetryNotification,
   onSaveRateLimitPolicy,
+  onUpdateWebhookEndpointForm,
+  onUpdateWebhookEndpointStatus,
   rateLimitPolicy,
-  rateLimitPolicyForm
+  rateLimitPolicyForm,
+  selectedInstitutionId,
+  webhookDeliveries,
+  webhookEndpointForm,
+  webhookEndpoints,
+  webhookSecret
 }: {
   cleanupHours: number;
   deadLetters: DeadLetterOverview | null;
@@ -3061,11 +3247,22 @@ function SystemHealthPage({
   onQueueIdempotencyCleanup: () => void;
   onQueueRateLimitCleanup: () => void;
   onRateLimitPolicyChange: (value: RateLimitPolicyControl) => void;
+  onCreateWebhookEndpoint: () => void;
+  onReplayWebhookDelivery: (id: string) => void;
+  onRetryWebhookDelivery: (id: string) => void;
+  onRotateWebhookEndpointSecret: (id: string) => void;
   onRetryDeadLetterJob: (id: string) => void;
   onRetryNotification: (id: string) => void;
   onSaveRateLimitPolicy: () => void;
+  onUpdateWebhookEndpointForm: (value: { label: string; targetUrl: string; eventTypes: string }) => void;
+  onUpdateWebhookEndpointStatus: (id: string, status: string) => void;
   rateLimitPolicy: RateLimitPolicyResponse | null;
   rateLimitPolicyForm: RateLimitPolicyControl;
+  selectedInstitutionId: string;
+  webhookDeliveries: WebhookDelivery[];
+  webhookEndpointForm: { label: string; targetUrl: string; eventTypes: string };
+  webhookEndpoints: WebhookEndpoint[];
+  webhookSecret: WebhookSecretResponse | null;
 }) {
   const metrics = health?.metrics;
   const services = health?.services ?? [
@@ -3074,6 +3271,8 @@ function SystemHealthPage({
     { name: "Authentication Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Storage Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Email Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Cache Service", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
+    { name: "Log Sink", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Background Workers", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." },
     { name: "Webhook Delivery", status: "PENDING_CONFIGURATION" as HealthStatus, responseTimeMs: 0, message: "Waiting for health endpoint data." }
   ];
@@ -3084,6 +3283,8 @@ function SystemHealthPage({
   const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
   const idempotencyHealth = services.find((service) => service.name === "Idempotency Ledger")?.metadata;
   const storageHealth = services.find((service) => service.name === "Storage Service")?.metadata;
+  const cacheHealth = services.find((service) => service.name === "Cache Service")?.metadata;
+  const logSinkHealth = services.find((service) => service.name === "Log Sink")?.metadata;
   const updateRateLimitProduct = (productCode: string, value: number) => {
     onRateLimitPolicyChange({
       ...rateLimitPolicyForm,
@@ -3155,6 +3356,9 @@ function SystemHealthPage({
           <MetricLine label="Storage provider" value={titleCase(String(storageHealth?.provider ?? "unconfigured"))} />
           <MetricLine label="Storage probe" value={storageHealth?.probeConfigured ? storageHealth.probeSucceeded ? "Passing" : "Failing" : "Not configured"} />
           <MetricLine label="Storage probe bytes" value={storageHealth?.probeBytes == null ? "--" : formatCompactNumber(storageHealth.probeBytes)} />
+          <MetricLine label="Cache hit rate" value={typeof cacheHealth?.metrics?.hitRate === "number" ? `${cacheHealth.metrics.hitRate}%` : "--"} />
+          <MetricLine label="Cache hits/misses" value={`${cacheHealth?.metrics?.totalHits ?? "--"} / ${cacheHealth?.metrics?.totalMisses ?? "--"}`} />
+          <MetricLine label="Log sink" value={logSinkHealth?.configured ? titleCase(String(logSinkHealth.provider ?? "external")) : "Console only"} />
           <MetricLine label="Webhook delivered 24h" value={String(webhookHealth?.delivered24h ?? "--")} />
           <MetricLine label="Recent incidents" value={`${incidents.length} open`} />
           <MetricLine label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} />
@@ -3191,6 +3395,64 @@ function SystemHealthPage({
           </div>
       </Card>
       </div>
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Webhook Endpoints" subtitle="Create partner callbacks, rotate secrets, and recover failed delivery attempts." />
+          <StatusBadge status={`${webhookEndpoints.length} Endpoint(s)`} />
+        </div>
+        {webhookSecret ? (
+          <div className="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+            <p className="font-semibold text-primary">One-time webhook secret</p>
+            <p className="mt-1 break-all font-mono text-xs text-primary">{webhookSecret.secret}</p>
+            <p className="mt-1 text-xs text-textSecondary">{webhookSecret.warning}</p>
+          </div>
+        ) : null}
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1.2fr_auto]">
+          <Field label="Label">
+            <input className={inputClass} value={webhookEndpointForm.label} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, label: event.target.value })} />
+          </Field>
+          <Field label="Target URL">
+            <input className={inputClass} value={webhookEndpointForm.targetUrl} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, targetUrl: event.target.value })} />
+          </Field>
+          <Field label="Event types">
+            <input className={inputClass} value={webhookEndpointForm.eventTypes} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, eventTypes: event.target.value })} />
+          </Field>
+          <div className="flex items-end">
+            <button className={primaryButtonClass} disabled={loading || !selectedInstitutionId} onClick={onCreateWebhookEndpoint} type="button">Create Endpoint</button>
+          </div>
+        </div>
+        <ResponsiveTable
+          empty="No webhook endpoints have been configured yet."
+          headers={["Endpoint", "Institution", "Status", "Secret", "Rotated", "Actions"]}
+          rows={webhookEndpoints.slice(0, 12).map((endpoint) => [
+            <div key="endpoint"><p className="font-medium text-primary">{endpoint.label}</p><p className="break-all text-xs text-textSecondary">{endpoint.targetUrl}</p></div>,
+            <div key="institution"><p>{endpoint.institutionName}</p><p className="text-xs text-textSecondary">{endpoint.institutionId}</p></div>,
+            <StatusBadge key="status" status={endpoint.status} />,
+            endpoint.secretPreview ?? "--",
+            endpoint.rotatedAt ? formatDate(endpoint.rotatedAt) : "Never",
+            <div key="actions" className="flex flex-wrap gap-2">
+              <button className={secondaryButtonClass} disabled={loading} onClick={() => onRotateWebhookEndpointSecret(endpoint.id)} type="button">Rotate</button>
+              <button className={secondaryButtonClass} disabled={loading || endpoint.status === "SUSPENDED"} onClick={() => onUpdateWebhookEndpointStatus(endpoint.id, "SUSPENDED")} type="button">Suspend</button>
+              <button className={primarySmallButtonClass} disabled={loading || endpoint.status === "ACTIVE"} onClick={() => onUpdateWebhookEndpointStatus(endpoint.id, "ACTIVE")} type="button">Activate</button>
+            </div>
+          ])}
+        />
+        <ResponsiveTable
+          empty="No webhook deliveries yet."
+          headers={["Delivery", "Institution", "Status", "Attempts", "Next", "Actions"]}
+          rows={webhookDeliveries.slice(0, 10).map((delivery) => [
+            <div key="delivery"><p className="font-medium text-primary">{delivery.eventType}</p><p className="break-all text-xs text-textSecondary">{delivery.targetUrl}</p></div>,
+            delivery.institutionName ?? delivery.institutionId ?? "Platform",
+            <StatusBadge key="status" status={delivery.status} />,
+            delivery.attempts.toLocaleString(),
+            delivery.nextAttemptAt ? formatDate(delivery.nextAttemptAt) : delivery.deliveredAt ? formatDate(delivery.deliveredAt) : "--",
+            <div key="actions" className="flex flex-wrap gap-2">
+              <button className={secondaryButtonClass} disabled={loading || delivery.status === "DELIVERED"} onClick={() => onRetryWebhookDelivery(delivery.id)} type="button">Retry</button>
+              <button className={primarySmallButtonClass} disabled={loading} onClick={() => onReplayWebhookDelivery(delivery.id)} type="button">Replay</button>
+            </div>
+          ])}
+        />
+      </Card>
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <SectionTitle title="Rate-Limit Policy" subtitle="Founder-controlled API defaults and emergency throttling for products and institutions." />

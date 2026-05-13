@@ -33,6 +33,17 @@ export class CacheService {
   private readonly entries = new Map<string, CacheEntry<unknown>>();
   private readonly tagIndex = new Map<string, Set<string>>();
   private readonly remote = this.createRemoteAdapter();
+  private readonly metrics = {
+    localHits: 0,
+    localMisses: 0,
+    remoteHits: 0,
+    remoteMisses: 0,
+    loads: 0,
+    sets: 0,
+    deletes: 0,
+    tagInvalidations: 0,
+    prefixInvalidations: 0
+  };
 
   async getOrSet<T>(key: string, loader: () => Promise<T>, options: CacheSetOptions): Promise<T> {
     const cached = this.get<T>(key);
@@ -49,6 +60,7 @@ export class CacheService {
       return remote.value;
     }
 
+    this.metrics.loads += 1;
     const value = await loader();
     this.set(key, value, options);
     return value;
@@ -57,12 +69,15 @@ export class CacheService {
   get<T>(key: string): { hit: true; value: T } | { hit: false } {
     const entry = this.entries.get(key);
     if (!entry) {
+      this.metrics.localMisses += 1;
       return { hit: false };
     }
     if (entry.expiresAt <= Date.now()) {
       this.delete(key);
+      this.metrics.localMisses += 1;
       return { hit: false };
     }
+    this.metrics.localHits += 1;
     return { hit: true, value: entry.value as T };
   }
 
@@ -72,6 +87,7 @@ export class CacheService {
     }
 
     const expiresAt = Date.now() + options.ttlSeconds * 1000;
+    this.metrics.sets += 1;
     const tags = this.setLocal(key, value, { ttlSeconds: options.ttlSeconds, tags: options.tags, expiresAt });
 
     void this.remote?.set(key, {
@@ -85,10 +101,12 @@ export class CacheService {
     if (!this.deleteLocal(key)) {
       return;
     }
+    this.metrics.deletes += 1;
     void this.remote?.delete(key).catch(() => undefined);
   }
 
   invalidateTag(tag: string) {
+    this.metrics.tagInvalidations += 1;
     const keys = [...(this.tagIndex.get(tag) ?? [])];
     for (const key of keys) {
       this.deleteLocal(key);
@@ -97,6 +115,7 @@ export class CacheService {
   }
 
   invalidatePrefix(prefix: string) {
+    this.metrics.prefixInvalidations += 1;
     const keys = [...this.entries.keys()].filter((key) => key.startsWith(prefix));
     for (const key of keys) {
       this.deleteLocal(key);
@@ -107,6 +126,7 @@ export class CacheService {
   clear() {
     this.entries.clear();
     this.tagIndex.clear();
+    this.metrics.deletes += 1;
     void this.remote?.clear().catch(() => undefined);
   }
 
@@ -115,7 +135,16 @@ export class CacheService {
       entries: this.entries.size,
       tags: this.tagIndex.size,
       adapter: this.remote?.name ?? "memory",
-      distributedConfigured: Boolean(this.remote)
+      distributedConfigured: Boolean(this.remote),
+      metrics: {
+        ...this.metrics,
+        totalHits: this.metrics.localHits + this.metrics.remoteHits,
+        totalMisses: this.metrics.localMisses + this.metrics.remoteMisses,
+        hitRate:
+          this.metrics.localHits + this.metrics.remoteHits + this.metrics.localMisses + this.metrics.remoteMisses > 0
+            ? Number((((this.metrics.localHits + this.metrics.remoteHits) / (this.metrics.localHits + this.metrics.remoteHits + this.metrics.localMisses + this.metrics.remoteMisses)) * 100).toFixed(2))
+            : 0
+      }
     };
   }
 
@@ -137,10 +166,13 @@ export class CacheService {
         if (record) {
           void this.remote.delete(key).catch(() => undefined);
         }
+        this.metrics.remoteMisses += 1;
         return { hit: false };
       }
+      this.metrics.remoteHits += 1;
       return { hit: true, value: record.value, expiresAt: record.expiresAt, tags: record.tags };
     } catch {
+      this.metrics.remoteMisses += 1;
       return { hit: false };
     }
   }

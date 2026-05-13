@@ -31,6 +31,46 @@ test("structured logger emits JSON logs and redacts sensitive metadata", () => {
   assert.equal(payload.metadata.nested.safeValue, "visible");
 });
 
+test("structured logger can mirror redacted logs to an external HTTP sink", async () => {
+  const previousUrl = process.env.ACADID_LOG_SINK_URL;
+  const previousToken = process.env.ACADID_LOG_SINK_BEARER_TOKEN;
+  const previousFetch = globalThis.fetch;
+  process.env.ACADID_LOG_SINK_URL = "https://logs.example.test/ingest";
+  process.env.ACADID_LOG_SINK_BEARER_TOKEN = "sink-token";
+  const mirrored = [];
+  globalThis.fetch = async (url, init) => {
+    mirrored.push({ url: String(url), authorization: init.headers.authorization, body: JSON.parse(init.body) });
+    return new Response("ok", { status: 202 });
+  };
+
+  try {
+    const logger = new StructuredLoggerService();
+    logger.setSink(() => undefined);
+    logger.error({
+      event: "test.external",
+      message: "external message",
+      metadata: {
+        clientSecret: "secret-value",
+        safe: "visible"
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(mirrored.length, 1);
+    assert.equal(mirrored[0].url, "https://logs.example.test/ingest");
+    assert.equal(mirrored[0].authorization, "Bearer sink-token");
+    assert.equal(mirrored[0].body.metadata.clientSecret, "[REDACTED]");
+    assert.equal(mirrored[0].body.metadata.safe, "visible");
+    assert.equal(logger.externalSinkStatus().configured, true);
+    assert.equal(logger.externalSinkStatus().delivered, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.ACADID_LOG_SINK_URL;
+    else process.env.ACADID_LOG_SINK_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.ACADID_LOG_SINK_BEARER_TOKEN;
+    else process.env.ACADID_LOG_SINK_BEARER_TOKEN = previousToken;
+  }
+});
+
 test("error observability records worker failures as logs and audit events", async () => {
   const auditEvents = [];
   const lines = [];

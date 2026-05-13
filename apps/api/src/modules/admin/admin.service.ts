@@ -36,6 +36,7 @@ import { defaultRateLimitPolicyControl, RateLimitService } from "../platform/ser
 import { RetryPolicyService } from "../platform/services/retry-policy.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 import { ObjectStorageService } from "../jobs/object-storage.service.js";
+import { StructuredLoggerService } from "../platform/services/structured-logger.service.js";
 
 const allowedApiKeyScopes = new Set([
   "institution:apply",
@@ -94,6 +95,7 @@ export class AdminService {
     private readonly idempotency?: IdempotencyService,
     @Optional() private readonly authService?: AuthService,
     @Optional() private readonly objectStorage?: ObjectStorageService,
+    @Optional() private readonly structuredLogger?: StructuredLoggerService,
     private readonly retryPolicy: RetryPolicyService = new RetryPolicyService()
   ) {}
 
@@ -1239,7 +1241,7 @@ export class AdminService {
 
   async readSystemHealth() {
     const generatedAt = new Date();
-    const [database, auth, storage, email, notificationDelivery, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, metrics] = await Promise.all([
+    const [database, auth, storage, email, notificationDelivery, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, logSink, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
       this.checkStorageService(),
@@ -1251,6 +1253,7 @@ export class AdminService {
       this.checkCredentialSigning(),
       this.checkRateLimitBuckets(),
       this.checkIdempotencyRecords(),
+      this.checkLogSink(),
       this.readGatewayMetrics()
     ]);
 
@@ -1271,7 +1274,8 @@ export class AdminService {
       webhook,
       signing,
       rateLimitBuckets,
-      idempotencyRecords
+      idempotencyRecords,
+      logSink
     ];
     const incidents = this.deriveIncidents(services, metrics);
     const overallStatus = services.some((service) => service.status === "DOWN")
@@ -3276,6 +3280,25 @@ export class AdminService {
     };
   }
 
+  private async checkLogSink() {
+    const status = this.structuredLogger?.externalSinkStatus() ?? {
+      configured: Boolean(process.env.ACADID_LOG_SINK_URL),
+      provider: process.env.ACADID_LOG_SINK_URL ? "http" : "console",
+      endpointHost: this.safeHost(process.env.ACADID_LOG_SINK_URL),
+      lastStatusCode: null,
+      lastError: null,
+      delivered: 0,
+      failed: 0
+    };
+    return {
+      name: "Log Sink",
+      status: status.configured ? (status.failed > 0 ? ("DEGRADED" as HealthStatus) : ("OPERATIONAL" as HealthStatus)) : ("PENDING_CONFIGURATION" as HealthStatus),
+      responseTimeMs: 0,
+      message: status.configured ? `External ${status.provider} log sink is configured.` : "Structured logs are writing to console only.",
+      metadata: status
+    };
+  }
+
   private async checkQueueWorkers() {
     const startedAt = Date.now();
     const now = new Date();
@@ -3836,9 +3859,13 @@ export class AdminService {
       discrepancyEvents: number;
       failedBackgroundJobs?: number;
       failedWebhooks?: number;
+      readyBackgroundJobs?: number;
+      pendingWebhooks?: number;
+      errorRate?: number;
       message?: string;
     }
   ) {
+    const thresholds = this.alertThresholds();
     const incidents = services
       .filter((service) => service.status === "DOWN" || service.status === "DEGRADED")
       .map((service) => ({
@@ -3870,7 +3897,37 @@ export class AdminService {
       });
     }
 
-    if ((metrics.failedBackgroundJobs ?? 0) > 0) {
+    if ((metrics.errorRate ?? 0) >= thresholds.gatewayErrorRatePercent) {
+      incidents.push({
+        title: "Gateway error-rate threshold exceeded",
+        severity: "CRITICAL",
+        status: "OPEN",
+        message: `Gateway error rate is ${metrics.errorRate}% over the ${thresholds.gatewayErrorRatePercent}% threshold.`,
+        detectedAt: new Date()
+      });
+    }
+
+    if ((metrics.readyBackgroundJobs ?? 0) >= thresholds.readyBackgroundJobs) {
+      incidents.push({
+        title: "Queue backlog threshold exceeded",
+        severity: "WARNING",
+        status: "OPEN",
+        message: `${metrics.readyBackgroundJobs} ready background job(s) exceed the ${thresholds.readyBackgroundJobs} threshold.`,
+        detectedAt: new Date()
+      });
+    }
+
+    if ((metrics.pendingWebhooks ?? 0) >= thresholds.pendingWebhooks) {
+      incidents.push({
+        title: "Webhook backlog threshold exceeded",
+        severity: "WARNING",
+        status: "OPEN",
+        message: `${metrics.pendingWebhooks} pending webhook(s) exceed the ${thresholds.pendingWebhooks} threshold.`,
+        detectedAt: new Date()
+      });
+    }
+
+    if ((metrics.failedBackgroundJobs ?? 0) >= thresholds.failedBackgroundJobs24h) {
       incidents.push({
         title: "Background job failures detected",
         severity: "WARNING",
@@ -3880,7 +3937,7 @@ export class AdminService {
       });
     }
 
-    if ((metrics.failedWebhooks ?? 0) > 0) {
+    if ((metrics.failedWebhooks ?? 0) >= thresholds.failedWebhooks24h) {
       incidents.push({
         title: "Webhook delivery failures detected",
         severity: "WARNING",
@@ -3912,6 +3969,32 @@ export class AdminService {
 
   private safeErrorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
+  }
+
+  private alertThresholds() {
+    return {
+      gatewayErrorRatePercent: this.parseEnvNumber("ACADID_ALERT_GATEWAY_ERROR_RATE_PERCENT", 5),
+      readyBackgroundJobs: this.parseEnvNumber("ACADID_ALERT_READY_BACKGROUND_JOBS", 1000),
+      pendingWebhooks: this.parseEnvNumber("ACADID_ALERT_PENDING_WEBHOOKS", 100),
+      failedBackgroundJobs24h: this.parseEnvNumber("ACADID_ALERT_FAILED_BACKGROUND_JOBS_24H", 1),
+      failedWebhooks24h: this.parseEnvNumber("ACADID_ALERT_FAILED_WEBHOOKS_24H", 1)
+    };
+  }
+
+  private parseEnvNumber(key: string, fallback: number) {
+    const value = Number(process.env[key]);
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
+  private safeHost(value?: string) {
+    if (!value) {
+      return null;
+    }
+    try {
+      return new URL(value).host;
+    } catch {
+      return null;
+    }
   }
 
   private hoursAgo(hours: number) {

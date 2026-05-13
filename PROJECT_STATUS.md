@@ -108,6 +108,9 @@ The API has these first modules:
 - Dead-letter operator review is implemented through `/api/admin/dead-letters` and `/api/admin/dead-letters/jobs/:id/retry`, with Founder System Health visibility for failed jobs, failed webhooks, and failed notifications.
 - Founder-controlled rate-limit policy is implemented through `/api/admin/rate-limits/policy`, including product defaults, institution sandbox/production defaults, institution overrides, route scope overrides, emergency throttle cap, cache invalidation, and immutable audit events.
 - Storage download health is implemented in Founder System Health: Supabase/internal-download configuration is checked, optional `storage://` probe downloads are timed and reported, and object keys are hashed instead of exposed.
+- Alert thresholds and external log sink readiness are implemented: gateway/queue/webhook thresholds can be configured through env, redacted structured logs can mirror to an external HTTP collector, and Founder System Health reports Log Sink status.
+- Founder Console webhook operations are implemented for endpoint setup, one-time secret display, secret rotation, suspension/reactivation, delivery retry, and replay.
+- Cache hit/miss/load metrics are tracked in `CacheService` and visible in Founder System Health.
 - v5 implementation audit is documented in `docs/architecture-v5-implementation-audit.md`; v5 is partially implemented, not complete end to end.
 - Structured logging and error observability are implemented for the Data Center API: request logs emit JSON with request IDs, route, actor/client context, status, duration, and redacted metadata; HTTP failures and worker failures also write durable audit events.
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.

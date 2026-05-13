@@ -28,6 +28,8 @@ test("cache service returns TTL hits and supports tag invalidation", async () =>
   assert.deepEqual(first, { version: 1 });
   assert.deepEqual(second, { version: 1 });
   assert.equal(loads, 1);
+  assert.equal(cache.stats().metrics.localHits, 1);
+  assert.equal(cache.stats().metrics.totalMisses, 1);
 
   cache.invalidateTag("platform-settings");
   const afterInvalidate = await cache.getOrSet(
@@ -41,6 +43,8 @@ test("cache service returns TTL hits and supports tag invalidation", async () =>
 
   assert.deepEqual(afterInvalidate, { version: 3 });
   assert.equal(loads, 2);
+  assert.equal(cache.stats().metrics.loads, 2);
+  assert.equal(cache.stats().metrics.tagInvalidations, 1);
 });
 
 test("cache service can read through an Upstash Redis REST adapter", async () => {
@@ -90,6 +94,7 @@ test("cache service can read through an Upstash Redis REST adapter", async () =>
     assert.equal(commands[0].key, "acadid:cache:entry:platform-settings:current");
     assert.equal(cache.stats().adapter, "upstash-redis");
     assert.equal(cache.stats().distributedConfigured, true);
+    assert.equal(cache.stats().metrics.remoteHits, 1);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousAdapter === undefined) delete process.env.ACADID_CACHE_ADAPTER;

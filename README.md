@@ -159,6 +159,12 @@ Portal storage and MOU:
 - Founder System Health checks object-storage download readiness. Set `ACADID_OBJECT_STORAGE_HEALTHCHECK_URL=storage://bucket/path/to/probe.txt` to verify real worker downloads without exposing signed URLs or object keys.
 - See `docs/runbooks/portal-storage-and-mou.md`.
 
+Monitoring and operations:
+
+- `ACADID_LOG_SINK_URL` can mirror already-redacted structured JSON logs to an external HTTP collector. Use `ACADID_LOG_SINK_BEARER_TOKEN` for collector auth.
+- Alert thresholds are configurable with `ACADID_ALERT_GATEWAY_ERROR_RATE_PERCENT`, `ACADID_ALERT_READY_BACKGROUND_JOBS`, `ACADID_ALERT_PENDING_WEBHOOKS`, `ACADID_ALERT_FAILED_BACKGROUND_JOBS_24H`, and `ACADID_ALERT_FAILED_WEBHOOKS_24H`.
+- Founder System Health shows cache hit/miss/load metrics, Log Sink status, webhook endpoint controls, and delivery retry/replay controls.
+
 Founder sign-in:
 
 - Open `http://localhost:3000`.
