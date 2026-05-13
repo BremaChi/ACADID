@@ -454,6 +454,8 @@ Already present:
 - Rollover preview/confirm now exists in `GovernanceService`, with human-session-only enforcement, active enrolment selection, `RolloverRecord` writes, old enrolment state updates, new active enrolment creation for promoted/repeated learners, and audit events.
 - Sealed-session reopen escalation now exists in `GovernanceService`, with institution request, Founder-only approve/reject, session status update on approval, and audit events.
 - Founder Console v5 Academic Operations visibility now exists through `/admin/academic-operations` and the `Academic Operations` console page.
+- Invitation leads now exist as a durable Data Center workflow with RecordRequest auto-capture, Founder list/update APIs, and Founder Academic Operations controls.
+- Registrar-facing staff assigned-scope management now exists for the Institution Portal through `/portal/staff`, `/portal/staff/scope-options`, `/portal/staff/invite`, and `/portal/staff/:id`.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -464,12 +466,11 @@ Already present:
 Still needed:
 
 - Add Founder/Institution UI visibility for AcademicSession and AcademicStructure setup health.
-- Add staff assigned-scope management endpoints/UI so Registrars can maintain the scopes now enforced by the gateway.
+- Add Institution Portal UI for the Registrar staff assigned-scope endpoints now exposed by Engineer 1.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
 - Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
 - Add GPA/CGPA/configured grading rule service.
-- Add invitation leads for unregistered institutions with graduate demand.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.
-- Add Founder Console v5 invitation leads and deeper queue health after staff scope management.
+- Add deeper queue health after staff scope management.
 - Add v5 API contracts and handoff tests for Engineer 2.

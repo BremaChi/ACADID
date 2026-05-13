@@ -8,7 +8,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## v5 Implementation Gaps To Track
 
-- Registrar-facing staff assigned-scope management inside Institution Portal.
 - Modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
 - RecordRequest payment escrow/release and publication into learner passport.
 - Transfer workflows and disputed rollover surfaces.
@@ -47,3 +46,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Founder Console UI for webhook endpoint setup, one-time secret display, secret rotation, endpoint status control, delivery retry, and replay.
 - Cache hit/miss/load metrics with Founder System Health visibility.
 - Invitation leads for unregistered institutions with graduate demand are implemented with Supabase schema, RecordRequest auto-capture, founder list/update APIs, audit logging, tests, and Founder Academic Operations controls.
+- Registrar-facing staff assigned-scope management is implemented for the Institution Portal through `/api/portal/staff`, `/api/portal/staff/scope-options`, `/api/portal/staff/invite`, and `/api/portal/staff/:id`, with human-session enforcement, no machine-key access, audit logging, and contract docs for Engineer 2.

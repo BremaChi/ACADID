@@ -78,6 +78,7 @@ The API has these first modules:
 - Institution application request-more-information and email-record actions are implemented with founder audit events.
 - Architecture v4 InstitutionUser foundation is implemented with staff invitation status, permissions, invite tokens, invite acceptance, human `/auth/user/*` endpoints, and institution-scoped login claims.
 - Founder institution staff control is implemented through `/api/admin/institutions/:id/staff`, `/api/admin/institutions/:id/staff/invite`, and `/api/admin/institution-staff/:id`, covering safe staff listing, founder-created invites, status changes, permission updates, TOTP requirement flags, assigned academic scopes, and audit logging.
+- Institution Portal staff management roots are implemented for Registrar use: `/api/portal/staff`, `/api/portal/staff/scope-options`, `/api/portal/staff/invite`, and `/api/portal/staff/:id`, with human institution sessions, `staff:manage`, same-institution enforcement, Registrar role protection, and audit logging.
 - Founder institution approval now creates the institution workspace and a one-time Registrar invite token for the approved institution contact.
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
@@ -201,6 +202,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Institution Applications page can request more information and record application email actions.
 - Institution application approval now surfaces a one-time Registrar invite token so sandbox onboarding can move into the v4 human-session Institution Portal model.
 - Institution Portal API now exposes current MOU version metadata and scoped upload-ticket issuance for registration documents, signed MOU files, and supporting documents.
+- Institution Portal staff API contract is documented in `docs/api/institution-portal-staff-contract.md` for Engineer 2.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -266,6 +268,7 @@ Completed successfully:
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, institution readiness flags, recent rollover data, and sealed-session escalation events.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
+- Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
 - Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
 - End-to-end pilot flow verified:
@@ -299,12 +302,11 @@ API app:
 
 ## Next Engineering Steps
 
-1. Implement Registrar-facing staff assigned-scope management inside the Institution Portal.
-2. Add modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
-3. Implement RecordRequest payment escrow/release and publication into the learner passport.
-4. Add transfer workflows and disputed rollover surfaces.
-5. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
-6. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
+2. Implement RecordRequest payment escrow/release and publication into the learner passport.
+3. Add transfer workflows and disputed rollover surfaces.
+4. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 
