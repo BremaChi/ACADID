@@ -81,6 +81,26 @@ test("founder academic operations summary aggregates v5 control-plane health", a
         }
       ]
     },
+    transferRequest: {
+      groupBy: async () => [
+        { fromInstitutionId: institutionOne.uuid, status: "COMPLETED", _count: { _all: 2 } },
+        { fromInstitutionId: institutionTwo.uuid, status: "DISPUTED", _count: { _all: 1 } }
+      ],
+      findMany: async () => [
+        {
+          uuid: "transfer-1",
+          transferId: "TRF-2026-ABC123",
+          status: "DISPUTED",
+          toInstitutionNameSubmitted: "Future Academy",
+          createdAt: new Date("2026-05-01T12:00:00.000Z"),
+          learner: { uuid: "learner-1", ain: "AIN-NG-2026-0000001", fullName: "Ada Learner" },
+          fromInstitution: institutionTwo,
+          toInstitution: null,
+          rolloverRecord: { uuid: "rollover-2", decision: "TRANSFERRED_OUT", status: "APPROVED" },
+          dispute: { uuid: "dispute-1", title: "Transfer disputed", status: "OPEN", priority: "HIGH" }
+        }
+      ]
+    },
     auditEvent: {
       findMany: async () => [
         {
@@ -117,9 +137,11 @@ test("founder academic operations summary aggregates v5 control-plane health", a
   assert.equal(summary.metrics.sealedSessions, 1);
   assert.equal(summary.metrics.structureNodes, 8);
   assert.equal(summary.metrics.pendingRollovers, 1);
+  assert.equal(summary.metrics.disputedTransfers, 1);
   assert.equal(summary.metrics.reopenEscalations, 1);
   assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00001").completionScore, 100);
   assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00002").flags.includes("Missing active session"), true);
   assert.equal(summary.recentRollovers[0].learnerAin, "AIN-NG-2026-0000001");
+  assert.equal(summary.recentTransfers[0].transferId, "TRF-2026-ABC123");
   assert.equal(summary.sealedSessionEscalations[0].actorName, "Registrar One");
 });

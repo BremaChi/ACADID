@@ -195,6 +195,16 @@ enum RolloverStatus {
   CANCELLED
 }
 
+enum TransferRequestStatus {
+  REQUESTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+  DISPUTED
+}
+
 enum CredentialType {
   TRANSCRIPT
   RESULT_SLIP
@@ -374,6 +384,7 @@ model Learner {
   disputes           Dispute[]
   recordRequests     RecordRequest[]
   rolloverRecords    RolloverRecord[]
+  transferRequests   TransferRequest[]
   notifications      Notification[]
 
   @@index([fullName, dateOfBirth])
@@ -407,6 +418,8 @@ model Institution {
   developerAccessRequests DeveloperAccessRequest[]
   recordRequests          RecordRequest[]
   disputes                Dispute[]
+  outgoingTransferRequests TransferRequest[] @relation("TransferFromInstitution")
+  incomingTransferRequests TransferRequest[] @relation("TransferToInstitution")
   revenueEntries          RevenueLedgerEntry[]
   subscriptions           InstitutionSubscription[]
   backgroundJobs          BackgroundJob[]
@@ -523,6 +536,8 @@ model InstitutionUser {
   approvedResultBatches     ResultBatch[]       @relation("ResultBatchApprover")
   createdRollovers          RolloverRecord[]    @relation("RolloverCreator")
   approvedRollovers         RolloverRecord[]    @relation("RolloverApprover")
+  requestedTransferRequests TransferRequest[]   @relation("TransferRequestRequester")
+  reviewedTransferRequests  TransferRequest[]   @relation("TransferRequestReviewer")
 
   @@unique([userId, institutionId, role])
   @@index([institutionId, status])
@@ -600,6 +615,7 @@ model Enrolment {
   structureScope  AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
   academicRecords AcademicRecord[]
   rolloverRecords RolloverRecord[]
+  transferRequests TransferRequest[]
 
   @@unique([institutionId, studentNumber, status])
   @@index([learnerId])
@@ -628,6 +644,7 @@ model AcademicSession {
   academicRecords AcademicRecord[]
   rolloversFrom   RolloverRecord[] @relation("RolloverFromSession")
   rolloversTo     RolloverRecord[] @relation("RolloverToSession")
+  transfersFrom   TransferRequest[] @relation("TransferFromSession")
 
   @@unique([institutionId, sessionLabel, periodType, periodLabel])
   @@index([institutionId, status])
@@ -658,6 +675,7 @@ model AcademicStructure {
   academicRecords AcademicRecord[]
   rolloversFrom   RolloverRecord[]    @relation("RolloverFromStructure")
   rolloversTo     RolloverRecord[]    @relation("RolloverToStructure")
+  transfersFrom   TransferRequest[]   @relation("TransferFromStructure")
 
   @@index([institutionId, type, status])
   @@index([institutionId, parentId])
@@ -788,8 +806,11 @@ model RolloverRecord {
   reason          String?
   createdById     String?          @db.Uuid
   approvedById    String?          @db.Uuid
+  disputeId       String?          @unique @db.Uuid
   approvedAt      DateTime?
   cancelledAt     DateTime?
+  disputedAt      DateTime?
+  disputeResolutionNote String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -802,6 +823,8 @@ model RolloverRecord {
   toStructure   AcademicStructure? @relation("RolloverToStructure", fields: [toStructureId], references: [uuid])
   createdBy     InstitutionUser?   @relation("RolloverCreator", fields: [createdById], references: [uuid])
   approvedBy    InstitutionUser?   @relation("RolloverApprover", fields: [approvedById], references: [uuid])
+  dispute       Dispute?           @relation(fields: [disputeId], references: [uuid])
+  transferRequest TransferRequest?
 
   @@index([institutionId, status])
   @@index([learnerId, createdAt])
@@ -810,6 +833,55 @@ model RolloverRecord {
   @@index([fromStructureId])
   @@index([toStructureId])
   @@index([approvedById])
+  @@index([disputeId])
+}
+
+model TransferRequest {
+  uuid                       String                @id @default(uuid()) @db.Uuid
+  transferId                 String                @unique
+  learnerId                  String                @db.Uuid
+  fromInstitutionId          String                @db.Uuid
+  toInstitutionId            String?               @db.Uuid
+  fromEnrolmentId            String?               @db.Uuid
+  fromSessionId              String?               @db.Uuid
+  fromStructureId            String?               @db.Uuid
+  toInstitutionNameSubmitted String?
+  toInstitutionContactEmail  String?
+  reason                     String?
+  status                     TransferRequestStatus @default(REQUESTED)
+  requestedById              String?               @db.Uuid
+  reviewedById               String?               @db.Uuid
+  rolloverRecordId           String?               @unique @db.Uuid
+  disputeId                  String?               @unique @db.Uuid
+  requestedAt                DateTime              @default(now())
+  reviewedAt                 DateTime?
+  completedAt                DateTime?
+  rejectedAt                 DateTime?
+  cancelledAt                DateTime?
+  notes                      Json?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+
+  learner         Learner            @relation(fields: [learnerId], references: [uuid])
+  fromInstitution Institution        @relation("TransferFromInstitution", fields: [fromInstitutionId], references: [uuid])
+  toInstitution   Institution?       @relation("TransferToInstitution", fields: [toInstitutionId], references: [uuid])
+  fromEnrolment   Enrolment?         @relation(fields: [fromEnrolmentId], references: [uuid])
+  fromSession     AcademicSession?   @relation("TransferFromSession", fields: [fromSessionId], references: [uuid])
+  fromStructure   AcademicStructure? @relation("TransferFromStructure", fields: [fromStructureId], references: [uuid])
+  requestedBy     InstitutionUser?   @relation("TransferRequestRequester", fields: [requestedById], references: [uuid])
+  reviewedBy      InstitutionUser?   @relation("TransferRequestReviewer", fields: [reviewedById], references: [uuid])
+  rolloverRecord  RolloverRecord?    @relation(fields: [rolloverRecordId], references: [uuid])
+  dispute         Dispute?           @relation(fields: [disputeId], references: [uuid])
+
+  @@index([fromInstitutionId, status, createdAt])
+  @@index([toInstitutionId, status, createdAt])
+  @@index([learnerId, createdAt])
+  @@index([fromEnrolmentId, status])
+  @@index([fromSessionId, status])
+  @@index([fromStructureId])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([disputeId])
 }
 
 model Credential {
@@ -985,6 +1057,8 @@ model Dispute {
   learner     Learner?     @relation(fields: [learnerId], references: [uuid])
   credential  Credential?  @relation(fields: [credentialId], references: [uuid])
   assignedTo  User?        @relation("DisputeAssignee", fields: [assignedToId], references: [uuid])
+  rolloverRecord RolloverRecord?
+  transferRequest TransferRequest?
 
   @@index([status, createdAt])
   @@index([institutionId, status])

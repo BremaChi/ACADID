@@ -1138,8 +1138,11 @@ export class AdminService {
       enrolmentGroups,
       batchGroups,
       rolloverGroups,
+      transferGroups,
       sealedSessions,
       recentRollovers,
+      recentTransfers,
+      disputedRollovers,
       reopenEvents
     ] = await Promise.all([
       this.prisma.institution.findMany({
@@ -1179,6 +1182,10 @@ export class AdminService {
         by: ["institutionId", "status"],
         _count: { _all: true }
       }),
+      this.prisma.transferRequest.groupBy({
+        by: ["fromInstitutionId", "status"],
+        _count: { _all: true }
+      }),
       this.prisma.academicSession.findMany({
         where: { status: "SEALED" },
         orderBy: { updatedAt: "desc" },
@@ -1206,6 +1213,28 @@ export class AdminService {
           toStructure: { select: { uuid: true, type: true, name: true, code: true } }
         }
       }),
+      this.prisma.transferRequest.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        include: {
+          learner: { select: { uuid: true, ain: true, fullName: true } },
+          fromInstitution: { select: { uuid: true, institutionId: true, officialName: true } },
+          toInstitution: { select: { uuid: true, institutionId: true, officialName: true } },
+          rolloverRecord: { select: { uuid: true, decision: true, status: true } },
+          dispute: { select: { uuid: true, title: true, status: true, priority: true } }
+        }
+      }),
+      this.prisma.rolloverRecord.findMany({
+        where: { disputeId: { not: null } },
+        orderBy: { disputedAt: "desc" },
+        take: 12,
+        include: {
+          institution: { select: { uuid: true, institutionId: true, officialName: true } },
+          learner: { select: { uuid: true, ain: true, fullName: true } },
+          dispute: { select: { uuid: true, title: true, status: true, priority: true, resolvedAt: true } },
+          transferRequest: { select: { uuid: true, transferId: true, status: true } }
+        }
+      }),
       this.readAuditEvents({ action: "academic_session.reopen", targetType: "AcademicSession", take: 12 })
     ]);
 
@@ -1223,6 +1252,9 @@ export class AdminService {
       const structureNodes = countForInstitution(structureGroups, institution.uuid);
       const activeEnrolments = countForInstitution(enrolmentGroups, institution.uuid, "ACTIVE");
       const pendingRollovers = countForInstitution(rolloverGroups, institution.uuid, "PENDING_ROLLOVER");
+      const activeTransfers = transferGroups
+        .filter((row) => row.fromInstitutionId === institution.uuid && ["REQUESTED", "IN_REVIEW", "DISPUTED"].includes(row.status))
+        .reduce((sum, row) => sum + row._count._all, 0);
       const publishedBatches = countForInstitution(batchGroups, institution.uuid, "PUBLISHED");
       const rejectedBatches = countForInstitution(batchGroups, institution.uuid, "REJECTED");
       const completionScore =
@@ -1236,6 +1268,7 @@ export class AdminService {
         activeEnrolments === 0 ? "No active learners" : null,
         sealedSessionCount > 0 ? `${sealedSessionCount} sealed session(s)` : null,
         pendingRollovers > 0 ? `${pendingRollovers} pending rollover(s)` : null,
+        activeTransfers > 0 ? `${activeTransfers} transfer request(s) need attention` : null,
         rejectedBatches > 0 ? `${rejectedBatches} rejected batch(es)` : null
       ].filter((flag): flag is string => Boolean(flag));
 
@@ -1251,6 +1284,7 @@ export class AdminService {
         structureNodes,
         activeEnrolments,
         pendingRollovers,
+        activeTransfers,
         publishedBatches,
         rejectedBatches,
         completionScore,
@@ -1267,6 +1301,8 @@ export class AdminService {
         activeEnrolments: totalByStatus(enrolmentGroups, "ACTIVE"),
         pendingRollovers: totalByStatus(rolloverGroups, "PENDING_ROLLOVER"),
         approvedRollovers: totalByStatus(rolloverGroups, "APPROVED"),
+        requestedTransfers: totalByStatus(transferGroups, "REQUESTED"),
+        disputedTransfers: totalByStatus(transferGroups, "DISPUTED"),
         publishedBatches: totalByStatus(batchGroups, "PUBLISHED"),
         rejectedBatches: totalByStatus(batchGroups, "REJECTED"),
         reopenEscalations: reopenEvents.filter((event) => event.action === "academic_session.reopen_requested").length
@@ -1274,6 +1310,7 @@ export class AdminService {
       sessionStatus: this.countRowsByStatus(sessionGroups),
       batchStatus: this.countRowsByStatus(batchGroups),
       rolloverStatus: this.countRowsByStatus(rolloverGroups),
+      transferStatus: this.countRowsByStatus(transferGroups),
       structureTypes: structureTypeGroups.map((row) => ({ type: row.type, count: row._count._all })),
       institutionHealth,
       sealedSessions: sealedSessions.map((session) => ({
@@ -1300,6 +1337,34 @@ export class AdminService {
         fromStructure: rollover.fromStructure ? this.describeAcademicStructure(rollover.fromStructure) : "No source structure",
         toStructure: rollover.toStructure ? this.describeAcademicStructure(rollover.toStructure) : "No target structure",
         createdAt: rollover.createdAt
+      })),
+      recentTransfers: recentTransfers.map((transfer) => ({
+        id: transfer.uuid,
+        transferId: transfer.transferId,
+        status: transfer.status,
+        learnerAin: transfer.learner.ain,
+        learnerName: transfer.learner.fullName,
+        fromInstitutionId: transfer.fromInstitution.institutionId,
+        fromInstitutionName: transfer.fromInstitution.officialName,
+        toInstitutionId: transfer.toInstitution?.institutionId ?? null,
+        toInstitutionName: transfer.toInstitution?.officialName ?? transfer.toInstitutionNameSubmitted,
+        rolloverId: transfer.rolloverRecord?.uuid ?? null,
+        disputeId: transfer.dispute?.uuid ?? null,
+        createdAt: transfer.createdAt
+      })),
+      disputedRollovers: disputedRollovers.map((rollover) => ({
+        id: rollover.uuid,
+        institutionId: rollover.institution.institutionId,
+        institutionName: rollover.institution.officialName,
+        learnerAin: rollover.learner.ain,
+        learnerName: rollover.learner.fullName,
+        decision: rollover.decision,
+        disputeId: rollover.dispute?.uuid ?? null,
+        disputeTitle: rollover.dispute?.title ?? null,
+        disputeStatus: rollover.dispute?.status ?? null,
+        transferId: rollover.transferRequest?.transferId ?? null,
+        disputedAt: rollover.disputedAt,
+        resolutionNote: rollover.disputeResolutionNote
       })),
       sealedSessionEscalations: reopenEvents
     };

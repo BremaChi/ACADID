@@ -318,6 +318,39 @@ export const confirmRolloverSchema = z.object({
   decisions: z.array(confirmRolloverDecisionSchema).min(1).max(500)
 });
 
+export const transferRequestStatuses = ["REQUESTED", "IN_REVIEW", "APPROVED", "REJECTED", "CANCELLED", "COMPLETED", "DISPUTED"] as const;
+
+export const createTransferRequestSchema = z
+  .object({
+    institutionId: z.string().min(1),
+    enrolmentId: z.string().uuid(),
+    toInstitutionId: z.string().uuid().optional(),
+    toInstitutionNameSubmitted: z.string().min(2).max(180).optional(),
+    toInstitutionContactEmail: z.string().email().max(254).optional(),
+    reason: z.string().min(10).max(2000).optional()
+  })
+  .refine((value) => Boolean(value.toInstitutionId || value.toInstitutionNameSubmitted), {
+    message: "Provide either a target institution id or submitted target institution name.",
+    path: ["toInstitutionId"]
+  });
+
+export const reviewTransferRequestSchema = z.object({
+  decision: z.enum(["APPROVE", "REJECT", "CANCEL"]),
+  note: z.string().max(2000).optional()
+});
+
+export const createRolloverDisputeSchema = z.object({
+  title: z.string().min(3).max(180).optional(),
+  reason: z.string().min(10).max(2000),
+  priority: z.enum(disputePriorities).default("NORMAL"),
+  reporterName: z.string().min(2).max(120).optional(),
+  reporterEmail: z.string().email().max(254).optional()
+});
+
+export const resolveRolloverDisputeSchema = z.object({
+  resolutionNote: z.string().min(10).max(2000)
+});
+
 export const requestSealedSessionReopenSchema = z.object({
   reason: z.string().min(10).max(2000),
   requestedStatus: z.enum(["ACTIVE", "CLOSED"]).default("ACTIVE")
@@ -490,6 +523,10 @@ export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSch
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
 export type PreviewRolloverInput = z.infer<typeof previewRolloverSchema>;
 export type ConfirmRolloverInput = z.infer<typeof confirmRolloverSchema>;
+export type CreateTransferRequestInput = z.infer<typeof createTransferRequestSchema>;
+export type ReviewTransferRequestInput = z.infer<typeof reviewTransferRequestSchema>;
+export type CreateRolloverDisputeInput = z.infer<typeof createRolloverDisputeSchema>;
+export type ResolveRolloverDisputeInput = z.infer<typeof resolveRolloverDisputeSchema>;
 export type RequestSealedSessionReopenInput = z.infer<typeof requestSealedSessionReopenSchema>;
 export type ReviewSealedSessionReopenInput = z.infer<typeof reviewSealedSessionReopenSchema>;
 export type CreateAcademicSessionInput = z.infer<typeof createAcademicSessionSchema>;

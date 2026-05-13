@@ -84,6 +84,8 @@ The API has these first modules:
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
 - Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
 - RecordRequest payment escrow and fulfillment are implemented: payable requests can move from `PENDING` to `PAID/HELD`, fulfillment creates a signed `Credential` linked to the request, publishes it into the learner passport, releases held payment, and records `CREDENTIAL_EXPORT_FEE` revenue.
+- Transfer workflows are implemented under `/api/govern/transfers`: institutions can create transfer requests for active enrolments, approve/reject/cancel them, approval marks the source enrolment `TRANSFERRED_OUT`, creates a linked `TRANSFERRED_OUT` rollover record, and records audit events.
+- Disputed rollover surfaces are implemented under `/api/govern/rollovers/:id/disputes`: rollover disputes create linked `Dispute` rows, mark linked transfer requests `DISPUTED`, resolve with retained resolution notes, and write audit events.
 - v5 InvitationLead foundation is implemented: unregistered-institution RecordRequests now create/update durable invitation leads, Founder Admin can list and mark leads through `/api/admin/invitation-leads`, and all lead review actions write audit events.
 - Founder Console now has a dedicated Record Requests section with search, status filters, open/escalated/fulfilled metrics, request detail review, and governance status updates connected to `/govern/record-requests/:id/review`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
@@ -127,7 +129,9 @@ The API has these first modules:
 - v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
 - v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
+- v5 transfer and disputed rollover API foundation is implemented under `/api/govern`: transfer requests are durable, linked to enrolments and rollovers, source institution approval creates transfer-out state, and rollover disputes are linked to the Founder dispute system.
 - Founder v5 Academic Operations visibility is implemented through `/api/admin/academic-operations` and a dedicated Founder Console page for setup health, active/sealed sessions, structure mix, rollover activity, sealed-session escalations, and institution flags.
+- Founder v5 Academic Operations now includes transfer status counts, recent transfer requests, disputed rollovers, and institution health flags for transfers needing attention.
 - Founder v5 Academic Operations now includes invitation leads for unregistered institutions with graduate demand, including Contacted, Invited, and Dismissed controls.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
@@ -271,6 +275,7 @@ Completed successfully:
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
+- v5 transfer and rollover-dispute workflows validate with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, and `npm test`; coverage confirms transfer request creation, transfer approval, source enrolment transfer-out, linked rollover creation, dispute open/resolve, and destination validation.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, institution readiness flags, recent rollover data, and sealed-session escalation events.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
@@ -307,10 +312,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add transfer workflows and disputed rollover surfaces.
-2. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
-3. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
-4. Add CGPA/classification rollup after enough semester GPA records exist.
+1. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+2. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
+3. Add CGPA/classification rollup after enough semester GPA records exist.
+4. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
 5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

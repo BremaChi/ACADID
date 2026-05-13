@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { RecordRequestStatus, UserRole } from "@prisma/client";
+import { RecordRequestStatus, TransferRequestStatus, UserRole } from "@prisma/client";
 import { AuthGuard } from "../../auth/guards/auth.guard.js";
 import { RolesGuard } from "../../auth/guards/roles.guard.js";
 import { ScopesGuard } from "../../auth/guards/scopes.guard.js";
@@ -48,6 +48,36 @@ export class GovernanceController {
   @Post("rollovers/confirm")
   confirmRollover(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.governanceService.confirmRollover(request.auth, body);
+  }
+
+  @Post("transfers")
+  createTransferRequest(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.governanceService.createTransferRequest(request.auth, body);
+  }
+
+  @Get("transfers")
+  listTransferRequests(
+    @Req() request: AuthenticatedRequest,
+    @Query("status") status?: TransferRequestStatus,
+    @Query("direction") direction?: "OUTGOING" | "INCOMING" | "ALL",
+    @Query("institutionId") institutionId?: string
+  ) {
+    return this.governanceService.listTransferRequests(request.auth, { status, direction, institutionId });
+  }
+
+  @Post("transfers/:id/review")
+  reviewTransferRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.reviewTransferRequest(request.auth, id, body);
+  }
+
+  @Post("rollovers/:id/disputes")
+  createRolloverDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.createRolloverDispute(request.auth, id, body);
+  }
+
+  @Post("rollovers/:id/disputes/resolve")
+  resolveRolloverDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.resolveRolloverDispute(request.auth, id, body);
   }
 
   @Post("sealed-sessions/:id/reopen-request")

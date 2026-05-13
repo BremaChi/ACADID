@@ -4,11 +4,15 @@ import { randomUUID } from "node:crypto";
 import {
   confirmRecordRequestPaymentSchema,
   confirmRolloverSchema,
+  createRolloverDisputeSchema,
+  createTransferRequestSchema,
   fulfillRecordRequestSchema,
   previewRolloverSchema,
   requestSealedSessionReopenSchema,
+  resolveRolloverDisputeSchema,
   reviewRecordRequestSchema,
-  reviewSealedSessionReopenSchema
+  reviewSealedSessionReopenSchema,
+  reviewTransferRequestSchema
 } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
@@ -19,6 +23,7 @@ import { CacheService } from "../../platform/services/cache.service.js";
 
 type BatchTransition = "SUBMITTED" | "REVIEWED" | "APPROVED";
 type RolloverDecision = "PROMOTED" | "REPEATED" | "TRANSFERRED_OUT" | "WITHDRAWN" | "GRADUATED" | "SUSPENDED" | "SEALED";
+type TransferDirection = "OUTGOING" | "INCOMING" | "ALL";
 
 @Injectable()
 export class GovernanceService {
@@ -435,6 +440,419 @@ export class GovernanceService {
       confirmedCount: confirmed.length,
       rollovers: confirmed
     };
+  }
+
+  async createTransferRequest(auth: AuthTokenPayload, body: unknown) {
+    const parsed = createTransferRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    const enrolment = await this.prisma.enrolment.findUnique({
+      where: { uuid: parsed.data.enrolmentId },
+      include: {
+        learner: { select: { uuid: true, ain: true, fullName: true } },
+        academicSession: { select: { uuid: true, sessionLabel: true, periodLabel: true, status: true } },
+        structureScope: { select: { uuid: true, type: true, name: true, code: true } }
+      }
+    });
+    if (!enrolment || enrolment.institutionId !== institution.uuid || enrolment.status !== "ACTIVE") {
+      throw new BadRequestException("Active source enrolment not found for this institution.");
+    }
+
+    const targetInstitution = parsed.data.toInstitutionId
+      ? await this.prisma.institution.findUnique({
+          where: { uuid: parsed.data.toInstitutionId },
+          select: { uuid: true, institutionId: true, officialName: true, status: true }
+        })
+      : null;
+    if (parsed.data.toInstitutionId && (!targetInstitution || targetInstitution.status !== "ACTIVE")) {
+      throw new BadRequestException("Target institution must be active.");
+    }
+    if (targetInstitution?.uuid === institution.uuid) {
+      throw new BadRequestException("Transfer target institution must be different from the source institution.");
+    }
+
+    const requestedAt = new Date();
+    const transfer = await this.prisma.transferRequest.create({
+      data: {
+        transferId: this.nextTransferRequestId(),
+        learnerId: enrolment.learnerId,
+        fromInstitutionId: institution.uuid,
+        toInstitutionId: targetInstitution?.uuid,
+        fromEnrolmentId: enrolment.uuid,
+        fromSessionId: enrolment.academicSessionId,
+        fromStructureId: enrolment.structureScopeId,
+        toInstitutionNameSubmitted: parsed.data.toInstitutionNameSubmitted ?? targetInstitution?.officialName,
+        toInstitutionContactEmail: parsed.data.toInstitutionContactEmail,
+        reason: parsed.data.reason,
+        status: "REQUESTED",
+        requestedById: auth.institutionUserId,
+        requestedAt,
+        notes: [
+          {
+            at: requestedAt.toISOString(),
+            by: auth.sub,
+            role: auth.role,
+            status: "REQUESTED",
+            note: parsed.data.reason ?? "Transfer request opened."
+          }
+        ] as Prisma.InputJsonValue
+      },
+      include: this.transferRequestInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "transfer_request.create",
+      targetType: "TransferRequest",
+      targetId: transfer.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        transferId: transfer.transferId,
+        learnerId: enrolment.learnerId,
+        learnerAin: enrolment.learner.ain,
+        toInstitutionId: targetInstitution?.institutionId,
+        toInstitutionNameSubmitted: transfer.toInstitutionNameSubmitted
+      }
+    });
+
+    return { accepted: true, transfer };
+  }
+
+  async listTransferRequests(auth: AuthTokenPayload, filters: { status?: string; direction?: TransferDirection; institutionId?: string } = {}) {
+    const direction = filters.direction ?? "ALL";
+    const status = filters.status;
+    const institutionRef = filters.institutionId;
+    const institution =
+      institutionRef && auth.role === UserRole.ACADID_SUPER_ADMIN
+        ? await this.prisma.institution.findFirst({
+            where: this.institutionRefWhere(institutionRef),
+            select: { uuid: true }
+          })
+        : null;
+    const actorInstitutionId = auth.role === UserRole.ACADID_SUPER_ADMIN ? institution?.uuid : auth.institutionUuid;
+    if (auth.role !== UserRole.ACADID_SUPER_ADMIN && !actorInstitutionId) {
+      throw new ForbiddenException("Institution-scoped session is required to list transfer requests.");
+    }
+
+    const institutionFilter =
+      !actorInstitutionId || direction === "ALL"
+        ? actorInstitutionId
+          ? { OR: [{ fromInstitutionId: actorInstitutionId }, { toInstitutionId: actorInstitutionId }] }
+          : {}
+        : direction === "INCOMING"
+          ? { toInstitutionId: actorInstitutionId }
+          : { fromInstitutionId: actorInstitutionId };
+
+    return this.prisma.transferRequest.findMany({
+      where: {
+        ...institutionFilter,
+        ...(status ? { status: status as never } : {})
+      },
+      include: this.transferRequestInclude(),
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
+
+  async reviewTransferRequest(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = reviewTransferRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.transferRequest.findUnique({
+      where: { uuid: id },
+      include: this.transferRequestInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Transfer request not found.");
+    }
+    await this.authority.assertActorCanOperateInstitution(auth, existing.fromInstitutionId);
+    if (["REJECTED", "CANCELLED", "COMPLETED"].includes(existing.status)) {
+      throw new BadRequestException("Closed transfer requests cannot be reviewed again.");
+    }
+
+    const now = new Date();
+    const notes = this.appendTimelineNote(existing.notes, {
+      at: now.toISOString(),
+      by: auth.sub,
+      role: auth.role,
+      status: parsed.data.decision,
+      note: parsed.data.note
+    });
+
+    if (parsed.data.decision === "REJECT" || parsed.data.decision === "CANCEL") {
+      const status = parsed.data.decision === "REJECT" ? "REJECTED" : "CANCELLED";
+      const transfer = await this.prisma.transferRequest.update({
+        where: { uuid: existing.uuid },
+        data: {
+          status,
+          notes,
+          reviewedById: auth.institutionUserId,
+          reviewedAt: now,
+          rejectedAt: status === "REJECTED" ? now : undefined,
+          cancelledAt: status === "CANCELLED" ? now : undefined
+        },
+        include: this.transferRequestInclude()
+      });
+
+      await this.audit.write({
+        actorId: auth.sub,
+        actorRole: auth.role,
+        action: status === "REJECTED" ? "transfer_request.reject" : "transfer_request.cancel",
+        targetType: "TransferRequest",
+        targetId: existing.uuid,
+        institutionId: existing.fromInstitutionId,
+        outcome: "SUCCESS",
+        reason: parsed.data.note,
+        metadata: { transferId: existing.transferId }
+      });
+
+      return { accepted: true, transfer };
+    }
+
+    const fulfilled = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const enrolment = existing.fromEnrolmentId
+          ? await tx.enrolment.findUnique({ where: { uuid: existing.fromEnrolmentId } })
+          : null;
+        if (!enrolment || enrolment.institutionId !== existing.fromInstitutionId || enrolment.status !== "ACTIVE") {
+          throw new BadRequestException("Active source enrolment is no longer available for transfer.");
+        }
+
+        await tx.enrolment.update({
+          where: { uuid: enrolment.uuid },
+          data: {
+            status: "TRANSFERRED_OUT",
+            exitDate: now,
+            exitType: "TRANSFER"
+          }
+        });
+
+        const rollover = await tx.rolloverRecord.create({
+          data: {
+            institutionId: existing.fromInstitutionId,
+            learnerId: existing.learnerId,
+            enrolmentId: enrolment.uuid,
+            fromSessionId: existing.fromSessionId ?? enrolment.academicSessionId!,
+            fromStructureId: existing.fromStructureId ?? enrolment.structureScopeId,
+            decision: "TRANSFERRED_OUT",
+            status: "APPROVED",
+            reason: parsed.data.note ?? existing.reason,
+            createdById: existing.requestedById ?? auth.institutionUserId,
+            approvedById: auth.institutionUserId,
+            approvedAt: now
+          }
+        });
+
+        const transfer = await tx.transferRequest.update({
+          where: { uuid: existing.uuid },
+          data: {
+            status: "COMPLETED",
+            rolloverRecordId: rollover.uuid,
+            reviewedById: auth.institutionUserId,
+            reviewedAt: now,
+            completedAt: now,
+            notes
+          },
+          include: this.transferRequestInclude()
+        });
+
+        return { transfer, rollover };
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "transfer_request.complete",
+      targetType: "TransferRequest",
+      targetId: existing.uuid,
+      institutionId: existing.fromInstitutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.note,
+      metadata: {
+        transferId: existing.transferId,
+        rolloverId: fulfilled.rollover.uuid,
+        learnerId: existing.learnerId
+      }
+    });
+
+    return { accepted: true, transfer: fulfilled.transfer, rollover: fulfilled.rollover };
+  }
+
+  async createRolloverDispute(auth: AuthTokenPayload, rolloverId: string, body: unknown) {
+    const parsed = createRolloverDisputeSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const rollover = await this.prisma.rolloverRecord.findUnique({
+      where: { uuid: rolloverId },
+      include: {
+        institution: { select: { uuid: true, institutionId: true, officialName: true } },
+        learner: { select: { uuid: true, ain: true, fullName: true } },
+        dispute: true,
+        transferRequest: true
+      }
+    });
+    if (!rollover) {
+      throw new BadRequestException("Rollover record not found.");
+    }
+    await this.authority.assertActorCanOperateInstitution(auth, rollover.institutionId);
+    if (rollover.disputeId || rollover.dispute) {
+      throw new BadRequestException("Rollover record already has an open dispute link.");
+    }
+
+    const now = new Date();
+    const disputed = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const dispute = await tx.dispute.create({
+          data: {
+            title: parsed.data.title ?? `Rollover dispute: ${rollover.decision}`,
+            description: parsed.data.reason,
+            category: "ROLLOVER",
+            priority: parsed.data.priority,
+            status: "OPEN",
+            institutionId: rollover.institutionId,
+            learnerId: rollover.learnerId,
+            reporterName: parsed.data.reporterName,
+            reporterEmail: parsed.data.reporterEmail
+          }
+        });
+
+        const updatedRollover = await tx.rolloverRecord.update({
+          where: { uuid: rollover.uuid },
+          data: {
+            disputeId: dispute.uuid,
+            disputedAt: now
+          }
+        });
+
+        const transfer =
+          rollover.transferRequest &&
+          (await tx.transferRequest.update({
+            where: { uuid: rollover.transferRequest.uuid },
+            data: {
+              status: "DISPUTED",
+              disputeId: dispute.uuid,
+              notes: this.appendTimelineNote(rollover.transferRequest.notes, {
+                at: now.toISOString(),
+                by: auth.sub,
+                role: auth.role,
+                status: "DISPUTED",
+                note: parsed.data.reason
+              })
+            },
+            include: this.transferRequestInclude()
+          }));
+
+        return { dispute, rollover: updatedRollover, transfer };
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "rollover.dispute.create",
+      targetType: "RolloverRecord",
+      targetId: rollover.uuid,
+      institutionId: rollover.institutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.reason,
+      metadata: {
+        disputeId: disputed.dispute.uuid,
+        decision: rollover.decision,
+        learnerAin: rollover.learner.ain,
+        transferId: disputed.transfer?.transferId
+      }
+    });
+
+    return { accepted: true, ...disputed };
+  }
+
+  async resolveRolloverDispute(auth: AuthTokenPayload, rolloverId: string, body: unknown) {
+    const parsed = resolveRolloverDisputeSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const rollover = await this.prisma.rolloverRecord.findUnique({
+      where: { uuid: rolloverId },
+      include: { dispute: true, transferRequest: true }
+    });
+    if (!rollover) {
+      throw new BadRequestException("Rollover record not found.");
+    }
+    await this.authority.assertActorCanOperateInstitution(auth, rollover.institutionId);
+    if (!rollover.disputeId || !rollover.dispute) {
+      throw new BadRequestException("Rollover record does not have a dispute to resolve.");
+    }
+
+    const now = new Date();
+    const resolved = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const dispute = await tx.dispute.update({
+          where: { uuid: rollover.disputeId! },
+          data: {
+            status: "RESOLVED",
+            resolvedAt: now,
+            resolutionNote: parsed.data.resolutionNote
+          }
+        });
+
+        const updatedRollover = await tx.rolloverRecord.update({
+          where: { uuid: rollover.uuid },
+          data: {
+            disputeResolutionNote: parsed.data.resolutionNote
+          }
+        });
+
+        const transfer =
+          rollover.transferRequest &&
+          (await tx.transferRequest.update({
+            where: { uuid: rollover.transferRequest.uuid },
+            data: {
+              status: rollover.transferRequest.status === "DISPUTED" ? "COMPLETED" : rollover.transferRequest.status,
+              notes: this.appendTimelineNote(rollover.transferRequest.notes, {
+                at: now.toISOString(),
+                by: auth.sub,
+                role: auth.role,
+                status: "RESOLVED",
+                note: parsed.data.resolutionNote
+              })
+            },
+            include: this.transferRequestInclude()
+          }));
+
+        return { dispute, rollover: updatedRollover, transfer };
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "rollover.dispute.resolve",
+      targetType: "RolloverRecord",
+      targetId: rollover.uuid,
+      institutionId: rollover.institutionId,
+      outcome: "SUCCESS",
+      reason: parsed.data.resolutionNote,
+      metadata: {
+        disputeId: rollover.disputeId,
+        transferId: resolved.transfer?.transferId
+      }
+    });
+
+    return { accepted: true, ...resolved };
   }
 
   async requestSealedSessionReopen(auth: AuthTokenPayload, sessionId: string, body: unknown) {
@@ -914,9 +1332,110 @@ export class GovernanceService {
     };
   }
 
+  private transferRequestInclude() {
+    return {
+      learner: {
+        select: {
+          uuid: true,
+          ain: true,
+          fullName: true,
+          identityStatus: true
+        }
+      },
+      fromInstitution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      },
+      toInstitution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      },
+      fromEnrolment: {
+        select: {
+          uuid: true,
+          studentNumber: true,
+          level: true,
+          programme: true,
+          status: true
+        }
+      },
+      fromSession: {
+        select: {
+          uuid: true,
+          sessionLabel: true,
+          periodType: true,
+          periodLabel: true,
+          status: true
+        }
+      },
+      fromStructure: {
+        select: {
+          uuid: true,
+          type: true,
+          name: true,
+          code: true
+        }
+      },
+      requestedBy: {
+        select: {
+          uuid: true,
+          role: true,
+          user: { select: { uuid: true, fullName: true, email: true } }
+        }
+      },
+      reviewedBy: {
+        select: {
+          uuid: true,
+          role: true,
+          user: { select: { uuid: true, fullName: true, email: true } }
+        }
+      },
+      rolloverRecord: {
+        select: {
+          uuid: true,
+          decision: true,
+          status: true,
+          approvedAt: true,
+          disputeId: true,
+          disputedAt: true
+        }
+      },
+      dispute: {
+        select: {
+          uuid: true,
+          title: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          resolvedAt: true
+        }
+      }
+    };
+  }
+
   private appendRecordRequestNote(existing: Prisma.JsonValue, note: Record<string, unknown>) {
     const notes = Array.isArray(existing) ? existing : [];
     return [...notes, note] as Prisma.InputJsonValue;
+  }
+
+  private appendTimelineNote(existing: Prisma.JsonValue, note: Record<string, unknown>) {
+    const notes = Array.isArray(existing) ? existing : [];
+    return [...notes, note] as Prisma.InputJsonValue;
+  }
+
+  private nextTransferRequestId() {
+    const year = new Date().getUTCFullYear();
+    return `TRF-${year}-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
   }
 
   private async assertRecordRequestReviewer(auth: AuthTokenPayload, request: { institutionId: string | null }) {
