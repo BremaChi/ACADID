@@ -26,6 +26,7 @@ AcadID v5 is partially implemented. The Data Center and Founder Console foundati
 - RecordRequest model/API and Founder Console review queue exist.
 - Founder Console includes v5 Academic Operations visibility.
 - Event-driven job foundation, worker runtime, retry policies, idempotency, rate limiting, webhooks, notifications, cache, and observability are implemented.
+- Founder-controlled product/institution rate-limit defaults and emergency throttle controls are implemented.
 - W3C VC-ready credential payload/signing foundation exists with JOSE/JWS Ed25519.
 
 ## Not Fully Implemented Yet
@@ -49,7 +50,6 @@ AcadID v5 is partially implemented. The Data Center and Founder Console foundati
 
 Engineer 1 should continue platform reliability first, then close v5 gaps that unblock product engineers:
 
-- Per-product and per-institution rate-limit defaults.
 - Storage download health.
 - Founder v5 queue/setup-health surfaces.
 - Invitation leads and RecordRequest payment/publication integration.

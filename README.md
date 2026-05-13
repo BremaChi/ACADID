@@ -95,9 +95,13 @@ Webhook worker delivery:
 Rate limiting:
 
 - API key traffic uses persistent PostgreSQL counters from the token's `rateLimitPerMinute`.
+- Founder-controlled rate policy is stored in `PlatformSetting.rateLimits` and is enforced by `RateLimitService`.
+- Product API keys can use product defaults for Institution Portal, Student App, Employer Verification Portal, and Exam Body API.
+- Institution API keys can use sandbox/production defaults plus institution-specific overrides.
+- Emergency throttle mode caps API-key and route-level limits quickly without revoking keys; use it for incident response and traffic spikes.
 - Auth, token exchange, public verification, upload, and portal-intake routes use `RateLimitBucket` rows so limits work across API processes.
 - Rate-limit buckets store hashed keys rather than raw IP/body identifiers.
-- Founder admins can inspect bucket activity at `GET /api/admin/rate-limits` and queue asynchronous retention cleanup through `POST /api/admin/rate-limits/cleanup`.
+- Founder admins can inspect bucket activity at `GET /api/admin/rate-limits`, manage policy at `GET/PATCH /api/admin/rate-limits/policy`, and queue asynchronous retention cleanup through `POST /api/admin/rate-limits/cleanup`.
 - Cleanup runs as the `RATE_LIMIT_BUCKET_CLEANUP` background job on the `platform.maintenance` queue, so HTTP requests return quickly with a job ID.
 
 Idempotency:

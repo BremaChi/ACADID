@@ -31,12 +31,7 @@ export class RateLimitGuard implements CanActivate {
     const http = context.switchToHttp();
     const request = http.getRequest<RateLimitedRequest>();
     const response = http.getResponse<RateLimitedResponse>();
-    const result = await this.rateLimit.assertAllowed({
-      scope: policy.scope,
-      key: this.rateLimit.keyForRequest(request, policy),
-      limit: policy.limit,
-      windowSeconds: policy.windowSeconds
-    });
+    const result = await this.rateLimit.assertRequestAllowed(request, policy);
 
     response.setHeader?.("X-RateLimit-Limit", result.limit);
     response.setHeader?.("X-RateLimit-Remaining", result.remaining);

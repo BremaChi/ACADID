@@ -21,15 +21,10 @@ export class AuthGuard implements CanActivate {
   }
 
   private async enforceApiKeyRateLimit(auth: AuthenticatedRequest["auth"]) {
-    if (auth.kind !== "API_KEY" || !auth.apiKeyId || !auth.rateLimitPerMinute) {
+    if (auth.kind !== "API_KEY" || !auth.apiKeyId) {
       return;
     }
 
-    await this.rateLimit.assertAllowed({
-      scope: "api-key.global",
-      key: `api-key:${auth.apiKeyId}`,
-      limit: auth.rateLimitPerMinute,
-      windowSeconds: 60
-    });
+    await this.rateLimit.assertApiKeyAllowed(auth);
   }
 }

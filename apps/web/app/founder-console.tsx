@@ -694,6 +694,7 @@ type PlatformSettings = {
     productKeyRotationDays: number;
     institutionKeyRotationDays: number;
   };
+  rateLimits: RateLimitPolicyControl;
   notifications: {
     founderEmail: string;
     notifyOnNewApplication: boolean;
@@ -707,6 +708,45 @@ type PlatformSettings = {
     developerAccessApprovedSubject: string;
     disputeNoticeSubject: string;
   };
+};
+
+type RateLimitPolicyControl = {
+  emergency: {
+    enabled: boolean;
+    limitPerMinute: number;
+    reason: string | null;
+  };
+  productDefaultsPerMinute: Record<string, number>;
+  institutionDefaultsPerMinute: {
+    sandbox: number;
+    production: number;
+  };
+  institutionOverridesPerMinute: Record<string, number>;
+  scopeOverrides: Record<string, { limit: number; windowSeconds: number }>;
+};
+
+type RateLimitPolicyResponse = {
+  policy: RateLimitPolicyControl;
+  metadata: {
+    updatedAt: string | null;
+    updatedBy: { fullName: string; email: string } | null;
+    persisted: boolean;
+  };
+};
+
+const defaultRateLimitPolicy: RateLimitPolicyControl = {
+  emergency: {
+    enabled: false,
+    limitPerMinute: 60,
+    reason: null
+  },
+  productDefaultsPerMinute: Object.fromEntries(productOptions.map((product) => [product.code, product.rateLimitPerMinute])),
+  institutionDefaultsPerMinute: {
+    sandbox: 500,
+    production: 2000
+  },
+  institutionOverridesPerMinute: {},
+  scopeOverrides: {}
 };
 
 type PlatformSettingsResponse = {
@@ -731,6 +771,7 @@ const defaultPlatformSettings: PlatformSettings = {
     productKeyRotationDays: 180,
     institutionKeyRotationDays: 90
   },
+  rateLimits: defaultRateLimitPolicy,
   notifications: {
     founderEmail: "founder@acadid.local",
     notifyOnNewApplication: true,
@@ -802,6 +843,10 @@ async function loadSystemHealth(token: string): Promise<SystemHealth> {
   return apiRequest<SystemHealth>("/admin/system-health", token);
 }
 
+async function loadRateLimitPolicy(token: string): Promise<RateLimitPolicyResponse> {
+  return apiRequest<RateLimitPolicyResponse>("/admin/rate-limits/policy", token);
+}
+
 async function loadDeadLetters(token: string): Promise<DeadLetterOverview> {
   return apiRequest<DeadLetterOverview>("/admin/dead-letters", token);
 }
@@ -857,6 +902,7 @@ export function FounderConsole() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingsResponse | null>(null);
+  const [rateLimitPolicy, setRateLimitPolicy] = useState<RateLimitPolicyResponse | null>(null);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
   const [institutionStaff, setInstitutionStaff] = useState<InstitutionStaff[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -906,6 +952,7 @@ export function FounderConsole() {
   const [verificationOutcomeFilter, setVerificationOutcomeFilter] = useState("ALL");
   const [rateLimitCleanupHours, setRateLimitCleanupHours] = useState(24);
   const [idempotencyCleanupHours, setIdempotencyCleanupHours] = useState(24);
+  const [rateLimitPolicyForm, setRateLimitPolicyForm] = useState<RateLimitPolicyControl>(defaultRateLimitPolicy);
   const [institutionForm, setInstitutionForm] = useState({
     officialName: "",
     type: "SECONDARY",
@@ -1081,6 +1128,7 @@ export function FounderConsole() {
       const [nextDisputes, nextRecordRequests] = await Promise.all([loadDisputes(activeToken), loadRecordRequests(activeToken)]);
       const [nextVerificationLogs, nextAuditEvents] = await Promise.all([loadVerificationLogs(activeToken), loadAuditEvents(activeToken)]);
       const nextSystemHealth = await loadSystemHealth(activeToken);
+      const nextRateLimitPolicy = await loadRateLimitPolicy(activeToken);
       const nextDeadLetters = await loadDeadLetters(activeToken);
       const nextDashboardSummary = await loadDashboardSummary(activeToken);
       const nextAcademicOperations = await loadAcademicOperations(activeToken);
@@ -1094,6 +1142,8 @@ export function FounderConsole() {
       setRecordRequests(nextRecordRequests);
       setVerificationLogs(nextVerificationLogs);
       setSystemHealth(nextSystemHealth);
+      setRateLimitPolicy(nextRateLimitPolicy);
+      setRateLimitPolicyForm(nextRateLimitPolicy.policy);
       setDeadLetters(nextDeadLetters);
       setDashboardSummary(nextDashboardSummary);
       setAcademicOperations(nextAcademicOperations);
@@ -1156,6 +1206,8 @@ export function FounderConsole() {
     setSelectedRecordRequestId("");
     setVerificationLogs([]);
     setSystemHealth(null);
+    setRateLimitPolicy(null);
+    setRateLimitPolicyForm(defaultRateLimitPolicy);
     setDeadLetters(null);
     setDashboardSummary(null);
     setAcademicOperations(null);
@@ -1197,6 +1249,25 @@ export function FounderConsole() {
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Rate-limit cleanup could not be queued.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveRateLimitPolicy() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await apiRequest<RateLimitPolicyResponse>("/admin/rate-limits/policy", token, {
+        method: "PATCH",
+        body: JSON.stringify(rateLimitPolicyForm)
+      });
+      setRateLimitPolicy(response);
+      setRateLimitPolicyForm(response.policy);
+      setNotice({ tone: "success", text: "Rate-limit policy updated. New API requests will use it within a few seconds." });
+      await refreshData();
+    } catch (error) {
+      handleAuthenticatedError(error, "Unable to update rate-limit policy.");
     } finally {
       setLoading(false);
     }
@@ -2003,8 +2074,12 @@ export function FounderConsole() {
           onIdempotencyCleanupHours={setIdempotencyCleanupHours}
           onQueueIdempotencyCleanup={queueIdempotencyCleanup}
           onQueueRateLimitCleanup={queueRateLimitCleanup}
+          onRateLimitPolicyChange={setRateLimitPolicyForm}
+          onSaveRateLimitPolicy={saveRateLimitPolicy}
           onRetryDeadLetterJob={retryDeadLetterJob}
           onRetryNotification={retryNotification}
+          rateLimitPolicy={rateLimitPolicy}
+          rateLimitPolicyForm={rateLimitPolicyForm}
         />
       );
     }
@@ -2957,8 +3032,12 @@ function SystemHealthPage({
   onIdempotencyCleanupHours,
   onQueueIdempotencyCleanup,
   onQueueRateLimitCleanup,
+  onRateLimitPolicyChange,
   onRetryDeadLetterJob,
-  onRetryNotification
+  onRetryNotification,
+  onSaveRateLimitPolicy,
+  rateLimitPolicy,
+  rateLimitPolicyForm
 }: {
   cleanupHours: number;
   deadLetters: DeadLetterOverview | null;
@@ -2969,8 +3048,12 @@ function SystemHealthPage({
   onIdempotencyCleanupHours: (value: number) => void;
   onQueueIdempotencyCleanup: () => void;
   onQueueRateLimitCleanup: () => void;
+  onRateLimitPolicyChange: (value: RateLimitPolicyControl) => void;
   onRetryDeadLetterJob: (id: string) => void;
   onRetryNotification: (id: string) => void;
+  onSaveRateLimitPolicy: () => void;
+  rateLimitPolicy: RateLimitPolicyResponse | null;
+  rateLimitPolicyForm: RateLimitPolicyControl;
 }) {
   const metrics = health?.metrics;
   const services = health?.services ?? [
@@ -2988,6 +3071,33 @@ function SystemHealthPage({
   const notificationHealth = services.find((service) => service.name === "Notification Delivery")?.metadata;
   const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
   const idempotencyHealth = services.find((service) => service.name === "Idempotency Ledger")?.metadata;
+  const updateRateLimitProduct = (productCode: string, value: number) => {
+    onRateLimitPolicyChange({
+      ...rateLimitPolicyForm,
+      productDefaultsPerMinute: {
+        ...rateLimitPolicyForm.productDefaultsPerMinute,
+        [productCode]: value
+      }
+    });
+  };
+  const updateRateLimitEmergency = (value: Partial<RateLimitPolicyControl["emergency"]>) => {
+    onRateLimitPolicyChange({
+      ...rateLimitPolicyForm,
+      emergency: {
+        ...rateLimitPolicyForm.emergency,
+        ...value
+      }
+    });
+  };
+  const updateRateLimitInstitutionDefaults = (value: Partial<RateLimitPolicyControl["institutionDefaultsPerMinute"]>) => {
+    onRateLimitPolicyChange({
+      ...rateLimitPolicyForm,
+      institutionDefaultsPerMinute: {
+        ...rateLimitPolicyForm.institutionDefaultsPerMinute,
+        ...value
+      }
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -3063,8 +3173,48 @@ function SystemHealthPage({
               <StatusBadge key={item.status} status={`${titleCase(item.status)} ${item.count}`} />
             ))}
           </div>
-        </Card>
+      </Card>
       </div>
+      <Card>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <SectionTitle title="Rate-Limit Policy" subtitle="Founder-controlled API defaults and emergency throttling for products and institutions." />
+          <StatusBadge status={rateLimitPolicyForm.emergency.enabled ? "EMERGENCY" : "ACTIVE"} />
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-md border border-borderLight bg-soft p-3">
+            <ToggleRow checked={rateLimitPolicyForm.emergency.enabled} label="Emergency throttle mode" onChange={(checked) => updateRateLimitEmergency({ enabled: checked })} />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Emergency cap / minute">
+                <input className={inputClass} min={1} max={100000} type="number" value={rateLimitPolicyForm.emergency.limitPerMinute} onChange={(event) => updateRateLimitEmergency({ limitPerMinute: Number(event.target.value) })} />
+              </Field>
+              <Field label="Last updated">
+                <input className={inputClass} disabled value={rateLimitPolicy?.metadata.updatedAt ? formatDate(rateLimitPolicy.metadata.updatedAt) : "Default policy"} readOnly />
+              </Field>
+            </div>
+            <Field label="Emergency reason">
+              <input className={inputClass} value={rateLimitPolicyForm.emergency.reason ?? ""} onChange={(event) => updateRateLimitEmergency({ reason: event.target.value })} placeholder="Required when emergency mode is enabled" />
+            </Field>
+            <p className="mt-2 text-xs text-textSecondary">Emergency mode caps every API-key and route policy without revoking keys.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Institution sandbox default / minute">
+              <input className={inputClass} min={1} max={100000} type="number" value={rateLimitPolicyForm.institutionDefaultsPerMinute.sandbox} onChange={(event) => updateRateLimitInstitutionDefaults({ sandbox: Number(event.target.value) })} />
+            </Field>
+            <Field label="Institution production default / minute">
+              <input className={inputClass} min={1} max={100000} type="number" value={rateLimitPolicyForm.institutionDefaultsPerMinute.production} onChange={(event) => updateRateLimitInstitutionDefaults({ production: Number(event.target.value) })} />
+            </Field>
+            {productOptions.map((product) => (
+              <Field key={product.code} label={`${product.name} / minute`}>
+                <input className={inputClass} min={1} max={100000} type="number" value={rateLimitPolicyForm.productDefaultsPerMinute[product.code] ?? product.rateLimitPerMinute} onChange={(event) => updateRateLimitProduct(product.code, Number(event.target.value))} />
+              </Field>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-textSecondary">{Object.keys(rateLimitPolicyForm.institutionOverridesPerMinute).length} institution override(s), {Object.keys(rateLimitPolicyForm.scopeOverrides).length} scope override(s).</p>
+          <button className={primaryButtonClass} disabled={loading} onClick={onSaveRateLimitPolicy} type="button">Save Rate Policy</button>
+        </div>
+      </Card>
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <SectionTitle title="Dead-Letter Review" subtitle="Exhausted jobs and failed deliveries needing operator action." />

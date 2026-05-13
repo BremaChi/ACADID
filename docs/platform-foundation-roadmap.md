@@ -168,8 +168,8 @@ Implemented foundation:
 
 Required next:
 
-- Per-institution and per-product limits.
-- Founder Console controls for emergency rate-limit overrides.
+- Add alert thresholds for repeated rate-limit exhaustion by product, institution, and public route.
+- Review production defaults after pilot traffic data is available.
 
 ### 9. Caching Strategy
 
@@ -222,11 +222,10 @@ Required next:
 
 ## Near-Term Engineer 1 Build Order
 
-1. Per-institution and per-product rate-limit defaults and emergency overrides.
-2. Supabase storage download health check.
-3. Error alert thresholds and external log sink adapter.
-4. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-5. Cache hit/miss metrics once external monitoring is connected.
+1. Supabase storage download health check.
+2. Error alert thresholds and external log sink adapter.
+3. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+4. Cache hit/miss metrics once external monitoring is connected.
 
 Completed:
 
@@ -238,3 +237,4 @@ Completed:
 - Worker heartbeat registry, shutdown marking, stable `ACADID_WORKER_ID` support, and Founder System Health worker table.
 - Central retry policy by job type with capped exponential backoff and jitter.
 - Dead-letter review and retry controls for failed background jobs, webhook deliveries, and notifications.
+- Per-product and institution rate-limit defaults, emergency throttle caps, Founder Console controls, and audit trail.

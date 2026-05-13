@@ -175,6 +175,16 @@ export class AdminController {
     return this.adminService.readRateLimitBuckets();
   }
 
+  @Get("rate-limits/policy")
+  readRateLimitPolicy() {
+    return this.adminService.readRateLimitPolicy();
+  }
+
+  @Patch("rate-limits/policy")
+  updateRateLimitPolicy(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.adminService.updateRateLimitPolicy(request.auth, body);
+  }
+
   @Post("rate-limits/cleanup")
   queueRateLimitBucketCleanup(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.adminService.queueRateLimitBucketCleanup(request.auth, body);

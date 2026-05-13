@@ -341,6 +341,26 @@ export const platformSettingsSchema = z.object({
     productKeyRotationDays: z.number().int().min(1).max(730),
     institutionKeyRotationDays: z.number().int().min(1).max(730)
   }),
+  rateLimits: z.object({
+    emergency: z.object({
+      enabled: z.boolean(),
+      limitPerMinute: z.number().int().min(1).max(100_000),
+      reason: z.string().max(500).nullable().optional()
+    }),
+    productDefaultsPerMinute: z.record(z.string().min(1).max(80), z.number().int().min(1).max(100_000)),
+    institutionDefaultsPerMinute: z.object({
+      sandbox: z.number().int().min(1).max(100_000),
+      production: z.number().int().min(1).max(100_000)
+    }),
+    institutionOverridesPerMinute: z.record(z.string().min(1).max(120), z.number().int().min(1).max(100_000)),
+    scopeOverrides: z.record(
+      z.string().min(1).max(120),
+      z.object({
+        limit: z.number().int().min(1).max(100_000),
+        windowSeconds: z.number().int().min(1).max(3600)
+      })
+    )
+  }).optional(),
   notifications: z.object({
     founderEmail: z.string().email().max(254),
     notifyOnNewApplication: z.boolean(),

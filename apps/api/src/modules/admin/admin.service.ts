@@ -32,7 +32,7 @@ import { CredentialSigningService } from "../platform/services/credential-signin
 import { CacheService } from "../platform/services/cache.service.js";
 import { IdempotencyService } from "../platform/services/idempotency.service.js";
 import { QueueService } from "../platform/services/queue.service.js";
-import { RateLimitService } from "../platform/services/rate-limit.service.js";
+import { defaultRateLimitPolicyControl, RateLimitService } from "../platform/services/rate-limit.service.js";
 import { RetryPolicyService } from "../platform/services/retry-policy.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
 
@@ -63,6 +63,7 @@ const defaultPlatformSettings = {
     productKeyRotationDays: 180,
     institutionKeyRotationDays: 90
   },
+  rateLimits: defaultRateLimitPolicyControl,
   notifications: {
     founderEmail: "founder@acadid.local",
     notifyOnNewApplication: true,
@@ -1294,6 +1295,67 @@ export class AdminService {
     return this.rateLimitManager().readBucketSummary({ recentHours: 24, staleAfterHours: 24 });
   }
 
+  async readRateLimitPolicy() {
+    const row = await this.prisma.platformSetting.findUnique({
+      where: { key: "rateLimits" },
+      select: {
+        value: true,
+        updatedAt: true,
+        updatedBy: {
+          select: {
+            fullName: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return {
+      policy: this.mergeSettingValue(defaultPlatformSettings.rateLimits, row?.value),
+      metadata: {
+        updatedAt: row?.updatedAt ?? null,
+        updatedBy: row?.updatedBy ?? null,
+        persisted: Boolean(row)
+      }
+    };
+  }
+
+  async updateRateLimitPolicy(auth: AuthTokenPayload, input: unknown) {
+    const policy = this.parseRateLimitPolicyInput(input);
+    await this.prisma.platformSetting.upsert({
+      where: { key: "rateLimits" },
+      update: {
+        value: policy as Prisma.InputJsonValue,
+        updatedById: auth.sub
+      },
+      create: {
+        key: "rateLimits",
+        value: policy as Prisma.InputJsonValue,
+        updatedById: auth.sub
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorUserId: auth.sub,
+      actorRole: auth.role,
+      action: "rate_limit_policy.update",
+      targetType: "PlatformSettings",
+      targetId: "rateLimits",
+      outcome: "SUCCESS",
+      metadata: {
+        emergencyEnabled: policy.emergency.enabled,
+        productDefaults: Object.keys(policy.productDefaultsPerMinute).length,
+        institutionOverrides: Object.keys(policy.institutionOverridesPerMinute).length,
+        scopeOverrides: Object.keys(policy.scopeOverrides).length
+      }
+    });
+
+    this.cache?.invalidateTag("platform-settings");
+    this.rateLimit?.clearPolicyCache();
+    return this.readRateLimitPolicy();
+  }
+
   async readIdempotencyRecords() {
     return this.idempotencyManager().readSummary({ recentHours: 24, staleAfterHours: 2, take: 50 });
   }
@@ -1728,6 +1790,7 @@ export class AdminService {
     const settings = {
       approval: this.mergeSettingValue(defaultPlatformSettings.approval, rowByKey.get("approval")?.value),
       api: this.mergeSettingValue(defaultPlatformSettings.api, rowByKey.get("api")?.value),
+      rateLimits: this.mergeSettingValue(defaultPlatformSettings.rateLimits, rowByKey.get("rateLimits")?.value),
       notifications: this.mergeSettingValue(defaultPlatformSettings.notifications, rowByKey.get("notifications")?.value),
       emailTemplates: this.mergeSettingValue(defaultPlatformSettings.emailTemplates, rowByKey.get("emailTemplates")?.value)
     };
@@ -1777,6 +1840,9 @@ export class AdminService {
     });
 
     this.cache?.invalidateTag("platform-settings");
+    if (parsed.data.rateLimits) {
+      this.rateLimit?.clearPolicyCache();
+    }
     return this.readPlatformSettings();
   }
 
@@ -3824,6 +3890,70 @@ export class AdminService {
     const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
     if (!Number.isFinite(parsed)) return fallback;
     return Math.min(max, Math.max(min, Math.floor(parsed)));
+  }
+
+  private parseRateLimitPolicyInput(input: unknown) {
+    const source = typeof input === "object" && input && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+    const base = defaultPlatformSettings.rateLimits;
+    const emergency = typeof source.emergency === "object" && source.emergency && !Array.isArray(source.emergency) ? (source.emergency as Record<string, unknown>) : {};
+    const institutionDefaults =
+      typeof source.institutionDefaultsPerMinute === "object" && source.institutionDefaultsPerMinute && !Array.isArray(source.institutionDefaultsPerMinute)
+        ? (source.institutionDefaultsPerMinute as Record<string, unknown>)
+        : {};
+
+    const policy = {
+      emergency: {
+        enabled: emergency.enabled === true,
+        limitPerMinute: this.parseBoundedNumber(emergency.limitPerMinute, 1, 100_000, base.emergency.limitPerMinute),
+        reason: typeof emergency.reason === "string" && emergency.reason.trim() ? emergency.reason.trim().slice(0, 500) : null
+      },
+      productDefaultsPerMinute: this.parseNumberRecord(source.productDefaultsPerMinute, base.productDefaultsPerMinute, 1, 100_000),
+      institutionDefaultsPerMinute: {
+        sandbox: this.parseBoundedNumber(institutionDefaults.sandbox, 1, 100_000, base.institutionDefaultsPerMinute.sandbox),
+        production: this.parseBoundedNumber(institutionDefaults.production, 1, 100_000, base.institutionDefaultsPerMinute.production)
+      },
+      institutionOverridesPerMinute: this.parseNumberRecord(source.institutionOverridesPerMinute, {}, 1, 100_000),
+      scopeOverrides: this.parseRateLimitScopeOverrides(source.scopeOverrides)
+    };
+
+    if (policy.emergency.enabled && !policy.emergency.reason) {
+      throw new BadRequestException("Emergency rate-limit mode requires a reason.");
+    }
+
+    return policy;
+  }
+
+  private parseNumberRecord(value: unknown, fallback: Record<string, number>, min: number, max: number) {
+    const result = { ...fallback };
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return result;
+    }
+
+    for (const [rawKey, rawValue] of Object.entries(value)) {
+      const key = rawKey.trim();
+      if (!key) continue;
+      result[key] = this.parseBoundedNumber(rawValue, min, max, result[key] ?? fallback[key] ?? min);
+    }
+    return result;
+  }
+
+  private parseRateLimitScopeOverrides(value: unknown) {
+    const result: Record<string, { limit: number; windowSeconds: number }> = {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return result;
+    }
+
+    for (const [rawScope, rawValue] of Object.entries(value)) {
+      const scope = rawScope.trim();
+      if (!scope || !rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) continue;
+      const record = rawValue as Record<string, unknown>;
+      result[scope] = {
+        limit: this.parseBoundedNumber(record.limit, 1, 100_000, 100),
+        windowSeconds: this.parseBoundedNumber(record.windowSeconds, 1, 3600, 60)
+      };
+    }
+
+    return result;
   }
 
   private optionalEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
