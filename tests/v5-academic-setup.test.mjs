@@ -14,6 +14,23 @@ function createHarness() {
   };
   const sessions = new Map();
   const structures = new Map();
+  const gradingRuleSets = new Map();
+  const resultBatches = new Map();
+  const academicRecords = [];
+  const enrolments = [
+    {
+      uuid: "33333333-3333-4333-8333-333333333331",
+      institutionId: institution.uuid,
+      studentNumber: "STU-001",
+      status: "ACTIVE"
+    },
+    {
+      uuid: "33333333-3333-4333-8333-333333333332",
+      institutionId: institution.uuid,
+      studentNumber: "STU-002",
+      status: "ACTIVE"
+    }
+  ];
 
   const prisma = {
     institution: {
@@ -38,6 +55,7 @@ function createHarness() {
         sessions.set(row.uuid, row);
         return row;
       },
+      findUnique: async ({ where }) => sessions.get(where.uuid) ?? null,
       findMany: async ({ where }) => Array.from(sessions.values()).filter((row) => !where?.institutionId || row.institutionId === where.institutionId)
     },
     academicStructure: {
@@ -54,16 +72,78 @@ function createHarness() {
       },
       findMany: async ({ where }) => Array.from(structures.values()).filter((row) => !where?.institutionId || row.institutionId === where.institutionId)
     },
+    gradingRuleSet: {
+      create: async ({ data }) => {
+        const row = {
+          uuid: `44444444-4444-4444-8444-44444444444${gradingRuleSets.size}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        gradingRuleSets.set(row.uuid, row);
+        return row;
+      },
+      findMany: async ({ where }) =>
+        Array.from(gradingRuleSets.values()).filter((row) => !where?.institutionId || row.institutionId === where.institutionId),
+      findUnique: async ({ where }) => gradingRuleSets.get(where.uuid) ?? null,
+      findFirst: async ({ where }) =>
+        Array.from(gradingRuleSets.values()).find(
+          (row) => row.institutionId === where.institutionId && row.engine === where.engine && row.status === where.status
+        ) ?? null,
+      update: async ({ where, data }) => {
+        const existing = gradingRuleSets.get(where.uuid);
+        const row = { ...existing, ...data, updatedAt: new Date() };
+        gradingRuleSets.set(where.uuid, row);
+        return row;
+      }
+    },
+    enrolment: {
+      findMany: async ({ where }) =>
+        enrolments.filter(
+          (row) =>
+            row.institutionId === where.institutionId &&
+            row.status === where.status &&
+            where.studentNumber.in.includes(row.studentNumber)
+        )
+    },
+    resultBatch: {
+      create: async ({ data }) => {
+        const row = {
+          uuid: `55555555-5555-4555-8555-55555555555${resultBatches.size}`,
+          status: "DRAFT",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        resultBatches.set(row.uuid, row);
+        return row;
+      }
+    },
+    academicRecord: {
+      createMany: async ({ data }) => {
+        academicRecords.push(...data);
+        return { count: data.length };
+      }
+    },
     $transaction: async (callback) => callback(prisma)
   };
 
   const service = new IngestionService(
     prisma,
     {
+      assertInstitutionCan: async (institutionRef, _permission, auth) => {
+        assert.equal(institutionRef, institution.institutionId);
+        return {
+          institutionUuid: institution.uuid,
+          institutionId: institution.institutionId,
+          authorityGrantId: "grant-1"
+        };
+      },
       assertActorCanOperateInstitution: async (auth, institutionId) => {
         assert.equal(institutionId, institution.uuid);
         if (auth.kind === "API_KEY") throw new ForbiddenException("API key is not assigned to this institution.");
       },
+      assertActorAssignedScope: async () => true,
       institutionWhereForActor: async () => ({ institutionId: { in: [institution.uuid] } })
     },
     {
@@ -72,7 +152,7 @@ function createHarness() {
   );
 
   const auth = {
-    sub: "registrar-user",
+    sub: "99999999-9999-4999-8999-999999999999",
     email: "registrar@example.edu.ng",
     fullName: "Registrar",
     role: UserRole.REGISTRAR,
@@ -84,7 +164,7 @@ function createHarness() {
     exp: 2
   };
 
-  return { auditEvents, auth, institution, service, sessions, structures };
+  return { academicRecords, auditEvents, auth, gradingRuleSets, institution, resultBatches, service, sessions, structures };
 }
 
 test("registrar creates and lists academic sessions", async () => {
@@ -157,4 +237,89 @@ test("machine API key cannot perform academic setup human actions", async () => 
       ),
     ForbiddenException
   );
+});
+
+test("registrar configures grading rules and result ingestion computes GPA", async () => {
+  const { academicRecords, auditEvents, auth, institution, resultBatches, service } = createHarness();
+
+  const createdRule = await service.createGradingRuleSet(auth, {
+    institutionId: institution.institutionId,
+    name: "University five point scale",
+    engine: "TERTIARY_GPA",
+    status: "ACTIVE",
+    maxScore: 100,
+    gradePointMax: 5,
+    passMark: 40,
+    scale: [
+      { minScore: 70, maxScore: 100, grade: "A", gradePoint: 5, pass: true },
+      { minScore: 60, maxScore: 69.99, grade: "B", gradePoint: 4, pass: true },
+      { minScore: 50, maxScore: 59.99, grade: "C", gradePoint: 3, pass: true },
+      { minScore: 0, maxScore: 49.99, grade: "F", gradePoint: 0, pass: false }
+    ]
+  });
+
+  assert.equal(createdRule.accepted, true);
+
+  const result = await service.ingestResults(auth, {
+    institutionId: institution.institutionId,
+    createdById: auth.sub,
+    title: "First semester engineering results",
+    uploadMode: "COURSE_BASED",
+    gradingRuleSetId: createdRule.ruleSet.uuid,
+    rows: [
+      {
+        studentNumber: "STU-001",
+        periodType: "SEMESTER",
+        periodLabel: "First Semester",
+        subjectCode: "MTH101",
+        subjectName: "Calculus I",
+        totalScore: 73,
+        grade: "C",
+        creditUnits: 3
+      },
+      {
+        studentNumber: "STU-002",
+        periodType: "SEMESTER",
+        periodLabel: "First Semester",
+        subjectCode: "PHY101",
+        subjectName: "General Physics",
+        totalScore: 62,
+        creditUnits: 2
+      }
+    ]
+  });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.gradingRuleSetId, createdRule.ruleSet.uuid);
+  assert.equal(result.gradingSummary.gpa, 4.6);
+  assert.equal(academicRecords[0].grade, "A");
+  assert.equal(academicRecords[0].gradePoint, 5);
+  assert.equal(academicRecords[0].qualityPoints, 15);
+  assert.equal(resultBatches.get(result.batchId).validationSummary.warnings[0].code, "UPLOADED_GRADE_OVERRIDDEN");
+  assert.equal(auditEvents.some((event) => event.action === "grading_rule_set.create"), true);
+});
+
+test("result ingestion falls back to MVP grading scale when no active rule exists", async () => {
+  const { auth, institution, service } = createHarness();
+
+  const result = await service.ingestResults(auth, {
+    institutionId: institution.institutionId,
+    createdById: auth.sub,
+    title: "Primary school master sheet",
+    uploadMode: "MASTER_SHEET",
+    rows: [
+      {
+        studentNumber: "STU-001",
+        periodType: "TERM",
+        periodLabel: "First Term",
+        subjectCode: "ENG",
+        subjectName: "English Language",
+        totalScore: 68
+      }
+    ]
+  });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.gradingSummary.source, "DEFAULT_FALLBACK");
+  assert.equal(result.gradingSummary.engine, "PRIMARY_SECONDARY");
 });

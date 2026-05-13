@@ -149,6 +149,17 @@ enum ResultUploadMode {
   MANUAL_ENTRY
 }
 
+enum GradingRuleEngine {
+  PRIMARY_SECONDARY
+  TERTIARY_GPA
+}
+
+enum GradingRuleStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
 enum AcademicRecordStatus {
   DRAFT
   SUBMITTED
@@ -377,6 +388,7 @@ model Institution {
   enrolments              Enrolment[]
   academicSessions        AcademicSession[]
   academicStructures      AcademicStructure[]
+  gradingRuleSets         GradingRuleSet[]
   credentials             Credential[]
   users                   InstitutionUser[]
   resultBatches           ResultBatch[]
@@ -497,6 +509,7 @@ model InstitutionUser {
   invitedBy                 User?               @relation("InstitutionUserInviter", fields: [invitedById], references: [uuid])
   createdAcademicSessions   AcademicSession[]   @relation("AcademicSessionCreator")
   createdAcademicStructures AcademicStructure[] @relation("AcademicStructureCreator")
+  createdGradingRuleSets    GradingRuleSet[]    @relation("GradingRuleSetCreator")
   createdResultBatches      ResultBatch[]       @relation("ResultBatchCreator")
   reviewedResultBatches     ResultBatch[]       @relation("ResultBatchReviewer")
   approvedResultBatches     ResultBatch[]       @relation("ResultBatchApprover")
@@ -644,11 +657,38 @@ model AcademicStructure {
   @@index([createdById])
 }
 
+model GradingRuleSet {
+  uuid          String            @id @default(uuid()) @db.Uuid
+  institutionId String            @db.Uuid
+  name          String
+  engine        GradingRuleEngine
+  status        GradingRuleStatus @default(ACTIVE)
+  scale         Json
+  passMark      Decimal?
+  maxScore      Decimal           @default(100)
+  gradePointMax Decimal?
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdById   String?           @db.Uuid
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  institution     Institution      @relation(fields: [institutionId], references: [uuid])
+  createdBy       InstitutionUser? @relation("GradingRuleSetCreator", fields: [createdById], references: [uuid])
+  resultBatches   ResultBatch[]
+  academicRecords AcademicRecord[]
+
+  @@index([institutionId, status, engine])
+  @@index([institutionId, effectiveFrom])
+  @@index([createdById])
+}
+
 model ResultBatch {
   uuid                        String               @id @default(uuid()) @db.Uuid
   institutionId               String               @db.Uuid
   academicSessionId           String?              @db.Uuid
   structureScopeId            String?              @db.Uuid
+  gradingRuleSetId            String?              @db.Uuid
   uploadMode                  ResultUploadMode     @default(MASTER_SHEET)
   title                       String
   batchLabel                  String?
@@ -671,6 +711,7 @@ model ResultBatch {
   institution               Institution        @relation(fields: [institutionId], references: [uuid])
   academicSession           AcademicSession?   @relation(fields: [academicSessionId], references: [uuid])
   structureScope            AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
+  gradingRuleSet            GradingRuleSet?    @relation(fields: [gradingRuleSetId], references: [uuid])
   createdByInstitutionUser  InstitutionUser?   @relation("ResultBatchCreator", fields: [createdByInstitutionUserId], references: [uuid])
   reviewedByInstitutionUser InstitutionUser?   @relation("ResultBatchReviewer", fields: [reviewedByInstitutionUserId], references: [uuid])
   approvedByInstitutionUser InstitutionUser?   @relation("ResultBatchApprover", fields: [approvedByInstitutionUserId], references: [uuid])
@@ -679,6 +720,7 @@ model ResultBatch {
   @@index([institutionId, status])
   @@index([institutionId, academicSessionId, status])
   @@index([structureScopeId, status])
+  @@index([gradingRuleSetId])
   @@index([createdByInstitutionUserId])
   @@index([reviewedByInstitutionUserId])
   @@index([approvedByInstitutionUserId])
@@ -690,6 +732,7 @@ model AcademicRecord {
   resultBatchId     String?              @db.Uuid
   academicSessionId String?              @db.Uuid
   structureScopeId  String?              @db.Uuid
+  gradingRuleSetId  String?              @db.Uuid
   periodType        PeriodType
   periodLabel       String
   subjectCode       String
@@ -698,6 +741,9 @@ model AcademicRecord {
   examScore         Decimal?
   totalScore        Decimal
   grade             String
+  gradePoint        Decimal?
+  creditUnits       Decimal?
+  qualityPoints     Decimal?
   status            AcademicRecordStatus @default(DRAFT)
   publishedAt       DateTime?
   version           Int                  @default(1)
@@ -709,12 +755,14 @@ model AcademicRecord {
   resultBatch     ResultBatch?       @relation(fields: [resultBatchId], references: [uuid])
   academicSession AcademicSession?   @relation(fields: [academicSessionId], references: [uuid])
   structureScope  AcademicStructure? @relation(fields: [structureScopeId], references: [uuid])
+  gradingRuleSet  GradingRuleSet?    @relation(fields: [gradingRuleSetId], references: [uuid])
   credentials     Credential[]
 
   @@index([enrolmentId, periodLabel])
   @@index([status])
   @@index([academicSessionId, status])
   @@index([structureScopeId, status])
+  @@index([gradingRuleSetId])
   @@index([resultBatchId, status])
 }
 

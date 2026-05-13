@@ -8,7 +8,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## v5 Implementation Gaps To Track
 
-- Modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
 - RecordRequest payment escrow/release and publication into learner passport.
 - Transfer workflows and disputed rollover surfaces.
 - Founder Console v5 setup-health gaps: missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
@@ -47,3 +46,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Cache hit/miss/load metrics with Founder System Health visibility.
 - Invitation leads for unregistered institutions with graduate demand are implemented with Supabase schema, RecordRequest auto-capture, founder list/update APIs, audit logging, tests, and Founder Academic Operations controls.
 - Registrar-facing staff assigned-scope management is implemented for the Institution Portal through `/api/portal/staff`, `/api/portal/staff/scope-options`, `/api/portal/staff/invite`, and `/api/portal/staff/:id`, with human-session enforcement, no machine-key access, audit logging, and contract docs for Engineer 2.
+- Modular grading rule sets are implemented as Data Center entities with `/api/ingest/grading-rules` create/list/update endpoints, score-to-grade computation during result ingestion, tertiary GPA summary support, W3C VC payload grade-point fields, audit logging, Supabase schema sync, tests, and `docs/api/grading-rules-contract.md`.

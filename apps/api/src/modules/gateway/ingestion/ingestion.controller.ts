@@ -64,6 +64,27 @@ export class IngestionController {
     return this.ingestionService.updateAcademicStructure(request.auth, id, body);
   }
 
+  @Post("grading-rules")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER)
+  @Scopes("academic_setup:write")
+  createGradingRuleSet(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.ingestionService.createGradingRuleSet(request.auth, body);
+  }
+
+  @Get("grading-rules")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER, UserRole.DATA_ENTRY_OFFICER, UserRole.DEPARTMENTAL_OFFICER, UserRole.READ_ONLY)
+  @Scopes("academic_setup:read")
+  listGradingRuleSets(@Req() request: AuthenticatedRequest, @Query("institutionId") institutionId?: string) {
+    return this.ingestionService.listGradingRuleSets(request.auth, institutionId);
+  }
+
+  @Patch("grading-rules/:id")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR, UserRole.EXAM_OFFICER)
+  @Scopes("academic_setup:write")
+  updateGradingRuleSet(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.ingestionService.updateGradingRuleSet(request.auth, id, body);
+  }
+
   @Post("students")
   @RateLimit({ scope: "ingest.students", key: "auth", limit: 60, windowSeconds: 60 })
   ingestStudents(@Req() request: AuthenticatedRequest, @Body() body: unknown) {

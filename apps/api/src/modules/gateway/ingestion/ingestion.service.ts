@@ -3,17 +3,39 @@ import { BackgroundJobType, Prisma, UserRole } from "@prisma/client";
 import {
   createAcademicSessionSchema,
   createAcademicStructureSchema,
+  createGradingRuleSetSchema,
   formatAin,
   ingestResultBatchSchema,
   ingestStudentRegisterSchema,
   updateAcademicSessionSchema,
-  updateAcademicStructureSchema
+  updateAcademicStructureSchema,
+  updateGradingRuleSetSchema
 } from "@acadid/shared";
 import type { AuthTokenPayload } from "../../auth/types.js";
 import { AuditService } from "../../platform/services/audit.service.js";
 import { AuthorityService } from "../../platform/services/authority.service.js";
 import { PrismaService } from "../../platform/services/prisma.service.js";
 import { QueueService } from "../../platform/services/queue.service.js";
+
+type GradingScaleBand = {
+  minScore: number;
+  maxScore?: number;
+  grade: string;
+  remark?: string;
+  gradePoint?: number;
+  pass?: boolean;
+};
+
+type ResolvedGradingRule = {
+  uuid?: string;
+  name: string;
+  engine: "PRIMARY_SECONDARY" | "TERTIARY_GPA";
+  source: "CONFIGURED" | "DEFAULT_FALLBACK";
+  scale: GradingScaleBand[];
+  passMark?: number;
+  maxScore: number;
+  gradePointMax?: number;
+};
 
 @Injectable()
 export class IngestionService {
@@ -349,6 +371,105 @@ export class IngestionService {
     return { accepted: true, structure };
   }
 
+  async createGradingRuleSet(auth: AuthTokenPayload, body: unknown) {
+    const parsed = createGradingRuleSetSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const institution = await this.resolveHumanInstitution(auth, parsed.data.institutionId);
+    const scale = this.normalizeScale(parsed.data.scale, parsed.data.maxScore);
+
+    const ruleSet = await this.prisma.gradingRuleSet.create({
+      data: {
+        institutionId: institution.uuid,
+        name: parsed.data.name.trim(),
+        engine: parsed.data.engine,
+        status: parsed.data.status,
+        scale: scale as unknown as Prisma.InputJsonValue,
+        passMark: parsed.data.passMark,
+        maxScore: parsed.data.maxScore,
+        gradePointMax: parsed.data.gradePointMax,
+        effectiveFrom: parsed.data.effectiveFrom ? new Date(parsed.data.effectiveFrom) : undefined,
+        effectiveTo: parsed.data.effectiveTo ? new Date(parsed.data.effectiveTo) : undefined,
+        createdById: auth.institutionUserId
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "grading_rule_set.create",
+      targetType: "GradingRuleSet",
+      targetId: ruleSet.uuid,
+      institutionId: institution.uuid,
+      outcome: "SUCCESS",
+      metadata: {
+        name: ruleSet.name,
+        engine: ruleSet.engine,
+        status: ruleSet.status,
+        scaleBands: scale.length
+      }
+    });
+
+    return { accepted: true, ruleSet };
+  }
+
+  async listGradingRuleSets(auth: AuthTokenPayload, institutionRef?: string) {
+    const where = await this.academicSetupWhere(auth, institutionRef);
+    return this.prisma.gradingRuleSet.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      take: 100
+    });
+  }
+
+  async updateGradingRuleSet(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = updateGradingRuleSetSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.gradingRuleSet.findUnique({ where: { uuid: id } });
+    if (!existing) {
+      throw new BadRequestException("Grading rule set not found.");
+    }
+    await this.resolveHumanInstitution(auth, existing.institutionId);
+
+    const nextMaxScore = parsed.data.maxScore ?? Number(existing.maxScore);
+    const scale = parsed.data.scale ? this.normalizeScale(parsed.data.scale, nextMaxScore) : undefined;
+    const ruleSet = await this.prisma.gradingRuleSet.update({
+      where: { uuid: id },
+      data: {
+        name: parsed.data.name?.trim(),
+        engine: parsed.data.engine,
+        status: parsed.data.status,
+        scale: scale ? (scale as unknown as Prisma.InputJsonValue) : undefined,
+        passMark: parsed.data.passMark,
+        maxScore: parsed.data.maxScore,
+        gradePointMax: parsed.data.gradePointMax,
+        effectiveFrom: parsed.data.effectiveFrom === null ? null : parsed.data.effectiveFrom ? new Date(parsed.data.effectiveFrom) : undefined,
+        effectiveTo: parsed.data.effectiveTo === null ? null : parsed.data.effectiveTo ? new Date(parsed.data.effectiveTo) : undefined
+      }
+    });
+
+    await this.audit.write({
+      actorId: auth.sub,
+      actorRole: auth.role,
+      action: "grading_rule_set.update",
+      targetType: "GradingRuleSet",
+      targetId: ruleSet.uuid,
+      institutionId: ruleSet.institutionId,
+      outcome: "SUCCESS",
+      metadata: {
+        engine: ruleSet.engine,
+        status: ruleSet.status
+      }
+    });
+
+    return { accepted: true, ruleSet };
+  }
+
   async ingestResults(auth: AuthTokenPayload, body: unknown) {
     const parsed = ingestResultBatchSchema.safeParse(body);
     if (!parsed.success) {
@@ -391,6 +512,13 @@ export class IngestionService {
       });
     }
 
+    const gradingRule = await this.resolveGradingRule(
+      authority.institutionUuid,
+      parsed.data.uploadMode,
+      parsed.data.gradingRuleSetId
+    );
+    const grading = this.gradeRows(parsed.data.rows, gradingRule);
+
     const batch = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
         const resultBatch = await tx.resultBatch.create({
@@ -398,6 +526,7 @@ export class IngestionService {
             institutionId: authority.institutionUuid,
             academicSessionId: parsed.data.academicSessionId,
             structureScopeId: parsed.data.structureScopeId,
+            gradingRuleSetId: gradingRule.uuid,
             uploadMode: parsed.data.uploadMode,
             title: parsed.data.title,
             batchLabel: parsed.data.batchLabel,
@@ -407,13 +536,15 @@ export class IngestionService {
             validationSummary: {
               acceptedRows: parsed.data.rows.length,
               rejectedRows: 0,
-              warnings: []
+              warnings: grading.warnings,
+              grading: grading.summary
             } as Prisma.InputJsonValue
           }
         });
 
         await tx.academicRecord.createMany({
-          data: parsed.data.rows.map((row) => {
+          data: grading.rows.map((gradedRow) => {
+            const row = gradedRow.row;
             const enrolment = enrolmentByStudentNumber.get(row.studentNumber);
             if (!enrolment) {
               throw new BadRequestException("Result row references an unknown enrolment.");
@@ -424,6 +555,7 @@ export class IngestionService {
               resultBatchId: resultBatch.uuid,
               academicSessionId: parsed.data.academicSessionId,
               structureScopeId: parsed.data.structureScopeId,
+              gradingRuleSetId: gradingRule.uuid,
               periodType: row.periodType,
               periodLabel: row.periodLabel,
               subjectCode: row.subjectCode,
@@ -431,7 +563,10 @@ export class IngestionService {
               caScore: row.caScore,
               examScore: row.examScore,
               totalScore: row.totalScore,
-              grade: row.grade,
+              grade: gradedRow.grade,
+              gradePoint: gradedRow.gradePoint,
+              creditUnits: gradedRow.creditUnits,
+              qualityPoints: gradedRow.qualityPoints,
               status: "DRAFT"
             };
           })
@@ -456,7 +591,10 @@ export class IngestionService {
         rowCount: parsed.data.rows.length,
         academicSessionId: parsed.data.academicSessionId,
         structureScopeId: parsed.data.structureScopeId,
-        uploadMode: parsed.data.uploadMode
+        uploadMode: parsed.data.uploadMode,
+        gradingRuleSetId: gradingRule.uuid,
+        gradingRuleSource: gradingRule.source,
+        gpa: grading.summary.gpa
       }
     });
 
@@ -468,6 +606,8 @@ export class IngestionService {
       academicSessionId: batch.academicSessionId,
       structureScopeId: batch.structureScopeId,
       uploadMode: batch.uploadMode,
+      gradingRuleSetId: batch.gradingRuleSetId,
+      gradingSummary: grading.summary,
       rowCount: parsed.data.rows.length
     };
   }
@@ -641,6 +781,194 @@ export class IngestionService {
     if (structureScopeId && (!structure || structure.institutionId !== institutionId || structure.status !== "ACTIVE")) {
       throw new BadRequestException("Academic structure scope must be active and belong to the institution.");
     }
+  }
+
+  private async resolveGradingRule(institutionId: string, uploadMode: string, gradingRuleSetId?: string): Promise<ResolvedGradingRule> {
+    const expectedEngine = uploadMode === "COURSE_BASED" ? "TERTIARY_GPA" : "PRIMARY_SECONDARY";
+
+    if (gradingRuleSetId) {
+      const ruleSet = await this.prisma.gradingRuleSet.findUnique({ where: { uuid: gradingRuleSetId } });
+      if (!ruleSet || ruleSet.institutionId !== institutionId || ruleSet.status === "ARCHIVED") {
+        throw new BadRequestException("Active grading rule set must belong to the institution.");
+      }
+      return {
+        uuid: ruleSet.uuid,
+        name: ruleSet.name,
+        engine: ruleSet.engine,
+        source: "CONFIGURED",
+        scale: this.normalizeScale(ruleSet.scale, Number(ruleSet.maxScore)),
+        passMark: ruleSet.passMark === null ? undefined : Number(ruleSet.passMark),
+        maxScore: Number(ruleSet.maxScore),
+        gradePointMax: ruleSet.gradePointMax === null ? undefined : Number(ruleSet.gradePointMax)
+      };
+    }
+
+    const ruleSet = await this.prisma.gradingRuleSet.findFirst({
+      where: {
+        institutionId,
+        engine: expectedEngine,
+        status: "ACTIVE"
+      },
+      orderBy: [{ effectiveFrom: "desc" }, { updatedAt: "desc" }]
+    });
+
+    if (ruleSet) {
+      return {
+        uuid: ruleSet.uuid,
+        name: ruleSet.name,
+        engine: ruleSet.engine,
+        source: "CONFIGURED",
+        scale: this.normalizeScale(ruleSet.scale, Number(ruleSet.maxScore)),
+        passMark: ruleSet.passMark === null ? undefined : Number(ruleSet.passMark),
+        maxScore: Number(ruleSet.maxScore),
+        gradePointMax: ruleSet.gradePointMax === null ? undefined : Number(ruleSet.gradePointMax)
+      };
+    }
+
+    return this.defaultGradingRule(expectedEngine);
+  }
+
+  private gradeRows<T extends { totalScore: number; grade?: string; creditUnits?: number; studentNumber: string }>(
+    rows: T[],
+    rule: ResolvedGradingRule
+  ) {
+    const warnings: Array<Record<string, unknown>> = [];
+    let attemptedCreditUnits = 0;
+    let earnedCreditUnits = 0;
+    let qualityPoints = 0;
+
+    const gradedRows = rows.map((row, index) => {
+      if (row.totalScore > rule.maxScore) {
+        warnings.push({
+          row: index + 1,
+          studentNumber: row.studentNumber,
+          code: "SCORE_ABOVE_MAX",
+          message: `Total score ${row.totalScore} is above grading max score ${rule.maxScore}.`
+        });
+      }
+
+      const band = this.findBand(row.totalScore, rule.scale);
+      if (!band) {
+        throw new BadRequestException({
+          message: "Result score does not match any configured grading band.",
+          row: index + 1,
+          studentNumber: row.studentNumber,
+          totalScore: row.totalScore
+        });
+      }
+
+      if (row.grade && row.grade.trim().toUpperCase() !== band.grade.trim().toUpperCase()) {
+        warnings.push({
+          row: index + 1,
+          studentNumber: row.studentNumber,
+          code: "UPLOADED_GRADE_OVERRIDDEN",
+          uploadedGrade: row.grade,
+          computedGrade: band.grade
+        });
+      }
+
+      const creditUnits = row.creditUnits;
+      const gradePoint = band.gradePoint;
+      const rowQualityPoints = creditUnits !== undefined && gradePoint !== undefined ? this.round(creditUnits * gradePoint, 4) : undefined;
+
+      if (rule.engine === "TERTIARY_GPA" && creditUnits !== undefined && gradePoint !== undefined) {
+        attemptedCreditUnits += creditUnits;
+        qualityPoints += rowQualityPoints ?? 0;
+        if (band.pass ?? row.totalScore >= (rule.passMark ?? 0)) {
+          earnedCreditUnits += creditUnits;
+        }
+      }
+
+      return {
+        row,
+        grade: band.grade,
+        gradePoint,
+        creditUnits,
+        qualityPoints: rowQualityPoints
+      };
+    });
+
+    if (rule.source === "DEFAULT_FALLBACK") {
+      warnings.push({
+        code: "DEFAULT_GRADING_RULE_USED",
+        message: "No active configured grading rule set was found, so AcadID used the MVP fallback scale."
+      });
+    }
+
+    const gpa = attemptedCreditUnits > 0 ? this.round(qualityPoints / attemptedCreditUnits, 4) : undefined;
+    return {
+      rows: gradedRows,
+      warnings,
+      summary: {
+        ruleSetId: rule.uuid ?? null,
+        ruleSetName: rule.name,
+        source: rule.source,
+        engine: rule.engine,
+        maxScore: rule.maxScore,
+        gradePointMax: rule.gradePointMax ?? null,
+        attemptedCreditUnits,
+        earnedCreditUnits,
+        qualityPoints: this.round(qualityPoints, 4),
+        gpa: gpa ?? null
+      }
+    };
+  }
+
+  private normalizeScale(scale: unknown, maxScore = 100): GradingScaleBand[] {
+    if (!Array.isArray(scale)) {
+      throw new BadRequestException("Grading scale must be an array of bands.");
+    }
+
+    return scale
+      .map((band) => {
+        if (!band || typeof band !== "object") {
+          throw new BadRequestException("Each grading scale band must be an object.");
+        }
+        const candidate = band as Partial<GradingScaleBand>;
+        if (typeof candidate.minScore !== "number" || typeof candidate.grade !== "string") {
+          throw new BadRequestException("Each grading scale band requires minScore and grade.");
+        }
+
+        return {
+          minScore: candidate.minScore,
+          maxScore: typeof candidate.maxScore === "number" ? candidate.maxScore : maxScore,
+          grade: candidate.grade,
+          remark: candidate.remark,
+          gradePoint: candidate.gradePoint,
+          pass: candidate.pass
+        };
+      })
+      .sort((a, b) => b.minScore - a.minScore);
+  }
+
+  private findBand(totalScore: number, scale: GradingScaleBand[]) {
+    return scale.find((band) => totalScore >= band.minScore && totalScore <= (band.maxScore ?? Number.POSITIVE_INFINITY));
+  }
+
+  private defaultGradingRule(engine: "PRIMARY_SECONDARY" | "TERTIARY_GPA"): ResolvedGradingRule {
+    const baseScale = [
+      { minScore: 70, maxScore: 100, grade: "A", gradePoint: engine === "TERTIARY_GPA" ? 5 : undefined, pass: true },
+      { minScore: 60, maxScore: 69.99, grade: "B", gradePoint: engine === "TERTIARY_GPA" ? 4 : undefined, pass: true },
+      { minScore: 50, maxScore: 59.99, grade: "C", gradePoint: engine === "TERTIARY_GPA" ? 3 : undefined, pass: true },
+      { minScore: 45, maxScore: 49.99, grade: "D", gradePoint: engine === "TERTIARY_GPA" ? 2 : undefined, pass: true },
+      { minScore: 40, maxScore: 44.99, grade: "E", gradePoint: engine === "TERTIARY_GPA" ? 1 : undefined, pass: true },
+      { minScore: 0, maxScore: 39.99, grade: "F", gradePoint: engine === "TERTIARY_GPA" ? 0 : undefined, pass: false }
+    ];
+
+    return {
+      name: engine === "TERTIARY_GPA" ? "AcadID MVP 5-point GPA fallback" : "AcadID MVP primary/secondary fallback",
+      engine,
+      source: "DEFAULT_FALLBACK",
+      scale: baseScale,
+      passMark: 40,
+      maxScore: 100,
+      gradePointMax: engine === "TERTIARY_GPA" ? 5 : undefined
+    };
+  }
+
+  private round(value: number, precision: number) {
+    const multiplier = 10 ** precision;
+    return Math.round(value * multiplier) / multiplier;
   }
 
   private institutionRefWhere(institutionRef: string): Prisma.InstitutionWhereInput {

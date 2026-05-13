@@ -133,7 +133,8 @@ export const resultRowSchema = z.object({
   caScore: z.number().min(0).optional(),
   examScore: z.number().min(0).optional(),
   totalScore: z.number().min(0),
-  grade: z.string().min(1)
+  grade: z.string().min(1).optional(),
+  creditUnits: z.number().min(0).max(60).optional()
 });
 
 export const academicSessionStatuses = ["DRAFT", "ACTIVE", "CLOSED", "SEALED"] as const;
@@ -149,6 +150,68 @@ export const academicStructureTypes = [
   "COURSE"
 ] as const;
 export const academicStructureStatuses = ["ACTIVE", "ARCHIVED"] as const;
+export const gradingRuleEngines = ["PRIMARY_SECONDARY", "TERTIARY_GPA"] as const;
+export const gradingRuleStatuses = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
+
+export const gradingScaleBandSchema = z
+  .object({
+    minScore: z.number().min(0),
+    maxScore: z.number().min(0).optional(),
+    grade: z.string().min(1).max(20),
+    remark: z.string().min(1).max(120).optional(),
+    gradePoint: z.number().min(0).max(20).optional(),
+    pass: z.boolean().optional()
+  })
+  .refine((value) => value.maxScore === undefined || value.minScore <= value.maxScore, {
+    message: "maxScore must be greater than or equal to minScore.",
+    path: ["maxScore"]
+  });
+
+export const createGradingRuleSetSchema = z
+  .object({
+    institutionId: z.string().min(1),
+    name: z.string().min(2).max(160),
+    engine: z.enum(gradingRuleEngines),
+    status: z.enum(gradingRuleStatuses).default("ACTIVE"),
+    scale: z.array(gradingScaleBandSchema).min(1).max(30),
+    passMark: z.number().min(0).optional(),
+    maxScore: z.number().positive().max(1000).default(100),
+    gradePointMax: z.number().positive().max(20).optional(),
+    effectiveFrom: z.string().date().optional(),
+    effectiveTo: z.string().date().optional()
+  })
+  .refine(
+    (value) => value.effectiveFrom === undefined || value.effectiveTo === undefined || value.effectiveFrom <= value.effectiveTo,
+    {
+      message: "effectiveFrom must be before or equal to effectiveTo.",
+      path: ["effectiveTo"]
+    }
+  );
+
+export const updateGradingRuleSetSchema = z
+  .object({
+    name: z.string().min(2).max(160).optional(),
+    engine: z.enum(gradingRuleEngines).optional(),
+    status: z.enum(gradingRuleStatuses).optional(),
+    scale: z.array(gradingScaleBandSchema).min(1).max(30).optional(),
+    passMark: z.number().min(0).nullable().optional(),
+    maxScore: z.number().positive().max(1000).optional(),
+    gradePointMax: z.number().positive().max(20).nullable().optional(),
+    effectiveFrom: z.string().date().nullable().optional(),
+    effectiveTo: z.string().date().nullable().optional()
+  })
+  .refine(
+    (value) =>
+      value.effectiveFrom === undefined ||
+      value.effectiveFrom === null ||
+      value.effectiveTo === undefined ||
+      value.effectiveTo === null ||
+      value.effectiveFrom <= value.effectiveTo,
+    {
+      message: "effectiveFrom must be before or equal to effectiveTo.",
+      path: ["effectiveTo"]
+    }
+  );
 
 export const createAcademicSessionSchema = z
   .object({
@@ -219,6 +282,7 @@ export const ingestResultBatchSchema = z.object({
   title: z.string().min(2),
   academicSessionId: z.string().uuid().optional(),
   structureScopeId: z.string().uuid().optional(),
+  gradingRuleSetId: z.string().uuid().optional(),
   uploadMode: z.enum(["SUBJECT_BY_SUBJECT", "MASTER_SHEET", "COURSE_BASED", "MANUAL_ENTRY"]).default("MASTER_SHEET"),
   batchLabel: z.string().min(2).max(160).optional(),
   rows: z.array(resultRowSchema).min(1).max(1000)
@@ -403,6 +467,9 @@ export type EscalateDisputeInput = z.infer<typeof escalateDisputeSchema>;
 export type CreateAuthorityGrantInput = z.infer<typeof createAuthorityGrantSchema>;
 export type StudentRegisterRow = z.infer<typeof studentRegisterRowSchema>;
 export type ResultRow = z.infer<typeof resultRowSchema>;
+export type GradingScaleBand = z.infer<typeof gradingScaleBandSchema>;
+export type CreateGradingRuleSetInput = z.infer<typeof createGradingRuleSetSchema>;
+export type UpdateGradingRuleSetInput = z.infer<typeof updateGradingRuleSetSchema>;
 export type IngestStudentRegisterInput = z.infer<typeof ingestStudentRegisterSchema>;
 export type IngestResultBatchInput = z.infer<typeof ingestResultBatchSchema>;
 export type PreviewRolloverInput = z.infer<typeof previewRolloverSchema>;

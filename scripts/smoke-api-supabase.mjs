@@ -32,14 +32,19 @@ function loadRootEnv() {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
-      ...options.headers
-    }
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        "content-type": "application/json",
+        ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+        ...options.headers
+      }
+    });
+  } catch (error) {
+    throw new Error(`${options.method ?? "GET"} ${path} fetch failed: ${error.message}`);
+  }
 
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};

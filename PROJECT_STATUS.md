@@ -122,6 +122,7 @@ The API has these first modules:
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
+- v5 modular grading rule sets are implemented under `/api/ingest/grading-rules`: institutions can create/list/update score scales for primary/secondary and tertiary GPA engines; result ingestion computes grades, grade points, quality points, and batch GPA summaries from configured rules; uploaded grades are advisory and audited through validation warnings.
 - v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
 - v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
@@ -166,6 +167,7 @@ The Prisma schema includes the core AcadID model:
 - WebhookEndpoint.
 - Notification.
 - WorkerHeartbeat.
+- GradingRuleSet.
 
 ### Web
 
@@ -251,6 +253,7 @@ Completed successfully:
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
 - v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
+- v5 Grading Rule API validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, and `npm test`; contract is documented in `docs/api/grading-rules-contract.md`.
 - Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
 - Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
 - Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
@@ -302,10 +305,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add modular result engines and configured grading rules, including GPA/CGPA for tertiary records.
-2. Implement RecordRequest payment escrow/release and publication into the learner passport.
-3. Add transfer workflows and disputed rollover surfaces.
-4. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+1. Implement RecordRequest payment escrow/release and publication into the learner passport.
+2. Add transfer workflows and disputed rollover surfaces.
+3. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+4. Add CGPA/classification rollup after enough semester GPA records exist.
 5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

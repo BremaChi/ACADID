@@ -95,7 +95,11 @@ export class GovernanceService {
             subjectCode: record.subjectCode,
             subjectName: record.subjectName,
             totalScore: Number(record.totalScore),
-            grade: record.grade
+            grade: record.grade,
+            gradePoint: record.gradePoint === null ? undefined : Number(record.gradePoint),
+            creditUnits: record.creditUnits === null ? undefined : Number(record.creditUnits),
+            qualityPoints: record.qualityPoints === null ? undefined : Number(record.qualityPoints),
+            gradingRuleSetId: record.gradingRuleSetId
           }
         };
         const signed = await this.signer.sign(vcPayload);

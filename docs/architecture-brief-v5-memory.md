@@ -456,6 +456,7 @@ Already present:
 - Founder Console v5 Academic Operations visibility now exists through `/admin/academic-operations` and the `Academic Operations` console page.
 - Invitation leads now exist as a durable Data Center workflow with RecordRequest auto-capture, Founder list/update APIs, and Founder Academic Operations controls.
 - Registrar-facing staff assigned-scope management now exists for the Institution Portal through `/portal/staff`, `/portal/staff/scope-options`, `/portal/staff/invite`, and `/portal/staff/:id`.
+- Modular grading rule sets now exist as Data Center entities with `PRIMARY_SECONDARY` and `TERTIARY_GPA` engines, `/ingest/grading-rules` create/list/update endpoints, result-ingestion grade computation, tertiary GPA summaries, and computed grade-point fields in VC payloads.
 - Basic ResultBatch governance.
 - RecordRequest model and Founder Console review queue.
 - Audit trace context foundation.
@@ -470,7 +471,7 @@ Still needed:
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
 - Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-- Add GPA/CGPA/configured grading rule service.
+- Add CGPA/classification rollup after configured grading rules have enough published semester history.
 - Add queue foundation for bulk validation, credential/PDF generation, email, SMS, and refunds.
 - Add deeper queue health after staff scope management.
 - Add v5 API contracts and handoff tests for Engineer 2.
