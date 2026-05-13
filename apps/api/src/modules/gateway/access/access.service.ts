@@ -36,6 +36,30 @@ export class AccessService {
               }
             }
           }
+        },
+        recordRequests: {
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          select: {
+            requestId: true,
+            institutionNameSubmitted: true,
+            educationLevel: true,
+            recordTypesRequested: true,
+            status: true,
+            paymentStatus: true,
+            escrowStatus: true,
+            amountMinor: true,
+            currency: true,
+            fulfilledAt: true,
+            fulfilledCredential: {
+              select: {
+                credentialRef: true,
+                type: true,
+                status: true,
+                issuedAt: true
+              }
+            }
+          }
         }
       }
     });
@@ -59,6 +83,13 @@ export class AccessService {
         issuedAt: true,
         revokedAt: true,
         revocationReason: true,
+        recordRequest: {
+          select: {
+            requestId: true,
+            recordTypesRequested: true,
+            fulfilledAt: true
+          }
+        },
         institution: {
           select: {
             institutionId: true,
@@ -228,6 +259,7 @@ export class AccessService {
       throw new BadRequestException("Record request learnerId must match the authenticated learner.");
     }
 
+    const amountMinor = this.recordRequestFeeMinor();
     const request = await this.prisma.recordRequest.create({
       data: {
         requestId: await this.nextRecordRequestId(),
@@ -243,8 +275,11 @@ export class AccessService {
         proofDocumentUrls: parsed.data.proofDocumentUrls,
         requesterName: parsed.data.requesterName ?? auth.fullName,
         requesterEmail: parsed.data.requesterEmail ?? auth.email,
-        status: "SUBMITTED",
-        paymentStatus: "PENDING",
+        status: amountMinor > 0 ? "AWAITING_PAYMENT" : "SUBMITTED",
+        paymentStatus: amountMinor > 0 ? "PENDING" : "NOT_REQUIRED",
+        escrowStatus: "NONE",
+        amountMinor: amountMinor > 0 ? amountMinor : undefined,
+        currency: "NGN",
         notes: []
       },
       include: this.recordRequestInclude()
@@ -393,7 +428,22 @@ export class AccessService {
           state: true,
           status: true
         }
+      },
+      fulfilledCredential: {
+        select: {
+          credentialRef: true,
+          type: true,
+          status: true,
+          issuedAt: true
+        }
       }
     };
+  }
+
+  private recordRequestFeeMinor() {
+    const raw = process.env.ACADID_RECORD_REQUEST_FEE_MINOR;
+    if (!raw) return 0;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 }

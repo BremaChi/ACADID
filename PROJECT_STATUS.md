@@ -83,6 +83,7 @@ The API has these first modules:
 - Workspace isolation utilities are implemented in `AuthorityService`, including active human membership checks, institution-scoped query helpers, and tested cross-institution blocking.
 - Human institution sessions now enforce permission scopes through `ScopesGuard`, so suspended or under-permissioned staff cannot use protected gateway actions.
 - Architecture v4 RecordRequest foundation is implemented with schema, Supabase migration, learner submission/listing through `/access/record-requests`, governance review through `/govern/record-requests`, and founder search/list through `/admin/record-requests`.
+- RecordRequest payment escrow and fulfillment are implemented: payable requests can move from `PENDING` to `PAID/HELD`, fulfillment creates a signed `Credential` linked to the request, publishes it into the learner passport, releases held payment, and records `CREDENTIAL_EXPORT_FEE` revenue.
 - v5 InvitationLead foundation is implemented: unregistered-institution RecordRequests now create/update durable invitation leads, Founder Admin can list and mark leads through `/api/admin/invitation-leads`, and all lead review actions write audit events.
 - Founder Console now has a dedicated Record Requests section with search, status filters, open/escalated/fulfilled metrics, request detail review, and governance status updates connected to `/govern/record-requests/:id/review`.
 - Credential signing now reports JOSE/JWS Ed25519 readiness, validates configured keypairs, and fails fast when configured signing keys are required but missing.
@@ -254,6 +255,7 @@ Completed successfully:
 - v5 academic operations migration `20260507000000_v5_academic_operations` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`.
 - v5 Academic Setup API validates with `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/v5-academic-setup-contract.md`.
 - v5 Grading Rule API validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, and `npm test`; contract is documented in `docs/api/grading-rules-contract.md`.
+- RecordRequest fulfillment validates with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, `npm test`, and `npm run smoke:api`; contract is documented in `docs/api/record-request-fulfillment-contract.md`.
 - Event-driven jobs migration `20260508000000_event_driven_jobs` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; contract is documented in `docs/api/event-driven-jobs-contract.md`.
 - Background worker runtime validates with `npm run typecheck`, `npm test`, and local `npm run worker:once`.
 - Bulk upload parser coverage validates CSV header mapping, quoted CSV values, XLSX content, and malformed-file rejection.
@@ -305,9 +307,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Implement RecordRequest payment escrow/release and publication into the learner passport.
-2. Add transfer workflows and disputed rollover surfaces.
-3. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+1. Add transfer workflows and disputed rollover surfaces.
+2. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+3. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
 4. Add CGPA/classification rollup after enough semester GPA records exist.
 5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 

@@ -80,4 +80,16 @@ export class GovernanceController {
   reviewRecordRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
     return this.governanceService.reviewRecordRequest(request.auth, id, body);
   }
+
+  @Post("record-requests/:id/payment/confirm")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR)
+  confirmRecordRequestPayment(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.confirmRecordRequestPayment(request.auth, id, body);
+  }
+
+  @Post("record-requests/:id/fulfill")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR)
+  fulfillRecordRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.fulfillRecordRequest(request.auth, id, body);
+  }
 }

@@ -67,6 +67,14 @@ enum RecordRequestPaymentStatus {
   REFUNDED
 }
 
+enum RecordRequestEscrowStatus {
+  NONE
+  HELD
+  RELEASED
+  REFUND_PENDING
+  REFUNDED
+}
+
 enum InvitationLeadStatus {
   NEW
   CONTACTED
@@ -810,6 +818,7 @@ model Credential {
   learnerId        String           @db.Uuid
   institutionId    String           @db.Uuid
   academicRecordId String?          @db.Uuid
+  recordRequestId  String?          @db.Uuid
   type             CredentialType
   scope            Json
   version          Int              @default(1)
@@ -823,6 +832,8 @@ model Credential {
   learner        Learner              @relation(fields: [learnerId], references: [uuid])
   institution    Institution          @relation(fields: [institutionId], references: [uuid])
   academicRecord AcademicRecord?      @relation(fields: [academicRecordId], references: [uuid])
+  recordRequest  RecordRequest?       @relation(fields: [recordRequestId], references: [uuid])
+  fulfilledRecordRequest RecordRequest? @relation("RecordRequestFulfilledCredential")
   accessGrants   AccessGrant[]
   verifications  VerificationEvent[]
   disputes       Dispute[]
@@ -830,6 +841,7 @@ model Credential {
 
   @@index([learnerId, status])
   @@index([institutionId, status])
+  @@index([recordRequestId])
 }
 
 model AccessGrant {
@@ -996,11 +1008,17 @@ model RecordRequest {
   proofDocumentUrls        String[]
   status                   RecordRequestStatus        @default(SUBMITTED)
   paymentStatus            RecordRequestPaymentStatus @default(PENDING)
+  escrowStatus             RecordRequestEscrowStatus  @default(NONE)
   paymentReference         String?
+  paymentProvider          String?
   amountMinor              Int?
   currency                 String                     @default("NGN")
+  paymentHeldAt            DateTime?
+  paymentReleasedAt        DateTime?
+  refundRequestedAt        DateTime?
   deadlineAt               DateTime?
   assignedToId             String?                    @db.Uuid
+  fulfilledCredentialId    String?                    @unique @db.Uuid
   requesterName            String?
   requesterEmail           String?
   rejectionReason          String?
@@ -1018,12 +1036,15 @@ model RecordRequest {
   learner     Learner?     @relation(fields: [learnerId], references: [uuid])
   institution Institution? @relation(fields: [institutionId], references: [uuid])
   assignedTo  User?        @relation("RecordRequestAssignee", fields: [assignedToId], references: [uuid])
+  fulfilledCredential Credential? @relation("RecordRequestFulfilledCredential", fields: [fulfilledCredentialId], references: [uuid])
+  credentials Credential[]
 
   @@index([status, createdAt])
   @@index([institutionId, status])
   @@index([learnerId, createdAt])
   @@index([requestId])
   @@index([assignedToId, status])
+  @@index([paymentStatus, escrowStatus])
 }
 
 model InvitationLead {

@@ -2,7 +2,9 @@ import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/com
 import { RecordRequestStatus, UserRole, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
+  confirmRecordRequestPaymentSchema,
   confirmRolloverSchema,
+  fulfillRecordRequestSchema,
   previewRolloverSchema,
   requestSealedSessionReopenSchema,
   reviewRecordRequestSchema,
@@ -584,13 +586,12 @@ export class GovernanceService {
       throw new BadRequestException("Record request not found.");
     }
 
-    if (existing.institutionId) {
-      await this.authority.assertActorCanOperateInstitution(auth, existing.institutionId);
-    } else if (auth.role !== UserRole.ACADID_SUPER_ADMIN) {
-      throw new ForbiddenException("Only founder operations can review unassigned record requests.");
-    }
+    await this.assertRecordRequestReviewer(auth, existing);
 
     const status = parsed.data.status;
+    if (status === "FULFILLED") {
+      throw new BadRequestException("Use the record request fulfillment endpoint to publish a credential and release payment.");
+    }
     const now = new Date();
     const notes = this.appendRecordRequestNote(existing.notes, {
       at: now.toISOString(),
@@ -609,9 +610,7 @@ export class GovernanceService {
         rejectionReason: status === "REJECTED" ? parsed.data.rejectionReason ?? parsed.data.note : existing.rejectionReason,
         rejectedAt: status === "REJECTED" ? now : undefined,
         escalationReason: status === "ESCALATED" ? parsed.data.escalationReason ?? parsed.data.note : existing.escalationReason,
-        escalatedAt: status === "ESCALATED" ? now : undefined,
-        resolutionNote: status === "FULFILLED" ? parsed.data.resolutionNote ?? parsed.data.note : existing.resolutionNote,
-        fulfilledAt: status === "FULFILLED" ? now : undefined
+        escalatedAt: status === "ESCALATED" ? now : undefined
       },
       include: this.recordRequestInclude()
     });
@@ -632,6 +631,237 @@ export class GovernanceService {
     });
 
     return { accepted: true, request };
+  }
+
+  async confirmRecordRequestPayment(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = confirmRecordRequestPaymentSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.recordRequest.findUnique({
+      where: { uuid: id },
+      include: this.recordRequestInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Record request not found.");
+    }
+    await this.assertRecordRequestReviewer(auth, existing);
+    if (["REJECTED", "CANCELLED", "FULFILLED"].includes(existing.status)) {
+      throw new BadRequestException("Payment cannot be confirmed for a closed record request.");
+    }
+
+    const expectedAmount = existing.amountMinor ?? parsed.data.amountMinor;
+    if (!expectedAmount || expectedAmount <= 0) {
+      throw new BadRequestException("Record request does not have a payable amount.");
+    }
+    if (parsed.data.amountMinor && parsed.data.amountMinor < expectedAmount) {
+      throw new BadRequestException("Confirmed payment amount is below the required record request amount.");
+    }
+
+    const paidAt = parsed.data.paidAt ? new Date(parsed.data.paidAt) : new Date();
+    const notes = this.appendRecordRequestNote(existing.notes, {
+      at: paidAt.toISOString(),
+      by: auth.sub,
+      role: auth.role,
+      status: existing.status,
+      note: parsed.data.note ?? "Payment confirmed and held in escrow.",
+      paymentReference: parsed.data.paymentReference
+    });
+
+    const request = await this.prisma.recordRequest.update({
+      where: { uuid: id },
+      data: {
+        status: existing.status === "AWAITING_PAYMENT" ? "SUBMITTED" : existing.status,
+        paymentStatus: "PAID",
+        escrowStatus: "HELD",
+        paymentReference: parsed.data.paymentReference,
+        paymentProvider: parsed.data.paymentProvider,
+        amountMinor: expectedAmount,
+        currency: parsed.data.currency,
+        paymentHeldAt: paidAt,
+        notes
+      },
+      include: this.recordRequestInclude()
+    });
+
+    await this.audit.write({
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
+      action: "record_request.payment_confirmed",
+      targetType: "RecordRequest",
+      targetId: request.uuid,
+      institutionId: request.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        requestId: request.requestId,
+        amountMinor: request.amountMinor,
+        currency: request.currency,
+        paymentProvider: request.paymentProvider,
+        escrowStatus: request.escrowStatus,
+        apiKeyId: auth.apiKeyId
+      }
+    });
+
+    return { accepted: true, request };
+  }
+
+  async fulfillRecordRequest(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = fulfillRecordRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const request = await this.prisma.recordRequest.findUnique({
+      where: { uuid: id },
+      include: this.recordRequestInclude()
+    });
+    if (!request) {
+      throw new BadRequestException("Record request not found.");
+    }
+    await this.assertRecordRequestReviewer(auth, request);
+    if (!request.learner || !request.learnerId) {
+      throw new BadRequestException("Record request must be linked to a learner before fulfillment.");
+    }
+    if (!request.institution || !request.institutionId) {
+      throw new BadRequestException("Record request must be assigned to an active institution before fulfillment.");
+    }
+    if (request.fulfilledCredential) {
+      throw new BadRequestException("Record request has already been fulfilled.");
+    }
+    if (request.amountMinor && request.amountMinor > 0 && !["PAID", "WAIVED", "NOT_REQUIRED"].includes(request.paymentStatus)) {
+      throw new BadRequestException("Record request payment must be paid, waived, or not required before fulfillment.");
+    }
+    if (request.paymentStatus === "PAID" && request.escrowStatus !== "HELD") {
+      throw new BadRequestException("Paid record request funds must be held in escrow before fulfillment.");
+    }
+
+    const issuedAt = new Date();
+    const credentialRef = randomUUID();
+    const vcPayload = {
+      "@context": ["https://www.w3.org/ns/credentials/v2"],
+      id: `urn:uuid:${credentialRef}`,
+      type: ["VerifiableCredential", "AcadIDHistoricalRecordCredential"],
+      issuer: request.institution.institutionId,
+      validFrom: issuedAt.toISOString(),
+      credentialSubject: {
+        learnerId: request.learnerId,
+        ain: request.learner.ain,
+        recordRequestId: request.uuid,
+        requestId: request.requestId,
+        institutionName: request.institution.officialName,
+        institutionId: request.institution.institutionId,
+        educationLevel: request.educationLevel,
+        yearsAttendedFrom: request.yearsAttendedFrom,
+        yearsAttendedTo: request.yearsAttendedTo,
+        studentNumber: request.studentNumber,
+        departmentOrClass: request.departmentOrClass,
+        recordTypesRequested: request.recordTypesRequested
+      }
+    };
+    const signed = await this.signer.sign(vcPayload);
+    const shouldReleasePayment = parsed.data.releasePayment && request.paymentStatus === "PAID";
+    const notes = this.appendRecordRequestNote(request.notes, {
+      at: issuedAt.toISOString(),
+      by: auth.sub,
+      role: auth.role,
+      status: "FULFILLED",
+      note: parsed.data.note ?? "Record request fulfilled and credential published to learner passport.",
+      credentialRef
+    });
+
+    const fulfilled = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const credential = await tx.credential.create({
+          data: {
+            credentialRef,
+            learnerId: request.learnerId!,
+            institutionId: request.institutionId!,
+            recordRequestId: request.uuid,
+            type: parsed.data.credentialType,
+            scope: {
+              recordRequestId: request.uuid,
+              requestId: request.requestId,
+              recordTypesRequested: request.recordTypesRequested
+            } as Prisma.InputJsonValue,
+            vcPayload: {
+              ...(signed.payload as Record<string, unknown>),
+              proof: signed.proof
+            } as unknown as Prisma.InputJsonValue,
+            signature: signed.signature
+          }
+        });
+
+        const updatedRequest = await tx.recordRequest.update({
+          where: { uuid: request.uuid },
+          data: {
+            status: "FULFILLED",
+            fulfilledAt: issuedAt,
+            fulfilledCredentialId: credential.uuid,
+            resolutionNote: parsed.data.note ?? request.resolutionNote,
+            escrowStatus: shouldReleasePayment ? "RELEASED" : request.escrowStatus,
+            paymentReleasedAt: shouldReleasePayment ? issuedAt : request.paymentReleasedAt,
+            notes
+          },
+          include: this.recordRequestInclude()
+        });
+
+        if (shouldReleasePayment && request.amountMinor && request.amountMinor > 0) {
+          await tx.revenueLedgerEntry.create({
+            data: {
+              category: "CREDENTIAL_EXPORT_FEE",
+              status: "PAID",
+              amountMinor: request.amountMinor,
+              currency: request.currency,
+              institutionId: request.institutionId,
+              credentialId: credential.uuid,
+              sourceType: "RecordRequest",
+              sourceId: request.uuid,
+              description: "Record request payment released after credential publication",
+              paidAt: issuedAt,
+              metadata: {
+                requestId: request.requestId,
+                paymentReference: request.paymentReference,
+                paymentProvider: request.paymentProvider
+              }
+            }
+          });
+        }
+
+        return { request: updatedRequest, credential };
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
+      action: "record_request.fulfill",
+      targetType: "RecordRequest",
+      targetId: request.uuid,
+      institutionId: request.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        requestId: request.requestId,
+        credentialRef,
+        credentialType: parsed.data.credentialType,
+        paymentStatus: fulfilled.request.paymentStatus,
+        escrowStatus: fulfilled.request.escrowStatus,
+        paymentReleased: shouldReleasePayment,
+        apiKeyId: auth.apiKeyId
+      }
+    });
+
+    return {
+      accepted: true,
+      request: fulfilled.request,
+      credential: {
+        credentialRef: fulfilled.credential.credentialRef,
+        type: fulfilled.credential.type,
+        status: fulfilled.credential.status,
+        issuedAt: fulfilled.credential.issuedAt
+      }
+    };
   }
 
   private transitionData(status: BatchTransition) {
@@ -664,6 +894,15 @@ export class GovernanceService {
           status: true
         }
       },
+      fulfilledCredential: {
+        select: {
+          uuid: true,
+          credentialRef: true,
+          type: true,
+          status: true,
+          issuedAt: true
+        }
+      },
       assignedTo: {
         select: {
           uuid: true,
@@ -678,6 +917,16 @@ export class GovernanceService {
   private appendRecordRequestNote(existing: Prisma.JsonValue, note: Record<string, unknown>) {
     const notes = Array.isArray(existing) ? existing : [];
     return [...notes, note] as Prisma.InputJsonValue;
+  }
+
+  private async assertRecordRequestReviewer(auth: AuthTokenPayload, request: { institutionId: string | null }) {
+    if (request.institutionId) {
+      await this.authority.assertActorCanOperateInstitution(auth, request.institutionId);
+      return;
+    }
+    if (auth.role !== UserRole.ACADID_SUPER_ADMIN) {
+      throw new ForbiddenException("Only founder operations can review unassigned record requests.");
+    }
   }
 
   private async resolveHumanInstitution(auth: AuthTokenPayload, institutionRef: string) {

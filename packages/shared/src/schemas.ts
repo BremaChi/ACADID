@@ -356,6 +356,7 @@ export const recordRequestStatuses = [
 ] as const;
 
 export const recordRequestPaymentStatuses = ["NOT_REQUIRED", "PENDING", "PAID", "WAIVED", "REFUNDED"] as const;
+export const recordRequestEscrowStatuses = ["NONE", "HELD", "RELEASED", "REFUND_PENDING", "REFUNDED"] as const;
 
 export const invitationLeadStatuses = ["NEW", "CONTACTED", "INVITED", "CONVERTED", "DISMISSED"] as const;
 
@@ -392,6 +393,21 @@ export const reviewRecordRequestSchema = z.object({
   rejectionReason: z.string().max(1000).optional(),
   escalationReason: z.string().max(1000).optional(),
   resolutionNote: z.string().max(2000).optional()
+});
+
+export const confirmRecordRequestPaymentSchema = z.object({
+  paymentReference: z.string().min(3).max(160),
+  amountMinor: z.number().int().positive().max(100_000_000).optional(),
+  currency: z.string().length(3).default("NGN"),
+  paymentProvider: z.string().min(2).max(60).default("PAYSTACK"),
+  paidAt: z.string().datetime().optional(),
+  note: z.string().max(1000).optional()
+});
+
+export const fulfillRecordRequestSchema = z.object({
+  credentialType: z.enum(["TRANSCRIPT", "RESULT_SLIP", "CERTIFICATE"]).default("TRANSCRIPT"),
+  note: z.string().max(2000).optional(),
+  releasePayment: z.boolean().default(true)
 });
 
 export const updateInvitationLeadSchema = z
@@ -484,5 +500,7 @@ export type CreateAccessGrantInput = z.infer<typeof createAccessGrantSchema>;
 export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
 export type CreateRecordRequestInput = z.infer<typeof createRecordRequestSchema>;
 export type ReviewRecordRequestInput = z.infer<typeof reviewRecordRequestSchema>;
+export type ConfirmRecordRequestPaymentInput = z.infer<typeof confirmRecordRequestPaymentSchema>;
+export type FulfillRecordRequestInput = z.infer<typeof fulfillRecordRequestSchema>;
 export type UpdateInvitationLeadInput = z.infer<typeof updateInvitationLeadSchema>;
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;
