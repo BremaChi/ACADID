@@ -142,6 +142,7 @@ Implemented foundation:
 - Founder System Health endpoint/page.
 - Database connectivity status.
 - Storage config status.
+- Supabase/object-storage download readiness with optional `storage://` probe object, timeout guard, provider metadata, and safe key hashing.
 - Credential signing readiness.
 - Background queue metrics: ready backlog, scheduled backlog, running jobs, failed jobs, stale running jobs, queue breakdown, and recent worker activity.
 - Webhook delivery metrics: pending/retrying, due now, delivered in 24h, failed in 24h, signing-secret readiness, and status breakdown.
@@ -150,7 +151,6 @@ Implemented foundation:
 
 Required next:
 
-- Supabase storage download health.
 - Error-rate windows by route and queue.
 
 ### 8. Rate Limiting

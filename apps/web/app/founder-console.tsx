@@ -410,6 +410,18 @@ type SystemHealth = {
       }>;
       pending?: number;
       sent24h?: number;
+      provider?: string;
+      configured?: boolean;
+      bucket?: string | null;
+      downloadBaseConfigured?: boolean;
+      supabaseUrlConfigured?: boolean;
+      serviceRoleConfigured?: boolean;
+      probeConfigured?: boolean;
+      probeSucceeded?: boolean | null;
+      probeSource?: string | null;
+      probeBytes?: number | null;
+      probeKeyHash?: string | null;
+      maxDownloadBytes?: number;
       providers?: {
         email: { configured: boolean; provider: string };
         sms: { configured: boolean; provider: string };
@@ -3071,6 +3083,7 @@ function SystemHealthPage({
   const notificationHealth = services.find((service) => service.name === "Notification Delivery")?.metadata;
   const rateLimitHealth = services.find((service) => service.name === "Rate Limit Buckets")?.metadata;
   const idempotencyHealth = services.find((service) => service.name === "Idempotency Ledger")?.metadata;
+  const storageHealth = services.find((service) => service.name === "Storage Service")?.metadata;
   const updateRateLimitProduct = (productCode: string, value: number) => {
     onRateLimitPolicyChange({
       ...rateLimitPolicyForm,
@@ -3139,6 +3152,9 @@ function SystemHealthPage({
           <MetricLine label="Worker running jobs" value={String(queueHealth?.runningJobs ?? "--")} />
           <MetricLine label="Active workers" value={String(queueHealth?.activeWorkers ?? "--")} />
           <MetricLine label="Stale workers" value={String(queueHealth?.staleWorkers ?? "--")} />
+          <MetricLine label="Storage provider" value={titleCase(String(storageHealth?.provider ?? "unconfigured"))} />
+          <MetricLine label="Storage probe" value={storageHealth?.probeConfigured ? storageHealth.probeSucceeded ? "Passing" : "Failing" : "Not configured"} />
+          <MetricLine label="Storage probe bytes" value={storageHealth?.probeBytes == null ? "--" : formatCompactNumber(storageHealth.probeBytes)} />
           <MetricLine label="Webhook delivered 24h" value={String(webhookHealth?.delivered24h ?? "--")} />
           <MetricLine label="Recent incidents" value={`${incidents.length} open`} />
           <MetricLine label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} />

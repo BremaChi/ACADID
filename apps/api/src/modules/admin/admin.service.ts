@@ -35,6 +35,7 @@ import { QueueService } from "../platform/services/queue.service.js";
 import { defaultRateLimitPolicyControl, RateLimitService } from "../platform/services/rate-limit.service.js";
 import { RetryPolicyService } from "../platform/services/retry-policy.service.js";
 import { WebhookSecretService } from "../platform/services/webhook-secret.service.js";
+import { ObjectStorageService } from "../jobs/object-storage.service.js";
 
 const allowedApiKeyScopes = new Set([
   "institution:apply",
@@ -92,6 +93,7 @@ export class AdminService {
     private readonly rateLimit?: RateLimitService,
     private readonly idempotency?: IdempotencyService,
     @Optional() private readonly authService?: AuthService,
+    @Optional() private readonly objectStorage?: ObjectStorageService,
     private readonly retryPolicy: RetryPolicyService = new RetryPolicyService()
   ) {}
 
@@ -1240,10 +1242,7 @@ export class AdminService {
     const [database, auth, storage, email, notificationDelivery, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, metrics] = await Promise.all([
       this.checkDatabase(),
       this.checkAuthService(),
-      this.checkConfiguredService(
-        "Storage Service",
-        Boolean(process.env.SUPABASE_STORAGE_BUCKET || process.env.OBJECT_STORAGE_BUCKET || process.env.STORAGE_BUCKET)
-      ),
+      this.checkStorageService(),
       this.checkConfiguredService("Email Service", Boolean(process.env.SMTP_HOST || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY)),
       this.checkNotificationDelivery(),
       this.checkCacheService(),
@@ -3227,6 +3226,39 @@ export class AdminService {
       status: configured ? ("OPERATIONAL" as HealthStatus) : ("PENDING_CONFIGURATION" as HealthStatus),
       responseTimeMs: 0,
       message: configured ? `${name} configuration is present.` : `${name} is not configured for this environment yet.`
+    };
+  }
+
+  private async checkStorageService() {
+    if (!this.objectStorage) {
+      return {
+        name: "Storage Service",
+        status: "PENDING_CONFIGURATION" as HealthStatus,
+        responseTimeMs: 0,
+        message: "Storage health service is not available in this context.",
+        metadata: {
+          provider: "unconfigured",
+          configured: false,
+          bucket: null,
+          downloadBaseConfigured: false,
+          supabaseUrlConfigured: false,
+          serviceRoleConfigured: false,
+          probeConfigured: false,
+          probeSucceeded: null,
+          probeSource: null,
+          probeBytes: null,
+          probeKeyHash: null
+        }
+      };
+    }
+
+    const health = await this.objectStorage.checkDownloadHealth();
+    return {
+      name: "Storage Service",
+      status: health.status as HealthStatus,
+      responseTimeMs: health.responseTimeMs,
+      message: health.message,
+      metadata: health.metadata
     };
   }
 

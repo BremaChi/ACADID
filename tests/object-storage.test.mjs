@@ -14,8 +14,10 @@ test("object storage service downloads storage objects through configured downlo
   const originalFetch = globalThis.fetch;
   const originalBase = process.env.ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL;
   const originalToken = process.env.ACADID_OBJECT_STORAGE_BEARER_TOKEN;
+  const originalTimeout = process.env.ACADID_OBJECT_STORAGE_TIMEOUT_MS;
   process.env.ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL = "https://storage.example.test/private";
   process.env.ACADID_OBJECT_STORAGE_BEARER_TOKEN = "test-token";
+  process.env.ACADID_OBJECT_STORAGE_TIMEOUT_MS = "1000";
 
   let requestedUrl = "";
   let requestedAuth = "";
@@ -35,6 +37,35 @@ test("object storage service downloads storage objects through configured downlo
     globalThis.fetch = originalFetch;
     setOrDeleteEnv("ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL", originalBase);
     setOrDeleteEnv("ACADID_OBJECT_STORAGE_BEARER_TOKEN", originalToken);
+    setOrDeleteEnv("ACADID_OBJECT_STORAGE_TIMEOUT_MS", originalTimeout);
+  }
+});
+
+test("object storage health reports download probe without leaking object keys", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBase = process.env.ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL;
+  const originalToken = process.env.ACADID_OBJECT_STORAGE_BEARER_TOKEN;
+  const originalProbe = process.env.ACADID_OBJECT_STORAGE_HEALTHCHECK_URL;
+  process.env.ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL = "https://storage.example.test/private";
+  process.env.ACADID_OBJECT_STORAGE_BEARER_TOKEN = "test-token";
+  process.env.ACADID_OBJECT_STORAGE_HEALTHCHECK_URL = "storage://health/private/probe.txt";
+
+  globalThis.fetch = async () => new Response("ok", { status: 200, headers: { "content-length": "2" } });
+
+  try {
+    const health = await new ObjectStorageService().checkDownloadHealth();
+    assert.equal(health.status, "OPERATIONAL");
+    assert.equal(health.metadata.provider, "download_base");
+    assert.equal(health.metadata.probeConfigured, true);
+    assert.equal(health.metadata.probeSucceeded, true);
+    assert.equal(health.metadata.probeBytes, 2);
+    assert.equal(health.metadata.probeKeyHash.length, 16);
+    assert.equal(JSON.stringify(health).includes("private/probe.txt"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    setOrDeleteEnv("ACADID_OBJECT_STORAGE_DOWNLOAD_BASE_URL", originalBase);
+    setOrDeleteEnv("ACADID_OBJECT_STORAGE_BEARER_TOKEN", originalToken);
+    setOrDeleteEnv("ACADID_OBJECT_STORAGE_HEALTHCHECK_URL", originalProbe);
   }
 });
 

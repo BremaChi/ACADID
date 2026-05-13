@@ -13,6 +13,7 @@ import { StructuredLoggerService } from "./services/structured-logger.service.js
 import { CacheService } from "./services/cache.service.js";
 import { RetryPolicyService } from "./services/retry-policy.service.js";
 import { WebhookSecretService } from "./services/webhook-secret.service.js";
+import { ObjectStorageService } from "../jobs/object-storage.service.js";
 
 @Module({
   providers: [
@@ -29,7 +30,8 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     ErrorObservabilityService,
     CacheService,
     RetryPolicyService,
-    WebhookSecretService
+    WebhookSecretService,
+    ObjectStorageService
   ],
   exports: [
     PrismaService,
@@ -45,7 +47,8 @@ import { WebhookSecretService } from "./services/webhook-secret.service.js";
     ErrorObservabilityService,
     CacheService,
     RetryPolicyService,
-    WebhookSecretService
+    WebhookSecretService,
+    ObjectStorageService
   ]
 })
 export class PlatformServicesModule {}

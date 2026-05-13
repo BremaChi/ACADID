@@ -112,6 +112,33 @@ test("founder system health returns component and gateway metrics", async () => 
         productionReady: true,
         publicJwk: { kty: "OKP", crv: "Ed25519", x: "test" }
       })
+    },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      checkDownloadHealth: async () => ({
+        status: "OPERATIONAL",
+        responseTimeMs: 3,
+        message: "Storage download probe succeeded through supabase.",
+        metadata: {
+          provider: "supabase",
+          configured: true,
+          bucket: "acadid-portal-intake",
+          downloadBaseConfigured: false,
+          supabaseUrlConfigured: true,
+          serviceRoleConfigured: true,
+          probeConfigured: true,
+          probeSucceeded: true,
+          probeSource: "supabase",
+          probeBytes: 2,
+          probeKeyHash: "abcd1234abcd1234",
+          maxDownloadBytes: 26214400
+        }
+      })
     }
   );
 
@@ -125,6 +152,7 @@ test("founder system health returns component and gateway metrics", async () => 
   assert.equal(health.services.find((service) => service.name === "Background Workers").metadata.activeWorkers, 2);
   assert.equal(health.services.some((service) => service.name === "Webhook Delivery" && service.status === "OPERATIONAL"), true);
   assert.equal(health.services.some((service) => service.name === "Credential Signing" && service.status === "OPERATIONAL"), true);
+  assert.equal(health.services.find((service) => service.name === "Storage Service").metadata.probeSucceeded, true);
   assert.equal(health.metrics.gatewayRequestsToday, 32);
   assert.equal(health.metrics.failedAuditEvents, 2);
   assert.equal(health.metrics.publishedCredentialsToday, 7);

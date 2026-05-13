@@ -4,10 +4,9 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## Active Build Order
 
-1. Supabase storage download health check.
-2. Error alert thresholds and external log sink adapter.
-3. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
-4. Cache hit/miss metrics once external monitoring is connected.
+1. Error alert thresholds and external log sink adapter.
+2. Founder Console UI for webhook endpoint setup, secret rotation, retry, and replay.
+3. Cache hit/miss metrics once external monitoring is connected.
 
 ## v5 Implementation Gaps To Track
 
@@ -46,3 +45,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Central retry policy module by job type, including capped exponential backoff and jitter.
 - Dead-letter listing and retry controls for failed background jobs, failed webhook deliveries, and failed notifications.
 - Per-product and institution default rate-limit policy, emergency throttle cap, Founder Console controls, and audit trail.
+- Supabase/object-storage download health check, optional probe object, timeout guard, and Founder System Health visibility.

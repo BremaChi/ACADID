@@ -156,6 +156,7 @@ Portal storage and MOU:
 
 - Institution Portal document upload metadata is controlled through the Data Center API.
 - Preferred pilot bucket env is `SUPABASE_STORAGE_BUCKET`.
+- Founder System Health checks object-storage download readiness. Set `ACADID_OBJECT_STORAGE_HEALTHCHECK_URL=storage://bucket/path/to/probe.txt` to verify real worker downloads without exposing signed URLs or object keys.
 - See `docs/runbooks/portal-storage-and-mou.md`.
 
 Founder sign-in:
