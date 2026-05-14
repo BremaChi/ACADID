@@ -29,6 +29,20 @@ export class AccessService {
             level: true,
             programme: true,
             status: true,
+            academicStanding: {
+              select: {
+                cgpa: true,
+                gradePointMax: true,
+                classification: true,
+                classificationSystem: true,
+                attemptedCreditUnits: true,
+                earnedCreditUnits: true,
+                includedRecordCount: true,
+                periodCount: true,
+                latestPeriodLabel: true,
+                computedAt: true
+              }
+            },
             institution: {
               select: {
                 institutionId: true,
@@ -69,6 +83,41 @@ export class AccessService {
     }
 
     return learner;
+  }
+
+  async academicStanding(auth: AuthTokenPayload) {
+    const learnerId = this.requireLearner(auth);
+    return this.prisma.academicStanding.findMany({
+      where: { learnerId },
+      orderBy: { computedAt: "desc" },
+      select: {
+        cgpa: true,
+        gradePointMax: true,
+        classification: true,
+        classificationSystem: true,
+        attemptedCreditUnits: true,
+        earnedCreditUnits: true,
+        qualityPoints: true,
+        includedRecordCount: true,
+        periodCount: true,
+        latestPeriodLabel: true,
+        computedAt: true,
+        institution: {
+          select: {
+            institutionId: true,
+            officialName: true
+          }
+        },
+        enrolment: {
+          select: {
+            studentNumber: true,
+            level: true,
+            programme: true,
+            status: true
+          }
+        }
+      }
+    });
   }
 
   async credentials(auth: AuthTokenPayload) {

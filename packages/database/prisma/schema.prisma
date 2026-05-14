@@ -386,6 +386,7 @@ model Learner {
   rolloverRecords    RolloverRecord[]
   transferRequests   TransferRequest[]
   notifications      Notification[]
+  academicStandings  AcademicStanding[]
 
   @@index([fullName, dateOfBirth])
 }
@@ -427,6 +428,7 @@ model Institution {
   webhookEndpoints        WebhookEndpoint[]
   webhookDeliveries       WebhookDelivery[]
   notifications           Notification[]
+  academicStandings       AcademicStanding[]
 }
 
 model InstitutionApplication {
@@ -616,6 +618,7 @@ model Enrolment {
   academicRecords AcademicRecord[]
   rolloverRecords RolloverRecord[]
   transferRequests TransferRequest[]
+  academicStanding AcademicStanding?
 
   @@unique([institutionId, studentNumber, status])
   @@index([learnerId])
@@ -790,6 +793,36 @@ model AcademicRecord {
   @@index([structureScopeId, status])
   @@index([gradingRuleSetId])
   @@index([resultBatchId, status])
+}
+
+model AcademicStanding {
+  uuid                  String   @id @default(uuid()) @db.Uuid
+  learnerId             String   @db.Uuid
+  institutionId         String   @db.Uuid
+  enrolmentId           String   @unique @db.Uuid
+  latestAcademicSessionId String? @db.Uuid
+  latestPeriodLabel     String?
+  attemptedCreditUnits  Decimal  @default(0)
+  earnedCreditUnits     Decimal  @default(0)
+  qualityPoints         Decimal  @default(0)
+  cgpa                  Decimal?
+  gradePointMax         Decimal?
+  classification        String?
+  classificationSystem  String   @default("NIGERIAN_TERTIARY_5_POINT")
+  includedRecordCount   Int      @default(0)
+  periodCount           Int      @default(0)
+  computedAt            DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  learner     Learner     @relation(fields: [learnerId], references: [uuid])
+  institution Institution @relation(fields: [institutionId], references: [uuid])
+  enrolment   Enrolment   @relation(fields: [enrolmentId], references: [uuid])
+
+  @@index([learnerId, institutionId])
+  @@index([institutionId, classification])
+  @@index([cgpa])
+  @@index([latestAcademicSessionId])
 }
 
 model RolloverRecord {

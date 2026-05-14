@@ -25,6 +25,11 @@ export class AccessController {
     return this.accessService.credentials(request.auth);
   }
 
+  @Get("academic-standing")
+  academicStanding(@Req() request: AuthenticatedRequest) {
+    return this.accessService.academicStanding(request.auth);
+  }
+
   @Post("share-link")
   createShareLink(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.accessService.createShareLink(request.auth, body);

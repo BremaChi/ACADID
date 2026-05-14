@@ -130,46 +130,49 @@ export class JobWorkerService {
   }
 
   async claimNextJob(workerId: string): Promise<ClaimedJob | null> {
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const claimed = await tx.$queryRaw<Array<{ uuid: string }>>`
-        SELECT "uuid"
-        FROM "BackgroundJob"
-        WHERE "status" IN ('QUEUED', 'RETRYING')
-          AND "queue" IN (${Prisma.join(workerQueues)})
-          AND "runAfter" <= NOW()
-        ORDER BY "priority" DESC, "runAfter" ASC, "createdAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      `;
+    return this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const claimed = await tx.$queryRaw<Array<{ uuid: string }>>`
+          SELECT "uuid"
+          FROM "BackgroundJob"
+          WHERE "status" IN ('QUEUED', 'RETRYING')
+            AND "queue" IN (${Prisma.join(workerQueues)})
+            AND "runAfter" <= NOW()
+          ORDER BY "priority" DESC, "runAfter" ASC, "createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        `;
 
-      const next = claimed[0];
-      if (!next) {
-        return null;
-      }
-
-      return tx.backgroundJob.update({
-        where: { uuid: next.uuid },
-        data: {
-          status: BackgroundJobStatus.RUNNING,
-          lockedAt: new Date(),
-          lockedBy: workerId,
-          startedAt: new Date(),
-          attempts: { increment: 1 },
-          error: null,
-          progress: 10
-        },
-        select: {
-          uuid: true,
-          type: true,
-          queue: true,
-          institutionId: true,
-          createdById: true,
-          payload: true,
-          attempts: true,
-          maxAttempts: true
+        const next = claimed[0];
+        if (!next) {
+          return null;
         }
-      });
-    });
+
+        return tx.backgroundJob.update({
+          where: { uuid: next.uuid },
+          data: {
+            status: BackgroundJobStatus.RUNNING,
+            lockedAt: new Date(),
+            lockedBy: workerId,
+            startedAt: new Date(),
+            attempts: { increment: 1 },
+            error: null,
+            progress: 10
+          },
+          select: {
+            uuid: true,
+            type: true,
+            queue: true,
+            institutionId: true,
+            createdById: true,
+            payload: true,
+            attempts: true,
+            maxAttempts: true
+          }
+        });
+      },
+      this.workerTransactionOptions()
+    );
   }
 
   private async recordHeartbeat(
@@ -639,30 +642,33 @@ export class JobWorkerService {
   }
 
   private async completeJob(job: ClaimedJob, result: Prisma.InputJsonValue) {
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.backgroundJob.update({
-        where: { uuid: job.uuid },
-        data: {
-          status: BackgroundJobStatus.SUCCEEDED,
-          result,
-          progress: 100,
-          lockedAt: null,
-          lockedBy: null,
-          completedAt: new Date()
-        }
-      });
+    await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        await tx.backgroundJob.update({
+          where: { uuid: job.uuid },
+          data: {
+            status: BackgroundJobStatus.SUCCEEDED,
+            result,
+            progress: 100,
+            lockedAt: null,
+            lockedBy: null,
+            completedAt: new Date()
+          }
+        });
 
-      await tx.domainEvent.create({
-        data: {
-          type: `${job.type.toLowerCase()}.succeeded`,
-          aggregateType: "BackgroundJob",
-          aggregateId: job.uuid,
-          institutionId: job.institutionId,
-          jobId: job.uuid,
-          payload: this.toJson({ jobId: job.uuid, type: job.type, result })
-        }
-      });
-    });
+        await tx.domainEvent.create({
+          data: {
+            type: `${job.type.toLowerCase()}.succeeded`,
+            aggregateType: "BackgroundJob",
+            aggregateId: job.uuid,
+            institutionId: job.institutionId,
+            jobId: job.uuid,
+            payload: this.toJson({ jobId: job.uuid, type: job.type, result })
+          }
+        });
+      },
+      this.workerTransactionOptions()
+    );
   }
 
   private async failOrRetryJob(job: ClaimedJob, error: unknown) {
@@ -674,42 +680,45 @@ export class JobWorkerService {
       nonRetryable: error instanceof NonRetryableJobError
     });
     const nextRunAfter = shouldRetry ? this.nextRetryRunAfter(job) : undefined;
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.backgroundJob.update({
-        where: { uuid: job.uuid },
-        data: {
-          status: shouldRetry ? BackgroundJobStatus.RETRYING : BackgroundJobStatus.FAILED,
-          error: message,
-          progress: shouldRetry ? 0 : 100,
-          lockedAt: null,
-          lockedBy: null,
-          runAfter: nextRunAfter,
-          failedAt: shouldRetry ? undefined : new Date()
-        }
-      });
-
-      if (job.type === BackgroundJobType.WEBHOOK_DELIVERY) {
-        await tx.webhookDelivery.updateMany({
-          where: { jobId: job.uuid, status: { in: [WebhookDeliveryStatus.PENDING, WebhookDeliveryStatus.RETRYING] } },
+    await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        await tx.backgroundJob.update({
+          where: { uuid: job.uuid },
           data: {
-            status: shouldRetry ? WebhookDeliveryStatus.RETRYING : WebhookDeliveryStatus.FAILED,
-            lastError: message,
-            nextAttemptAt: nextRunAfter ?? new Date()
+            status: shouldRetry ? BackgroundJobStatus.RETRYING : BackgroundJobStatus.FAILED,
+            error: message,
+            progress: shouldRetry ? 0 : 100,
+            lockedAt: null,
+            lockedBy: null,
+            runAfter: nextRunAfter,
+            failedAt: shouldRetry ? undefined : new Date()
           }
         });
-      }
 
-      await tx.domainEvent.create({
-        data: {
-          type: shouldRetry ? `${job.type.toLowerCase()}.retrying` : `${job.type.toLowerCase()}.failed`,
-          aggregateType: "BackgroundJob",
-          aggregateId: job.uuid,
-          institutionId: job.institutionId,
-          jobId: job.uuid,
-          payload: this.toJson({ jobId: job.uuid, type: job.type, error: message, retrying: shouldRetry })
+        if (job.type === BackgroundJobType.WEBHOOK_DELIVERY) {
+          await tx.webhookDelivery.updateMany({
+            where: { jobId: job.uuid, status: { in: [WebhookDeliveryStatus.PENDING, WebhookDeliveryStatus.RETRYING] } },
+            data: {
+              status: shouldRetry ? WebhookDeliveryStatus.RETRYING : WebhookDeliveryStatus.FAILED,
+              lastError: message,
+              nextAttemptAt: nextRunAfter ?? new Date()
+            }
+          });
         }
-      });
-    });
+
+        await tx.domainEvent.create({
+          data: {
+            type: shouldRetry ? `${job.type.toLowerCase()}.retrying` : `${job.type.toLowerCase()}.failed`,
+            aggregateType: "BackgroundJob",
+            aggregateId: job.uuid,
+            institutionId: job.institutionId,
+            jobId: job.uuid,
+            payload: this.toJson({ jobId: job.uuid, type: job.type, error: message, retrying: shouldRetry })
+          }
+        });
+      },
+      this.workerTransactionOptions()
+    );
 
     this.logger.warn(`Job ${job.uuid} ${shouldRetry ? "will retry" : "failed"}: ${message}`);
     void this.observability
@@ -841,5 +850,12 @@ export class JobWorkerService {
 
   private defaultWorkerId() {
     return `${process.env.COMPUTERNAME ?? process.env.HOSTNAME ?? "acadid"}-${process.pid}`;
+  }
+
+  private workerTransactionOptions() {
+    return {
+      maxWait: this.asNumber(process.env.ACADID_WORKER_TX_MAX_WAIT_MS, 1000, 120000, 20000),
+      timeout: this.asNumber(process.env.ACADID_WORKER_TX_TIMEOUT_MS, 5000, 300000, 60000)
+    };
   }
 }

@@ -122,11 +122,13 @@ The API has these first modules:
 - Distributed cache support is implemented with an in-process L1 cache plus optional Upstash Redis REST L2 adapter for multi-instance pilot/production deployments; configuration is documented in `docs/runbooks/distributed-cache.md`.
 - Webhook receiver behavior is documented for partners in `docs/api/webhook-receiver-contract.md`, including HMAC signature verification, idempotency keys, retries, replay behavior, timestamp checks, and response rules.
 - Paystack webhook behavior is documented in `docs/api/paystack-webhook-contract.md`, including signature verification, RecordRequest metadata matching, idempotency, worker processing, and failure rules.
+- Academic standing behavior is documented in `docs/api/academic-standing-contract.md`, including publish-time recompute, classification defaults, student access shape, and product boundaries.
 - Engineer 1 remaining foundation work is tracked in `ENGINEER_1_BACKLOG.md` so Data Center, Gateway, Founder Console, and reliability tasks stay visible before Engineer 2/3/4 product expansion.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
 - v5 modular grading rule sets are implemented under `/api/ingest/grading-rules`: institutions can create/list/update score scales for primary/secondary and tertiary GPA engines; result ingestion computes grades, grade points, quality points, and batch GPA summaries from configured rules; uploaded grades are advisory and audited through validation warnings.
+- v5 durable academic standing is implemented: result publication recomputes per-enrolment CGPA, credit totals, classification, and period counts into `AcademicStanding`, and student access exposes it through `/api/access/academic-standing`.
 - v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
 - v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
@@ -281,6 +283,7 @@ Completed successfully:
 - v5 transfer and rollover-dispute workflows validate with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, and `npm test`; coverage confirms transfer request creation, transfer approval, source enrolment transfer-out, linked rollover creation, dispute open/resolve, and destination validation.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, setup gaps, institution readiness flags, staff-scope gaps, storage counts, recent rollover/transfer data, and sealed-session escalation events.
 - Paystack webhook automation validates with `npm run typecheck --workspace @acadid/api` and `npm test`; coverage confirms signed webhook job enqueueing and worker-side RecordRequest payment/audit updates.
+- AcademicStanding migration `20260514000000_academic_standings` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; coverage confirms publish-time CGPA/classification recompute and student access.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
@@ -316,10 +319,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add CGPA/classification rollup after enough semester GPA records exist.
-2. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
-3. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-4. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
+2. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
+3. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 

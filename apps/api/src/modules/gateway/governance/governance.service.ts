@@ -125,11 +125,12 @@ export class GovernanceService {
 
     const published = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        const publishedAt = new Date();
         const updatedBatch = await tx.resultBatch.update({
           where: { uuid: batchId },
           data: {
             status: "PUBLISHED",
-            publishedAt: new Date()
+            publishedAt
           }
         });
 
@@ -137,7 +138,7 @@ export class GovernanceService {
           where: { resultBatchId: batchId },
           data: {
             status: "PUBLISHED",
-            publishedAt: new Date()
+            publishedAt
           }
         });
 
@@ -154,6 +155,11 @@ export class GovernanceService {
               signature: signedCredential.signature
             }
           });
+        }
+
+        const enrolmentIds = Array.from(new Set(batch.academicRecords.map((record) => record.enrolmentId)));
+        for (const enrolmentId of enrolmentIds) {
+          await this.recomputeAcademicStanding(tx, enrolmentId);
         }
 
         return updatedBatch;
@@ -1521,6 +1527,130 @@ export class GovernanceService {
       select: { name: true }
     });
     return structure?.name ?? fallbackLevel;
+  }
+
+  private async recomputeAcademicStanding(tx: Prisma.TransactionClient, enrolmentId: string) {
+    const enrolment = await tx.enrolment.findUnique({
+      where: { uuid: enrolmentId },
+      select: {
+        uuid: true,
+        learnerId: true,
+        institutionId: true
+      }
+    });
+    if (!enrolment) {
+      return null;
+    }
+
+    const records = await tx.academicRecord.findMany({
+      where: {
+        enrolmentId,
+        status: "PUBLISHED",
+        gradePoint: { not: null },
+        creditUnits: { not: null }
+      },
+      select: {
+        uuid: true,
+        academicSessionId: true,
+        periodLabel: true,
+        creditUnits: true,
+        gradePoint: true,
+        qualityPoints: true,
+        publishedAt: true,
+        createdAt: true,
+        gradingRuleSet: {
+          select: {
+            gradePointMax: true,
+            engine: true
+          }
+        }
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+    });
+
+    const tertiaryRecords = records.filter((record) => record.gradingRuleSet?.engine === "TERTIARY_GPA");
+    const rollupRecords = tertiaryRecords.length > 0 ? tertiaryRecords : records;
+    const attemptedCreditUnits = this.round(
+      rollupRecords.reduce((sum, record) => sum + this.decimalToNumber(record.creditUnits), 0),
+      4
+    );
+    const qualityPoints = this.round(
+      rollupRecords.reduce((sum, record) => sum + this.decimalToNumber(record.qualityPoints), 0),
+      4
+    );
+    const earnedCreditUnits = this.round(
+      rollupRecords.reduce((sum, record) => {
+        const creditUnits = this.decimalToNumber(record.creditUnits);
+        const gradePoint = this.decimalToNumber(record.gradePoint);
+        return sum + (gradePoint > 0 ? creditUnits : 0);
+      }, 0),
+      4
+    );
+    const cgpa = attemptedCreditUnits > 0 ? this.round(qualityPoints / attemptedCreditUnits, 4) : null;
+    const gradePointMax = this.resolveGradePointMax(rollupRecords);
+    const classification = cgpa === null ? null : this.classifyCgpa(cgpa, gradePointMax);
+    const latest = rollupRecords[0];
+    const periodCount = new Set(rollupRecords.map((record) => `${record.academicSessionId ?? "none"}:${record.periodLabel}`)).size;
+
+    const data = {
+      learnerId: enrolment.learnerId,
+      institutionId: enrolment.institutionId,
+      latestAcademicSessionId: latest?.academicSessionId ?? null,
+      latestPeriodLabel: latest?.periodLabel ?? null,
+      attemptedCreditUnits,
+      earnedCreditUnits,
+      qualityPoints,
+      cgpa,
+      gradePointMax,
+      classification,
+      classificationSystem: gradePointMax <= 4 ? "NIGERIAN_TERTIARY_4_POINT" : "NIGERIAN_TERTIARY_5_POINT",
+      includedRecordCount: rollupRecords.length,
+      periodCount,
+      computedAt: new Date()
+    };
+
+    return tx.academicStanding.upsert({
+      where: { enrolmentId },
+      create: {
+        enrolmentId,
+        ...data
+      },
+      update: data
+    });
+  }
+
+  private resolveGradePointMax(records: Array<{ gradingRuleSet: { gradePointMax: unknown } | null; gradePoint: unknown }>) {
+    const configuredMax = records
+      .map((record) => this.decimalToNumber(record.gradingRuleSet?.gradePointMax))
+      .filter((value) => value > 0);
+    if (configuredMax.length > 0) {
+      return Math.max(...configuredMax);
+    }
+    const observedMax = records.map((record) => this.decimalToNumber(record.gradePoint)).filter((value) => value > 0);
+    return observedMax.length > 0 && Math.max(...observedMax) <= 4 ? 4 : 5;
+  }
+
+  private classifyCgpa(cgpa: number, gradePointMax: number) {
+    const normalized = gradePointMax > 0 ? (cgpa / gradePointMax) * 5 : cgpa;
+    if (normalized >= 4.5) return "First Class";
+    if (normalized >= 3.5) return "Second Class Upper";
+    if (normalized >= 2.4) return "Second Class Lower";
+    if (normalized >= 1.5) return "Third Class";
+    if (normalized >= 1.0) return "Pass";
+    return "Fail";
+  }
+
+  private decimalToNumber(value: unknown) {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return Number(value);
+    if (typeof value === "object" && "toString" in value) return Number(value.toString());
+    return 0;
+  }
+
+  private round(value: number, precision: number) {
+    const multiplier = 10 ** precision;
+    return Math.round(value * multiplier) / multiplier;
   }
 
   private institutionRefWhere(institutionRef: string): Prisma.InstitutionWhereInput {

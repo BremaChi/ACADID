@@ -35,6 +35,7 @@ AcadID remains academic identity infrastructure, not a school ERP. It must not e
 - Uploaded documents stay in object storage, not PostgreSQL.
 - Bulk uploads, validation, credential generation, PDFs, SMS, email, and refunds should move through background jobs as scale grows.
 - Paystack payment confirmations for RecordRequests now enter through signed `/api/webhooks/paystack` and the `PAYSTACK_PAYMENT_CONFIRMATION` worker so products do not manually toggle escrow state.
+- CGPA/classification now persists as `AcademicStanding` during governed result publication, giving Student App, verification, transcripts, and future employer flows a stable Data Center source.
 - No fake certification logos. Use "standards-aligned" or "designed for compliance" unless certification is real.
 
 ## Four Layers
