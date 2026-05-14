@@ -8,7 +8,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## v5 Implementation Gaps To Track
 
-- Database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
 - Planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## Product API Roots To Keep Stable
@@ -52,3 +51,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Paystack webhook receiver/worker automation is implemented for RecordRequest payment confirmation, with signed webhook verification, background job handoff, escrow state update, idempotent worker behavior, audit logging, tests, and `docs/api/paystack-webhook-contract.md`.
 - CGPA/classification rollup is implemented as durable `AcademicStanding` state per enrolment, recomputed during result publication, exposed through `/api/access/academic-standing`, covered by tests, and documented in `docs/api/academic-standing-contract.md`.
 - Institution Portal dashboard handoff tests are implemented for Engineer 2 approved-institution flows, covering staff scopes, academic setup, async upload polling roots, transfer, manual rollover, disputed rollover, sealed-session reopen, and record request routes through `tests/institution-portal-handoff.test.mjs` and `docs/handoffs/engineer-2-approved-institution-dashboard.md`.
+- Database-backed sealed-session reopen queue is implemented with durable `SealedSessionReopenRequest` state, one-open-request-per-session protection, 72-hour SLA due dates, Founder approval/rejection review fields, Supabase migration, audit events, and Founder Academic Operations visibility.

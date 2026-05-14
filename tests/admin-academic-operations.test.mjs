@@ -163,6 +163,24 @@ test("founder academic operations summary aggregates v5 control-plane health", a
     institutionApplication: {
       findMany: async () => [{ approvedInstitutionId: institutionOne.uuid, documentUploads: { mou: "storage://bucket/mou.pdf" } }]
     },
+    sealedSessionReopenRequest: {
+      findMany: async () => [
+        {
+          uuid: "reopen-request-1",
+          status: "REQUESTED",
+          requestedStatus: "ACTIVE",
+          reason: "Need approved correction.",
+          reviewReason: null,
+          dueAt: new Date("2026-05-04T11:00:00.000Z"),
+          reviewedAt: null,
+          createdAt: new Date("2026-05-01T11:00:00.000Z"),
+          institution: { uuid: institutionOne.uuid, institutionId: institutionOne.institutionId, officialName: institutionOne.officialName, state: institutionOne.state },
+          session: { uuid: "sealed-session-1", sessionLabel: "2025/2026", periodType: "TERM", periodLabel: "Third Term", status: "SEALED" },
+          requestedBy: { uuid: "membership-1", role: "REGISTRAR", user: { fullName: "Registrar One", email: "registrar@example.edu.ng" } },
+          reviewedBy: null
+        }
+      ]
+    },
     auditEvent: {
       findMany: async () => [
         {
@@ -212,4 +230,6 @@ test("founder academic operations summary aggregates v5 control-plane health", a
   assert.equal(summary.recentRollovers[0].learnerAin, "AIN-NG-2026-0000001");
   assert.equal(summary.recentTransfers[0].transferId, "TRF-2026-ABC123");
   assert.equal(summary.sealedSessionEscalations[0].actorName, "Registrar One");
+  assert.equal(summary.sealedSessionEscalations[0].status, "REQUESTED");
+  assert.equal(summary.sealedSessionEscalations[0].sessionLabel, "2025/2026");
 });

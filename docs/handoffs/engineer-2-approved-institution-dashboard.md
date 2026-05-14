@@ -213,7 +213,8 @@ Behavior:
 
 - Institution users can request reopen escalation with a reason.
 - Founder Admin review is required for final approval or rejection.
-- This can remain an audit-backed MVP escalation until a database-backed SLA queue is added.
+- Reopen requests are database-backed with one open request per sealed session and a 72-hour Founder review due date.
+- The Founder Console reads the durable queue from Academic Operations; Engineer 2 should show the returned request status and due date where relevant.
 
 ### Record Requests
 
@@ -255,4 +256,3 @@ Engineer 2 is ready to build once these checks pass:
 - Rollover dispute routes cover create and resolve.
 - Record request routes cover list/review/payment/fulfill.
 - Docs state that Engineer 2 must not create shadow schemas or direct Supabase reads.
-

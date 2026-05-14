@@ -882,12 +882,47 @@ export class GovernanceService {
       throw new BadRequestException("Only sealed academic sessions require reopen escalation.");
     }
 
+    const existingRequest = await this.prisma.sealedSessionReopenRequest.findFirst({
+      where: {
+        sessionId: session.uuid,
+        status: "REQUESTED"
+      },
+      orderBy: { createdAt: "desc" },
+      include: this.sealedSessionReopenInclude()
+    });
+    if (existingRequest) {
+      return {
+        accepted: true,
+        status: existingRequest.status,
+        requestId: existingRequest.uuid,
+        sessionId: session.uuid,
+        institutionId: session.institution.institutionId,
+        requestedStatus: existingRequest.requestedStatus,
+        dueAt: existingRequest.dueAt
+      };
+    }
+
+    const dueAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const reopenRequest = await this.prisma.sealedSessionReopenRequest.create({
+      data: {
+        institutionId: session.institutionId,
+        sessionId: session.uuid,
+        requestedById: auth.institutionUserId,
+        requestedStatus: parsed.data.requestedStatus,
+        reason: parsed.data.reason,
+        dueAt
+      },
+      include: this.sealedSessionReopenInclude()
+    });
+
     await this.audit.write({
       actorId: auth.sub,
       actorRole: auth.role,
       action: "academic_session.reopen_requested",
-      targetType: "AcademicSession",
-      targetId: session.uuid,
+      targetType: "SealedSessionReopenRequest",
+      targetId: reopenRequest.uuid,
+      entityType: "AcademicSession",
+      entityId: session.uuid,
       institutionId: session.institutionId,
       outcome: "SUCCESS",
       reason: parsed.data.reason,
@@ -901,10 +936,12 @@ export class GovernanceService {
 
     return {
       accepted: true,
-      status: "ESCALATED",
+      status: reopenRequest.status,
+      requestId: reopenRequest.uuid,
       sessionId: session.uuid,
       institutionId: session.institution.institutionId,
-      requestedStatus: parsed.data.requestedStatus
+      requestedStatus: reopenRequest.requestedStatus,
+      dueAt: reopenRequest.dueAt
     };
   }
 
@@ -928,24 +965,54 @@ export class GovernanceService {
       throw new BadRequestException("Only sealed academic sessions can be reviewed for reopen.");
     }
 
-    const reviewed =
-      parsed.data.decision === "APPROVE"
-        ? await this.prisma.academicSession.update({
-            where: { uuid: session.uuid },
-            data: { status: parsed.data.newStatus }
-          })
-        : session;
+    const existingRequest = await this.prisma.sealedSessionReopenRequest.findFirst({
+      where: {
+        sessionId: session.uuid,
+        status: "REQUESTED"
+      },
+      orderBy: { createdAt: "desc" },
+      include: this.sealedSessionReopenInclude()
+    });
+    if (!existingRequest) {
+      throw new BadRequestException("No open sealed-session reopen request found for this session.");
+    }
+
+    const now = new Date();
+    const reviewStatus = parsed.data.decision === "APPROVE" ? "APPROVED" : "REJECTED";
+    const { reviewed, reopenRequest } = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const reviewedSession =
+        parsed.data.decision === "APPROVE"
+          ? await tx.academicSession.update({
+              where: { uuid: session.uuid },
+              data: { status: parsed.data.newStatus }
+            })
+          : session;
+      const reviewedRequest = await tx.sealedSessionReopenRequest.update({
+        where: { uuid: existingRequest.uuid },
+        data: {
+          status: reviewStatus,
+          reviewedById: auth.sub,
+          reviewReason: parsed.data.reason,
+          reviewedAt: now
+        },
+        include: this.sealedSessionReopenInclude()
+      });
+      return { reviewed: reviewedSession, reopenRequest: reviewedRequest };
+    });
 
     await this.audit.write({
       actorId: auth.sub,
       actorRole: auth.role,
       action: parsed.data.decision === "APPROVE" ? "academic_session.reopen_approved" : "academic_session.reopen_rejected",
-      targetType: "AcademicSession",
-      targetId: session.uuid,
+      targetType: "SealedSessionReopenRequest",
+      targetId: reopenRequest.uuid,
+      entityType: "AcademicSession",
+      entityId: session.uuid,
       institutionId: session.institutionId,
       outcome: "SUCCESS",
       reason: parsed.data.reason,
       metadata: {
+        requestStatus: reopenRequest.status,
         previousStatus: session.status,
         newStatus: reviewed.status,
         sessionLabel: session.sessionLabel,
@@ -957,6 +1024,8 @@ export class GovernanceService {
     return {
       accepted: true,
       decision: parsed.data.decision,
+      requestId: reopenRequest.uuid,
+      requestStatus: reopenRequest.status,
       sessionId: session.uuid,
       institutionId: session.institution.institutionId,
       status: reviewed.status
@@ -1328,6 +1397,45 @@ export class GovernanceService {
         }
       },
       assignedTo: {
+        select: {
+          uuid: true,
+          fullName: true,
+          email: true,
+          role: true
+        }
+      }
+    };
+  }
+
+  private sealedSessionReopenInclude() {
+    return {
+      institution: {
+        select: {
+          uuid: true,
+          institutionId: true,
+          officialName: true,
+          state: true,
+          status: true
+        }
+      },
+      session: {
+        select: {
+          uuid: true,
+          sessionLabel: true,
+          periodType: true,
+          periodLabel: true,
+          status: true,
+          isCurrent: true
+        }
+      },
+      requestedBy: {
+        select: {
+          uuid: true,
+          role: true,
+          user: { select: { fullName: true, email: true } }
+        }
+      },
+      reviewedBy: {
         select: {
           uuid: true,
           fullName: true,

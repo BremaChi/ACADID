@@ -1151,7 +1151,7 @@ export class AdminService {
       recentRollovers,
       recentTransfers,
       disputedRollovers,
-      reopenEvents
+      reopenRequests
     ] = await Promise.all([
       this.prisma.institution.findMany({
         where: { status: { in: ["ACTIVE", "SUSPENDED"] } },
@@ -1298,7 +1298,16 @@ export class AdminService {
           transferRequest: { select: { uuid: true, transferId: true, status: true } }
         }
       }),
-      this.readAuditEvents({ action: "academic_session.reopen", targetType: "AcademicSession", take: 12 })
+      this.prisma.sealedSessionReopenRequest.findMany({
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        take: 24,
+        include: {
+          institution: { select: { uuid: true, institutionId: true, officialName: true, state: true } },
+          session: { select: { uuid: true, sessionLabel: true, periodType: true, periodLabel: true, status: true } },
+          requestedBy: { select: { uuid: true, role: true, user: { select: { fullName: true, email: true } } } },
+          reviewedBy: { select: { uuid: true, fullName: true, email: true, role: true } }
+        }
+      })
     ]);
 
     const totalByStatus = <Row extends { status: string; _count: { _all: number } }>(rows: Row[], status: string) =>
@@ -1474,7 +1483,7 @@ export class AdminService {
         storageObjects: totalStorageObjects,
         publishedBatches: totalByStatus(batchGroups, "PUBLISHED"),
         rejectedBatches: totalByStatus(batchGroups, "REJECTED"),
-        reopenEscalations: reopenEvents.filter((event) => event.action === "academic_session.reopen_requested").length
+        reopenEscalations: reopenRequests.filter((request) => request.status === "REQUESTED").length
       },
       setupGaps: {
         missingGradingRules: institutionsMissingGradingRules,
@@ -1542,7 +1551,39 @@ export class AdminService {
         disputedAt: rollover.disputedAt,
         resolutionNote: rollover.disputeResolutionNote
       })),
-      sealedSessionEscalations: reopenEvents
+      sealedSessionEscalations: reopenRequests.map((request) => ({
+        id: request.uuid,
+        label:
+          request.status === "REQUESTED"
+            ? "Reopen requested"
+            : request.status === "APPROVED"
+              ? "Reopen approved"
+              : request.status === "REJECTED"
+                ? "Reopen rejected"
+                : "Reopen cancelled",
+        action: `academic_session.reopen_${request.status.toLowerCase()}`,
+        status: request.status,
+        institutionId: request.institution.institutionId,
+        institutionName: request.institution.officialName,
+        state: request.institution.state,
+        sessionId: request.session.uuid,
+        sessionLabel: request.session.sessionLabel,
+        periodType: request.session.periodType,
+        periodLabel: request.session.periodLabel,
+        sessionStatus: request.session.status,
+        requestedStatus: request.requestedStatus,
+        reason: request.status === "REQUESTED" ? request.reason : request.reviewReason ?? request.reason,
+        requestReason: request.reason,
+        reviewReason: request.reviewReason,
+        actorName: request.requestedBy?.user.fullName ?? "Institution user",
+        actorEmail: request.requestedBy?.user.email ?? null,
+        actorRole: request.requestedBy?.role ?? null,
+        reviewedByName: request.reviewedBy?.fullName ?? null,
+        reviewedByEmail: request.reviewedBy?.email ?? null,
+        dueAt: request.dueAt,
+        reviewedAt: request.reviewedAt,
+        createdAt: request.createdAt
+      }))
     };
   }
 

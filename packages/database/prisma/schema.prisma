@@ -133,6 +133,13 @@ enum AcademicSessionStatus {
   SEALED
 }
 
+enum SealedSessionReopenStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum AcademicStructureType {
   LEVEL
   CLASS
@@ -407,6 +414,7 @@ model Institution {
   authorityGrants         AuthorityGrant[]
   enrolments              Enrolment[]
   academicSessions        AcademicSession[]
+  sealedSessionReopenRequests SealedSessionReopenRequest[]
   academicStructures      AcademicStructure[]
   gradingRuleSets         GradingRuleSet[]
   credentials             Credential[]
@@ -506,6 +514,7 @@ model User {
   backgroundJobs          BackgroundJob[]
   webhookEndpoints        WebhookEndpoint[]
   notifications           Notification[]
+  reviewedSealedSessionReopenRequests SealedSessionReopenRequest[] @relation("SealedSessionReopenReviewer")
 }
 
 model InstitutionUser {
@@ -533,6 +542,7 @@ model InstitutionUser {
   createdAcademicSessions   AcademicSession[]   @relation("AcademicSessionCreator")
   createdAcademicStructures AcademicStructure[] @relation("AcademicStructureCreator")
   createdGradingRuleSets    GradingRuleSet[]    @relation("GradingRuleSetCreator")
+  sealedSessionReopenRequests SealedSessionReopenRequest[] @relation("SealedSessionReopenRequester")
   createdResultBatches      ResultBatch[]       @relation("ResultBatchCreator")
   reviewedResultBatches     ResultBatch[]       @relation("ResultBatchReviewer")
   approvedResultBatches     ResultBatch[]       @relation("ResultBatchApprover")
@@ -648,11 +658,39 @@ model AcademicSession {
   rolloversFrom   RolloverRecord[] @relation("RolloverFromSession")
   rolloversTo     RolloverRecord[] @relation("RolloverToSession")
   transfersFrom   TransferRequest[] @relation("TransferFromSession")
+  reopenRequests  SealedSessionReopenRequest[]
 
   @@unique([institutionId, sessionLabel, periodType, periodLabel])
   @@index([institutionId, status])
   @@index([institutionId, isCurrent])
   @@index([createdById])
+}
+
+model SealedSessionReopenRequest {
+  uuid            String                    @id @default(uuid()) @db.Uuid
+  institutionId   String                    @db.Uuid
+  sessionId       String                    @db.Uuid
+  requestedById   String?                   @db.Uuid
+  reviewedById    String?                   @db.Uuid
+  status          SealedSessionReopenStatus @default(REQUESTED)
+  requestedStatus AcademicSessionStatus
+  reason          String
+  reviewReason    String?
+  dueAt           DateTime?
+  reviewedAt      DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  institution Institution      @relation(fields: [institutionId], references: [uuid])
+  session     AcademicSession  @relation(fields: [sessionId], references: [uuid])
+  requestedBy InstitutionUser? @relation("SealedSessionReopenRequester", fields: [requestedById], references: [uuid])
+  reviewedBy  User?            @relation("SealedSessionReopenReviewer", fields: [reviewedById], references: [uuid])
+
+  @@index([institutionId, status, createdAt])
+  @@index([sessionId, status])
+  @@index([dueAt, status])
+  @@index([requestedById])
+  @@index([reviewedById])
 }
 
 model AcademicStructure {

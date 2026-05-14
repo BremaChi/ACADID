@@ -131,12 +131,13 @@ The API has these first modules:
 - v5 durable academic standing is implemented: result publication recomputes per-enrolment CGPA, credit totals, classification, and period counts into `AcademicStanding`, and student access exposes it through `/api/access/academic-standing`.
 - v5 assigned staff scope enforcement is implemented in `AuthorityService` for academic structure targets and wired into result ingestion, so non-registrar human users can be blocked outside their assigned class/subject/department/course scope.
 - v5 manual rollover API foundation is implemented under `/api/govern`: rollover preview reads eligible active enrolments, and rollover confirm writes approved `RolloverRecord` rows, updates the old enrolment state, creates the next active enrolment for promoted/repeated learners, and records audit events.
-- v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request an audited reopen, and only Founder Admin can approve or reject the request.
+- v5 sealed-session reopen escalation is implemented under `/api/govern`: institutions can request a durable SLA-tracked reopen, and only Founder Admin can approve or reject the request.
 - v5 transfer and disputed rollover API foundation is implemented under `/api/govern`: transfer requests are durable, linked to enrolments and rollovers, source institution approval creates transfer-out state, and rollover disputes are linked to the Founder dispute system.
 - Founder v5 Academic Operations visibility is implemented through `/api/admin/academic-operations` and a dedicated Founder Console page for setup health, active/sealed sessions, structure mix, rollover activity, sealed-session escalations, and institution flags.
 - Founder v5 Academic Operations now includes transfer status counts, recent transfer requests, disputed rollovers, and institution health flags for transfers needing attention.
 - Founder v5 Academic Operations now includes deeper setup-health signals for missing grading rules, missing subjects/courses, incomplete staff scope assignment, slow/failed validation or upload jobs, and tracked storage-object counts.
 - Founder v5 Academic Operations now includes invitation leads for unregistered institutions with graduate demand, including Contacted, Invited, and Dismissed controls.
+- Sealed-session reopen requests are now database-backed through `SealedSessionReopenRequest`, with one open request per session, 72-hour due dates, Founder review status, audit events, and Founder Academic Operations visibility.
 - Paystack webhook automation is implemented for RecordRequest payments: `/api/webhooks/paystack` verifies signed Paystack payloads, queues `PAYSTACK_PAYMENT_CONFIRMATION`, the worker confirms open requests into `PAID/HELD`, appends timeline notes, and writes immutable audit events.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
@@ -280,7 +281,7 @@ Completed successfully:
 - Webhook endpoint controls checkpoint validates with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `npm run worker:once`; coverage confirms one-time endpoint secret creation, endpoint-secret signing, delivery retry, and delivery replay.
 - Assigned-scope enforcement validates with `npm run typecheck` and `npm test`; coverage includes matching scopes, out-of-scope denial, and academic structure ancestor matching.
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
-- v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
+- v5 sealed-session reopen queue migration `20260514010000_sealed_session_reopen_requests` is applied to Supabase; tests cover registrar escalation, one durable reopen request, Founder approval, queue status update, and non-founder review blocking.
 - v5 transfer and rollover-dispute workflows validate with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, and `npm test`; coverage confirms transfer request creation, transfer approval, source enrolment transfer-out, linked rollover creation, dispute open/resolve, and destination validation.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, setup gaps, institution readiness flags, staff-scope gaps, storage counts, recent rollover/transfer data, and sealed-session escalation events.
 - Paystack webhook automation validates with `npm run typecheck --workspace @acadid/api` and `npm test`; coverage confirms signed webhook job enqueueing and worker-side RecordRequest payment/audit updates.
@@ -321,9 +322,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-2. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
-3. Keep Engineer 2/3/4 API requests flowing through `docs/handoffs/engineer-1-api-requests.md` before adding new product data surfaces.
+1. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+2. Keep Engineer 2/3/4 API requests flowing through `docs/handoffs/engineer-1-api-requests.md` before adding new product data surfaces.
+3. Add new product-facing APIs only after they are recorded in the handoff request log and mapped to Data Center ownership.
 
 ## GitHub Status
 

@@ -219,6 +219,7 @@ test("machine keys cannot confirm manual rollovers", async () => {
 
 function createSealedSessionHarness() {
   const auditEvents = [];
+  let reopenRequest = null;
   let sealedSession = {
     uuid: fromSessionId,
     institutionId: institution.uuid,
@@ -236,8 +237,36 @@ function createSealedSessionHarness() {
         sealedSession = { ...sealedSession, ...data };
         return sealedSession;
       }
+    },
+    sealedSessionReopenRequest: {
+      findFirst: async ({ where }) => (reopenRequest?.sessionId === where.sessionId && reopenRequest?.status === where.status ? reopenRequest : null),
+      create: async ({ data }) => {
+        reopenRequest = {
+          uuid: "reopen-request-1",
+          status: "REQUESTED",
+          createdAt: new Date("2026-05-14T10:00:00.000Z"),
+          updatedAt: new Date("2026-05-14T10:00:00.000Z"),
+          institution,
+          session: sealedSession,
+          requestedBy: { uuid: data.requestedById, role: "REGISTRAR", user: { fullName: "Registrar", email: "registrar@example.edu.ng" } },
+          reviewedBy: null,
+          ...data
+        };
+        return reopenRequest;
+      },
+      update: async ({ where, data }) => {
+        if (where.uuid !== reopenRequest?.uuid) return null;
+        reopenRequest = {
+          ...reopenRequest,
+          ...data,
+          updatedAt: new Date("2026-05-14T10:30:00.000Z"),
+          reviewedBy: { uuid: data.reviewedById, fullName: "Founder", email: "founder@acadid.local", role: "ACADID_SUPER_ADMIN" }
+        };
+        return reopenRequest;
+      }
     }
   };
+  prisma.$transaction = async (callback) => callback(prisma);
   const service = new GovernanceService(
     prisma,
     { write: async (event) => auditEvents.push(event) },
@@ -261,11 +290,11 @@ function createSealedSessionHarness() {
     iat: 1,
     exp: 2
   };
-  return { auditEvents, founderAuth, registrarAuth, service };
+  return { auditEvents, founderAuth, registrarAuth, reopenRequest: () => reopenRequest, service };
 }
 
 test("registrar escalates sealed-session reopen request and founder approves it", async () => {
-  const { auditEvents, founderAuth, registrarAuth, service } = createSealedSessionHarness();
+  const { auditEvents, founderAuth, registrarAuth, reopenRequest, service } = createSealedSessionHarness();
 
   const requested = await service.requestSealedSessionReopen(registrarAuth, fromSessionId, {
     reason: "Need approved correction after registrar review.",
@@ -277,8 +306,11 @@ test("registrar escalates sealed-session reopen request and founder approves it"
     newStatus: "ACTIVE"
   });
 
-  assert.equal(requested.status, "ESCALATED");
+  assert.equal(requested.status, "REQUESTED");
+  assert.equal(requested.requestId, "reopen-request-1");
   assert.equal(reviewed.status, "ACTIVE");
+  assert.equal(reviewed.requestStatus, "APPROVED");
+  assert.equal(reopenRequest().status, "APPROVED");
   assert.equal(auditEvents.some((event) => event.action === "academic_session.reopen_requested"), true);
   assert.equal(auditEvents.some((event) => event.action === "academic_session.reopen_approved"), true);
 });

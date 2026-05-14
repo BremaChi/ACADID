@@ -454,7 +454,7 @@ Already present:
 - Human auth tokens now carry assigned scopes for later gateway enforcement.
 - Assigned-scope matching now exists in `AuthorityService` and result ingestion calls it when a v5 structure scope is supplied.
 - Rollover preview/confirm now exists in `GovernanceService`, with human-session-only enforcement, active enrolment selection, `RolloverRecord` writes, old enrolment state updates, new active enrolment creation for promoted/repeated learners, and audit events.
-- Sealed-session reopen escalation now exists in `GovernanceService`, with institution request, Founder-only approve/reject, session status update on approval, and audit events.
+- Sealed-session reopen escalation now exists in `GovernanceService`, with institution request, durable `SealedSessionReopenRequest` queue state, one-open-request-per-session protection, 72-hour due dates, Founder-only approve/reject, session status update on approval, and audit events.
 - Transfer workflows now exist as first-class Data Center state through `TransferRequest`: institutions can request, approve, reject, or cancel transfer-out flows; approval marks the source enrolment transferred out and creates a linked `TRANSFERRED_OUT` rollover record.
 - Disputed rollover surfaces now exist through linked `Dispute` rows: rollover disputes can be opened and resolved, transfer-linked requests move through `DISPUTED`, and Founder Academic Operations exposes transfer/dispute health.
 - Founder Console v5 Academic Operations visibility now exists through `/admin/academic-operations` and the `Academic Operations` console page.
@@ -476,8 +476,6 @@ Still needed:
 - Add Institution Portal UI for the Registrar staff assigned-scope endpoints now exposed by Engineer 1.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
-- Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-- Add CGPA/classification rollup after configured grading rules have enough published semester history.
-- Add Paystack webhook automation for RecordRequest payment confirmation and refund/release exceptions.
-- Add deeper queue health after staff scope management.
+- Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+- Continue routing Engineer 2/3/4 product API requests through `docs/handoffs/engineer-1-api-requests.md` before adding new data surfaces.
 - Add v5 API contracts and handoff tests for Engineer 2.
