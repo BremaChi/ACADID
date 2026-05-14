@@ -63,7 +63,7 @@ PostgreSQL remains the production database choice. Supabase PostgreSQL is now th
 
 Docker PostgreSQL is optional local fallback only, not part of the normal development workflow.
 
-For local Supabase development, use a Supabase PostgreSQL route that supports Prisma runtime traffic for `DATABASE_URL` and keep `DIRECT_URL` as the migration connection. On this machine, the working runtime route uses the Supabase pooler with `pgbouncer=true`, `connection_limit=2`, and `pool_timeout=30` so the API and local smoke test can run together without exhausting Supabase's small development connection pool.
+For local Supabase development, use a Supabase PostgreSQL route that supports Prisma runtime traffic for `DATABASE_URL` and keep `DIRECT_URL` as the migration connection. On this machine, the working runtime route uses the Supabase pooler with `pgbouncer=true`, `connection_limit=10`, and `pool_timeout=30` so the Founder Console can load multiple control-plane panels without queueing behind a single database connection.
 
 See `docs/runtime-options.md` for the available local and production database setup options.
 

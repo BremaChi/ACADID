@@ -279,7 +279,7 @@ type RecoveryCodeRotation = {
 };
 
 type Notice = {
-  tone: "success" | "error";
+  tone: "success" | "warning" | "error";
   text: string;
 };
 
@@ -995,11 +995,15 @@ function getProductOption(code: string) {
 
 class ApiRequestError extends Error {
   status: number;
+  code?: string;
+  retryable: boolean;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string, retryable = false) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.code = code;
+    this.retryable = retryable;
   }
 }
 
@@ -1017,12 +1021,27 @@ async function apiRequest<T>(path: string, token: string | null, init: RequestIn
     }
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  const data = text ? parseApiResponse(text) : {};
   if (!response.ok) {
     const message = typeof data.message === "string" ? data.message : JSON.stringify(data);
-    throw new ApiRequestError(message, response.status);
+    const code = typeof data.code === "string" ? data.code : undefined;
+    const retryable = typeof data.retryable === "boolean" ? data.retryable : false;
+    throw new ApiRequestError(message, response.status, code, retryable);
   }
   return data as T;
+}
+
+function parseApiResponse(text: string): Record<string, unknown> {
+  try {
+    const data = JSON.parse(text);
+    return data && typeof data === "object" ? data as Record<string, unknown> : {};
+  } catch {
+    return { message: text };
+  }
+}
+
+function isDatabaseUnavailable(error: unknown) {
+  return error instanceof ApiRequestError && (error.code === "DATABASE_UNAVAILABLE" || error.status === 503);
 }
 
 async function loadDeveloperAccessRequests(token: string): Promise<DeveloperAccessRequest[]> {
@@ -1502,6 +1521,13 @@ export function FounderConsole() {
   function handleAuthenticatedError(error: unknown, fallback: string) {
     if (isSessionExpired(error)) {
       logout({ tone: "error", text: "Founder session expired. Please sign in again." });
+      return;
+    }
+    if (isDatabaseUnavailable(error)) {
+      setNotice({
+        tone: "warning",
+        text: "Supabase database is temporarily unreachable. Your console is still open; check Supabase connectivity, then try again."
+      });
       return;
     }
     setNotice({ tone: "error", text: error instanceof Error ? error.message : fallback });
@@ -4483,7 +4509,7 @@ function ScopePicker({ recommendedScopes = [], selected, onToggle }: { recommend
 
 function ListBlock({ items, empty }: { items: { title: string; meta: string; status?: string; date?: string }[]; empty: string }) {
   if (!items.length) return <EmptyState text={empty} />;
-  return <div className="mt-4 divide-y divide-borderLight">{items.map((item) => <div key={`${item.title}-${item.date}`} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-primary">{item.title}</p><p className="text-xs text-textSecondary">{item.meta}</p></div><div className="text-right">{item.status ? <StatusBadge status={item.status} /> : null}<p className="mt-1 text-xs text-textSecondary">{item.date}</p></div></div>)}</div>;
+  return <div className="mt-4 divide-y divide-borderLight">{items.map((item, index) => <div key={`${item.title}-${item.date}-${index}`} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-primary">{item.title}</p><p className="text-xs text-textSecondary">{item.meta}</p></div><div className="text-right">{item.status ? <StatusBadge status={item.status} /> : null}<p className="mt-1 text-xs text-textSecondary">{item.date}</p></div></div>)}</div>;
 }
 
 function SystemHealthCompact({ health }: { health: SystemHealth | null }) {
@@ -4642,7 +4668,12 @@ function Badge({ children }: { children: ReactNode }) {
 }
 
 function NoticeMessage({ notice }: { notice: Notice }) {
-  return <div className={`rounded-md border px-3 py-2 text-sm ${notice.tone === "success" ? "border-success/20 bg-success/10 text-success" : "border-error/20 bg-error/10 text-error"}`}>{notice.text}</div>;
+  const toneClass = notice.tone === "success"
+    ? "border-success/20 bg-success/10 text-success"
+    : notice.tone === "warning"
+      ? "border-warning/30 bg-warning/10 text-warning"
+      : "border-error/20 bg-error/10 text-error";
+  return <div className={`rounded-md border px-3 py-2 text-sm ${toneClass}`}>{notice.text}</div>;
 }
 
 function EmptyState({ text }: { text: string }) {

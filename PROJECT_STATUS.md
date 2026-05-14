@@ -290,7 +290,7 @@ Completed successfully:
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
-- Supabase runtime pool settings use a transaction-safe PostgreSQL route with `connection_limit=2` and `pool_timeout=30` for local development because Prisma interactive transactions need a stable session.
+- Supabase runtime pool settings use the Supabase pooler with `connection_limit=10` and `pool_timeout=30` for local development so Founder Console requests do not queue behind one database connection.
 - End-to-end pilot flow verified:
   - Created pilot institution `AINi-00001`.
   - Created active Authority Grant.

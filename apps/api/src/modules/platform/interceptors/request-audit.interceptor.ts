@@ -20,6 +20,8 @@ type HttpResponse = {
   setHeader?: (name: string, value: string) => void;
 };
 
+const DATABASE_UNAVAILABLE_CODES = new Set(["P1001", "P1002", "P1008", "P2024"]);
+
 @Injectable()
 export class RequestAuditInterceptor implements NestInterceptor {
   constructor(
@@ -191,6 +193,9 @@ export class RequestAuditInterceptor implements NestInterceptor {
   }
 
   private statusCodeFromError(error: unknown) {
+    if (this.isDatabaseUnavailable(error)) {
+      return 503;
+    }
     if (typeof error === "object" && error && "status" in error && typeof (error as { status?: unknown }).status === "number") {
       return (error as { status: number }).status;
     }
@@ -198,6 +203,26 @@ export class RequestAuditInterceptor implements NestInterceptor {
       return (error as { statusCode: number }).statusCode;
     }
     return 500;
+  }
+
+  private isDatabaseUnavailable(error: unknown): boolean {
+    const code = this.errorCode(error);
+    if (code && DATABASE_UNAVAILABLE_CODES.has(code)) {
+      return true;
+    }
+    const message = error instanceof Error ? error.message : "";
+    return /Can't reach database server|Timed out fetching a new connection|Operations timed out/i.test(message);
+  }
+
+  private errorCode(error: unknown): string | undefined {
+    if (!error || typeof error !== "object") {
+      return undefined;
+    }
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return code;
+    }
+    return this.errorCode((error as { cause?: unknown }).cause);
   }
 
   private safeErrorMessage(error: unknown) {
