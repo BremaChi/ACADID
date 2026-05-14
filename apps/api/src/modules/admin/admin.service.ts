@@ -1069,59 +1069,43 @@ export class AdminService {
     return { accepted: true, lead };
   }
 
-  async readDashboardSummary() {
+  readDashboardSummary() {
+    return (
+      this.cache?.getOrSet("dashboard-summary:founder", () => this.computeDashboardSummary(), {
+        ttlSeconds: 20,
+        tags: ["dashboard", "institutions", "applications", "api-keys"]
+      }) ?? this.computeDashboardSummary()
+    );
+  }
+
+  private async computeDashboardSummary() {
     const generatedAt = new Date();
-    const [
-      totalInstitutions,
-      activeInstitutions,
-      suspendedInstitutions,
-      pendingApplications,
-      activeLearners,
-      resultsPublished,
-      credentialsIssued,
-      activeApiKeys,
-      pendingDeveloperRequests,
-      approvedDeveloperRequests,
-      openDisputes,
-      latestAuditEvents,
-      apiUsage
-    ] = await Promise.all([
-      this.prisma.institution.count(),
-      this.prisma.institution.count({ where: { status: "ACTIVE" } }),
-      this.prisma.institution.count({ where: { status: "SUSPENDED" } }),
-      this.prisma.institutionApplication.count({ where: { status: "PENDING" } }),
-      this.prisma.learner.count(),
-      this.prisma.academicRecord.count({ where: { status: "PUBLISHED" } }),
-      this.prisma.credential.count(),
-      this.prisma.apiKey.count({ where: { status: "ACTIVE" } }),
-      this.prisma.developerAccessRequest.count({ where: { status: "PENDING" } }),
-      this.prisma.developerAccessRequest.count({ where: { status: "APPROVED" } }),
-      this.prisma.dispute.count({ where: { status: { in: ["OPEN", "ESCALATED"] } } }),
-      this.readAuditEvents({ take: 8 }),
-      this.readDailyGatewayUsage(7)
-    ]);
+    // Keep these sequential so Supabase's small transaction pool is not flooded by dashboard aggregates.
+    const counts = await this.readDashboardMetricCounts();
+    const latestAuditEvents = await this.readAuditEvents({ take: 8 });
+    const apiUsage = await this.readDailyGatewayUsage(7);
 
     const apiCallsToday = apiUsage[apiUsage.length - 1]?.total ?? 0;
 
     return {
       generatedAt,
       metrics: {
-        totalInstitutions,
-        pendingApplications,
-        activeLearners,
-        resultsPublished,
-        credentialsIssued,
+        totalInstitutions: counts.totalInstitutions,
+        pendingApplications: counts.pendingApplications,
+        activeLearners: counts.activeLearners,
+        resultsPublished: counts.resultsPublished,
+        credentialsIssued: counts.credentialsIssued,
         apiCallsToday,
-        activeApiKeys,
-        pendingDeveloperRequests,
-        openDisputes
+        activeApiKeys: counts.activeApiKeys,
+        pendingDeveloperRequests: counts.pendingDeveloperRequests,
+        openDisputes: counts.openDisputes
       },
       institutionStatus: {
-        total: totalInstitutions,
-        active: activeInstitutions,
-        suspended: suspendedInstitutions,
-        pendingApproval: pendingApplications,
-        apiAccessActive: approvedDeveloperRequests
+        total: counts.totalInstitutions,
+        active: counts.activeInstitutions,
+        suspended: counts.suspendedInstitutions,
+        pendingApproval: counts.pendingApplications,
+        apiAccessActive: counts.approvedDeveloperRequests
       },
       apiUsage,
       latestAuditEvents
@@ -3255,31 +3239,160 @@ export class AdminService {
     }));
   }
 
+  private async readDashboardMetricCounts() {
+    if (typeof this.prisma.$queryRaw !== "function") {
+      const [
+        totalInstitutions,
+        activeInstitutions,
+        suspendedInstitutions,
+        pendingApplications,
+        activeLearners,
+        resultsPublished,
+        credentialsIssued,
+        activeApiKeys,
+        pendingDeveloperRequests,
+        approvedDeveloperRequests,
+        openDisputes
+      ] = await Promise.all([
+        this.prisma.institution.count(),
+        this.prisma.institution.count({ where: { status: "ACTIVE" } }),
+        this.prisma.institution.count({ where: { status: "SUSPENDED" } }),
+        this.prisma.institutionApplication.count({ where: { status: "PENDING" } }),
+        this.prisma.learner.count(),
+        this.prisma.academicRecord.count({ where: { status: "PUBLISHED" } }),
+        this.prisma.credential.count(),
+        this.prisma.apiKey.count({ where: { status: "ACTIVE" } }),
+        this.prisma.developerAccessRequest.count({ where: { status: "PENDING" } }),
+        this.prisma.developerAccessRequest.count({ where: { status: "APPROVED" } }),
+        this.prisma.dispute.count({ where: { status: { in: ["OPEN", "ESCALATED"] } } })
+      ]);
+
+      return {
+        totalInstitutions,
+        activeInstitutions,
+        suspendedInstitutions,
+        pendingApplications,
+        activeLearners,
+        resultsPublished,
+        credentialsIssued,
+        activeApiKeys,
+        pendingDeveloperRequests,
+        approvedDeveloperRequests,
+        openDisputes
+      };
+    }
+
+    const [row] = await this.prisma.$queryRaw<
+      Array<{
+        totalInstitutions: number | bigint;
+        activeInstitutions: number | bigint;
+        suspendedInstitutions: number | bigint;
+        pendingApplications: number | bigint;
+        activeLearners: number | bigint;
+        resultsPublished: number | bigint;
+        credentialsIssued: number | bigint;
+        activeApiKeys: number | bigint;
+        pendingDeveloperRequests: number | bigint;
+        approvedDeveloperRequests: number | bigint;
+        openDisputes: number | bigint;
+      }>
+    >`
+      SELECT
+        (SELECT COUNT(*) FROM "Institution") AS "totalInstitutions",
+        (SELECT COUNT(*) FROM "Institution" WHERE "status" = 'ACTIVE') AS "activeInstitutions",
+        (SELECT COUNT(*) FROM "Institution" WHERE "status" = 'SUSPENDED') AS "suspendedInstitutions",
+        (SELECT COUNT(*) FROM "InstitutionApplication" WHERE "status" = 'PENDING') AS "pendingApplications",
+        (SELECT COUNT(*) FROM "Learner") AS "activeLearners",
+        (SELECT COUNT(*) FROM "AcademicRecord" WHERE "status" = 'PUBLISHED') AS "resultsPublished",
+        (SELECT COUNT(*) FROM "Credential") AS "credentialsIssued",
+        (SELECT COUNT(*) FROM "ApiKey" WHERE "status" = 'ACTIVE') AS "activeApiKeys",
+        (SELECT COUNT(*) FROM "DeveloperAccessRequest" WHERE "status" = 'PENDING') AS "pendingDeveloperRequests",
+        (SELECT COUNT(*) FROM "DeveloperAccessRequest" WHERE "status" = 'APPROVED') AS "approvedDeveloperRequests",
+        (SELECT COUNT(*) FROM "Dispute" WHERE "status" IN ('OPEN', 'ESCALATED')) AS "openDisputes"
+    `;
+
+    return {
+      totalInstitutions: this.toNumber(row?.totalInstitutions),
+      activeInstitutions: this.toNumber(row?.activeInstitutions),
+      suspendedInstitutions: this.toNumber(row?.suspendedInstitutions),
+      pendingApplications: this.toNumber(row?.pendingApplications),
+      activeLearners: this.toNumber(row?.activeLearners),
+      resultsPublished: this.toNumber(row?.resultsPublished),
+      credentialsIssued: this.toNumber(row?.credentialsIssued),
+      activeApiKeys: this.toNumber(row?.activeApiKeys),
+      pendingDeveloperRequests: this.toNumber(row?.pendingDeveloperRequests),
+      approvedDeveloperRequests: this.toNumber(row?.approvedDeveloperRequests),
+      openDisputes: this.toNumber(row?.openDisputes)
+    };
+  }
+
   private async readDailyGatewayUsage(days: number) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const entries = Array.from({ length: days }, (_, index) => {
-      const start = new Date(today);
-      start.setDate(today.getDate() - (days - 1 - index));
-      const end = new Date(start);
-      end.setDate(start.getDate() + 1);
-      return { start, end };
-    });
+    const start = new Date(today);
+    start.setDate(today.getDate() - (days - 1));
 
-    return Promise.all(
-      entries.map(async ({ start, end }) => {
-        const [verification, audit] = await Promise.all([
-          this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: start, lt: end } } }),
-          this.prisma.auditEvent.count({ where: { createdAt: { gte: start, lt: end } } })
-        ]);
-        return {
-          day: start.toISOString().slice(0, 10),
-          verification,
-          audit,
-          total: verification + audit
-        };
-      })
-    );
+    if (typeof this.prisma.$queryRaw !== "function") {
+      const entries = Array.from({ length: days }, (_, index) => {
+        const entryStart = new Date(today);
+        entryStart.setDate(today.getDate() - (days - 1 - index));
+        const end = new Date(entryStart);
+        end.setDate(entryStart.getDate() + 1);
+        return { start: entryStart, end };
+      });
+
+      return Promise.all(
+        entries.map(async ({ start: entryStart, end }) => {
+          const [verification, audit] = await Promise.all([
+            this.prisma.verificationEvent.count({ where: { verifiedAt: { gte: entryStart, lt: end } } }),
+            this.prisma.auditEvent.count({ where: { createdAt: { gte: entryStart, lt: end } } })
+          ]);
+          return {
+            day: entryStart.toISOString().slice(0, 10),
+            verification,
+            audit,
+            total: verification + audit
+          };
+        })
+      );
+    }
+
+    const rows = await this.prisma.$queryRaw<Array<{ day: Date | string; verification: number | bigint; audit: number | bigint }>>`
+      WITH days AS (
+        SELECT generate_series(${start}::date, ${today}::date, interval '1 day')::date AS day
+      ),
+      verification AS (
+        SELECT date_trunc('day', "verifiedAt")::date AS day, COUNT(*) AS count
+        FROM "VerificationEvent"
+        WHERE "verifiedAt" >= ${start}
+        GROUP BY 1
+      ),
+      audit AS (
+        SELECT date_trunc('day', "createdAt")::date AS day, COUNT(*) AS count
+        FROM "AuditEvent"
+        WHERE "createdAt" >= ${start}
+        GROUP BY 1
+      )
+      SELECT
+        days.day,
+        COALESCE(verification.count, 0) AS verification,
+        COALESCE(audit.count, 0) AS audit
+      FROM days
+      LEFT JOIN verification ON verification.day = days.day
+      LEFT JOIN audit ON audit.day = days.day
+      ORDER BY days.day ASC
+    `;
+
+    return rows.map((row) => {
+      const verification = this.toNumber(row.verification);
+      const audit = this.toNumber(row.audit);
+      return {
+        day: this.dateKey(row.day),
+        verification,
+        audit,
+        total: verification + audit
+      };
+    });
   }
 
   private humanizeAuditAction(action: string) {

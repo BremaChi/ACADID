@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 const apiBase = process.env.NEXT_PUBLIC_ACADID_API_URL ?? "http://localhost:4000/api";
 
@@ -1136,6 +1136,8 @@ export function FounderConsole() {
   const [selectedRecordRequestId, setSelectedRecordRequestId] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadedSections, setLoadedSections] = useState<Record<string, boolean>>({});
+  const loadingSectionsRef = useRef<Set<PageKey>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
@@ -1316,12 +1318,17 @@ export function FounderConsole() {
   }, []);
 
   useEffect(() => {
-    if (!token || !selectedInstitutionId) {
+    if (!token || !selectedInstitutionId || activePage !== "Institutions") {
       setInstitutionStaff([]);
       return;
     }
     void refreshInstitutionStaff(selectedInstitutionId, token);
-  }, [selectedInstitutionId, token]);
+  }, [activePage, selectedInstitutionId, token]);
+
+  useEffect(() => {
+    if (!token || loadedSections[activePage]) return;
+    void refreshPageData(activePage, token);
+  }, [activePage, loadedSections, token]);
 
   async function refreshInstitutionStaff(institutionId = selectedInstitutionId, activeToken = token) {
     if (!activeToken || !institutionId) return;
@@ -1340,76 +1347,90 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [
-        nextInstitutions,
-        nextGlobalKeys,
-        nextApplications,
-        nextDeveloperRequests,
-        nextDisputes,
-        nextRecordRequests,
-        nextInvitationLeads,
-        nextVerificationLogs,
-        nextAuditEvents,
-        nextSystemHealth,
-        nextRateLimitPolicy,
-        nextDeadLetters,
-        nextWebhookEndpoints,
-        nextWebhookDeliveries,
-        nextDashboardSummary,
-        nextAcademicOperations,
-        nextRevenueOverview,
-        nextPlatformSettings,
-        nextRecoveryCodeStatus
-      ] = await Promise.all([
-        apiRequest<Institution[]>("/admin/institutions", activeToken),
-        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
-        apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
-        loadDeveloperAccessRequests(activeToken),
-        loadDisputes(activeToken),
-        loadRecordRequests(activeToken),
-        loadInvitationLeads(activeToken),
-        loadVerificationLogs(activeToken),
-        loadAuditEvents(activeToken),
-        loadSystemHealth(activeToken),
-        loadRateLimitPolicy(activeToken),
-        loadDeadLetters(activeToken),
-        loadWebhookEndpoints(activeToken),
-        loadWebhookDeliveries(activeToken),
-        loadDashboardSummary(activeToken),
-        loadAcademicOperations(activeToken),
-        loadRevenueOverview(activeToken),
-        loadPlatformSettings(activeToken),
-        loadRecoveryCodeStatus(activeToken)
-      ]);
+      const nextInstitutions = await apiRequest<Institution[]>("/admin/institutions", activeToken);
+      const nextApplications = await apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken);
+      const nextGlobalKeys = await apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
       setInstitutionApplications(nextApplications);
-      setDeveloperRequests(nextDeveloperRequests);
-      setDisputes(nextDisputes);
-      setRecordRequests(nextRecordRequests);
-      setInvitationLeads(nextInvitationLeads);
-      setVerificationLogs(nextVerificationLogs);
-      setSystemHealth(nextSystemHealth);
-      setRateLimitPolicy(nextRateLimitPolicy);
-      setRateLimitPolicyForm(nextRateLimitPolicy.policy);
-      setDeadLetters(nextDeadLetters);
-      setWebhookEndpoints(nextWebhookEndpoints);
-      setWebhookDeliveries(nextWebhookDeliveries);
-      setDashboardSummary(nextDashboardSummary);
-      setAcademicOperations(nextAcademicOperations);
-      setAuditEvents(nextAuditEvents);
-      setRevenueOverview(nextRevenueOverview);
-      setPlatformSettings(nextPlatformSettings);
-      setRecoveryCodeStatus(nextRecoveryCodeStatus);
-      const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
-      setSelectedInstitutionId((current) => current || nextInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || nextInstitutions[0]?.uuid || "");
+      setSelectedInstitutionId((current) => current || nextInstitutions[0]?.uuid || "");
       setSelectedApplicationId((current) => current || nextApplications[0]?.uuid || "");
-      setSelectedDisputeId((current) => current || nextDisputes[0]?.uuid || "");
-      setSelectedRecordRequestId((current) => current || nextRecordRequests[0]?.uuid || "");
+      setLoading(false);
+      setLoadedSections({});
     } catch (error) {
       handleAuthenticatedError(error, "Could not load console data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshPageData(page: PageKey, activeToken = token, currentInstitutions = institutions) {
+    if (!activeToken) return;
+    if (loadingSectionsRef.current.has(page)) return;
+    loadingSectionsRef.current.add(page);
+    const loadOptional = async <T,>(label: string, loader: () => Promise<T>, apply: (value: T) => void) => {
+      try {
+        apply(await loader());
+      } catch (error) {
+        if (isSessionExpired(error)) {
+          logout({ tone: "error", text: "Founder session expired. Please sign in again." });
+          throw error;
+        }
+        console.warn(`AcadID Founder Console skipped ${label}:`, error);
+      }
+    };
+
+    try {
+      if (page === "Overview") {
+        await loadOptional("dashboard summary", () => loadDashboardSummary(activeToken), setDashboardSummary);
+      } else if (page === "Institutions") {
+        await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), (nextDeveloperRequests) => {
+          setDeveloperRequests(nextDeveloperRequests);
+          const approvedDeveloperInstitutionIds = new Set(nextDeveloperRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
+          setSelectedInstitutionId((current) => current || currentInstitutions.find((institution) => approvedDeveloperInstitutionIds.has(institution.uuid))?.uuid || currentInstitutions[0]?.uuid || "");
+        });
+        await loadOptional("verification logs", () => loadVerificationLogs(activeToken), setVerificationLogs);
+        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
+      } else if (page === "Academic Operations") {
+        await loadOptional("academic operations", () => loadAcademicOperations(activeToken), setAcademicOperations);
+        await loadOptional("invitation leads", () => loadInvitationLeads(activeToken), setInvitationLeads);
+      } else if (page === "API Keys") {
+        await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
+      } else if (page === "Developer Access Requests") {
+        await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
+      } else if (page === "Disputes") {
+        await loadOptional("disputes", () => loadDisputes(activeToken), (nextDisputes) => {
+          setDisputes(nextDisputes);
+          setSelectedDisputeId((current) => current || nextDisputes[0]?.uuid || "");
+        });
+      } else if (page === "Record Requests") {
+        await loadOptional("record requests", () => loadRecordRequests(activeToken), (nextRecordRequests) => {
+          setRecordRequests(nextRecordRequests);
+          setSelectedRecordRequestId((current) => current || nextRecordRequests[0]?.uuid || "");
+        });
+      } else if (page === "Verification Logs") {
+        await loadOptional("verification logs", () => loadVerificationLogs(activeToken), setVerificationLogs);
+      } else if (page === "Revenue") {
+        await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
+      } else if (page === "System Health") {
+        await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
+        await loadOptional("rate-limit policy", () => loadRateLimitPolicy(activeToken), (nextRateLimitPolicy) => {
+          setRateLimitPolicy(nextRateLimitPolicy);
+          setRateLimitPolicyForm(nextRateLimitPolicy.policy);
+        });
+        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
+        await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
+        await loadOptional("webhook deliveries", () => loadWebhookDeliveries(activeToken), setWebhookDeliveries);
+      } else if (page === "Security") {
+        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
+        await loadOptional("recovery code status", () => loadRecoveryCodeStatus(activeToken), setRecoveryCodeStatus);
+      } else if (page === "Settings") {
+        await loadOptional("platform settings", () => loadPlatformSettings(activeToken), setPlatformSettings);
+      }
+
+      setLoadedSections((current) => ({ ...current, [page]: true }));
+    } finally {
+      loadingSectionsRef.current.delete(page);
     }
   }
 
