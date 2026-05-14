@@ -74,6 +74,52 @@ const institutionTypeOptions = [
   "Exam Body",
   "Other Accredited Institution"
 ];
+const institutionCategoryOptions = ["PRIMARY", "SECONDARY", "TERTIARY", "EXAM_BODY"];
+const institutionCategoryLabels: Record<string, string> = {
+  PRIMARY: "Primary / Nursery",
+  SECONDARY: "Secondary School",
+  TERTIARY: "Tertiary Institution",
+  EXAM_BODY: "Exam Body"
+};
+const nigeriaStateOptions = [
+  "Abia",
+  "Adamawa",
+  "Akwa Ibom",
+  "Anambra",
+  "Bauchi",
+  "Bayelsa",
+  "Benue",
+  "Borno",
+  "Cross River",
+  "Delta",
+  "Ebonyi",
+  "Edo",
+  "Ekiti",
+  "Enugu",
+  "Abuja FCT",
+  "Gombe",
+  "Imo",
+  "Jigawa",
+  "Kaduna",
+  "Kano",
+  "Katsina",
+  "Kebbi",
+  "Kogi",
+  "Kwara",
+  "Lagos",
+  "Nasarawa",
+  "Niger",
+  "Ogun",
+  "Ondo",
+  "Osun",
+  "Oyo",
+  "Plateau",
+  "Rivers",
+  "Sokoto",
+  "Taraba",
+  "Yobe",
+  "Zamfara"
+];
 
 type PageKey = (typeof navItems)[number];
 
@@ -1294,27 +1340,47 @@ export function FounderConsole() {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextInstitutions, nextGlobalKeys] = await Promise.all([
+      const [
+        nextInstitutions,
+        nextGlobalKeys,
+        nextApplications,
+        nextDeveloperRequests,
+        nextDisputes,
+        nextRecordRequests,
+        nextInvitationLeads,
+        nextVerificationLogs,
+        nextAuditEvents,
+        nextSystemHealth,
+        nextRateLimitPolicy,
+        nextDeadLetters,
+        nextWebhookEndpoints,
+        nextWebhookDeliveries,
+        nextDashboardSummary,
+        nextAcademicOperations,
+        nextRevenueOverview,
+        nextPlatformSettings,
+        nextRecoveryCodeStatus
+      ] = await Promise.all([
         apiRequest<Institution[]>("/admin/institutions", activeToken),
-        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken)
-      ]);
-      const [nextApplications, nextDeveloperRequests] = await Promise.all([
+        apiRequest<GlobalApiKey[]>("/admin/api-keys", activeToken),
         apiRequest<InstitutionApplication[]>("/admin/institution-applications", activeToken),
-        loadDeveloperAccessRequests(activeToken)
-      ]);
-      const [nextDisputes, nextRecordRequests, nextInvitationLeads] = await Promise.all([
+        loadDeveloperAccessRequests(activeToken),
         loadDisputes(activeToken),
         loadRecordRequests(activeToken),
-        loadInvitationLeads(activeToken)
+        loadInvitationLeads(activeToken),
+        loadVerificationLogs(activeToken),
+        loadAuditEvents(activeToken),
+        loadSystemHealth(activeToken),
+        loadRateLimitPolicy(activeToken),
+        loadDeadLetters(activeToken),
+        loadWebhookEndpoints(activeToken),
+        loadWebhookDeliveries(activeToken),
+        loadDashboardSummary(activeToken),
+        loadAcademicOperations(activeToken),
+        loadRevenueOverview(activeToken),
+        loadPlatformSettings(activeToken),
+        loadRecoveryCodeStatus(activeToken)
       ]);
-      const [nextVerificationLogs, nextAuditEvents] = await Promise.all([loadVerificationLogs(activeToken), loadAuditEvents(activeToken)]);
-      const nextSystemHealth = await loadSystemHealth(activeToken);
-      const nextRateLimitPolicy = await loadRateLimitPolicy(activeToken);
-      const [nextDeadLetters, nextWebhookEndpoints, nextWebhookDeliveries] = await Promise.all([loadDeadLetters(activeToken), loadWebhookEndpoints(activeToken), loadWebhookDeliveries(activeToken)]);
-      const nextDashboardSummary = await loadDashboardSummary(activeToken);
-      const nextAcademicOperations = await loadAcademicOperations(activeToken);
-      const nextRevenueOverview = await loadRevenueOverview(activeToken);
-      const [nextPlatformSettings, nextRecoveryCodeStatus] = await Promise.all([loadPlatformSettings(activeToken), loadRecoveryCodeStatus(activeToken)]);
       setInstitutions(nextInstitutions);
       setGlobalApiKeys(nextGlobalKeys);
       setInstitutionApplications(nextApplications);
@@ -2537,21 +2603,21 @@ function InstitutionsPage(props: {
     staffLoading: boolean;
     verificationLogs: VerificationLog[];
   }) {
-  const states = uniqueValues(props.institutions.map((institution) => institution.state));
+  const states = uniqueValues([...nigeriaStateOptions, ...props.institutions.map((institution) => institution.state)]);
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.8fr)]">
       <Card>
         <SectionTitle title="Institutions" subtitle="Approved and active AcadID partners." />
         <div className="mt-4 grid gap-3 md:grid-cols-5">
           <input className={`${inputClass} md:col-span-2`} placeholder="Search institutions" value={props.institutionSearch} onChange={(event) => props.onUpdateSearch(event.target.value)} />
-          <FilterSelect value={props.institutionTypeFilter} onChange={props.onTypeFilter} options={["ALL", "PRIMARY", "SECONDARY", "TERTIARY", "EXAM_BODY"]} />
+          <FilterSelect value={props.institutionTypeFilter} onChange={props.onTypeFilter} options={["ALL", ...institutionCategoryOptions]} labels={institutionCategoryLabels} />
           <FilterSelect value={props.institutionStateFilter} onChange={props.onStateFilter} options={["ALL", ...states]} />
           <FilterSelect value={props.institutionStatusFilter} onChange={props.onStatusFilter} options={["ALL", "ACTIVE", "SUSPENDED"]} />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <FilterSelect value={props.institutionTierFilter} onChange={props.onTierFilter} options={["ALL", "FOUNDING", "ACTIVE", "VERIFIED"]} />
           <div className="rounded-md border border-borderLight bg-soft px-3 py-2 text-sm text-textSecondary">
-            Supported types: {institutionTypeOptions.slice(0, 4).join(", ")} and more
+            Supported types: {institutionTypeOptions.join(", ")}
           </div>
         </div>
         <ResponsiveTable
@@ -2584,8 +2650,8 @@ function InstitutionsPage(props: {
           <form className="mt-4 space-y-3" onSubmit={props.onCreateInstitution}>
             <input className={inputClass} placeholder="Institution official name" value={props.institutionForm.officialName} onChange={(event) => props.onUpdateInstitutionForm({ ...props.institutionForm, officialName: event.target.value })} />
             <div className="grid gap-3 md:grid-cols-2">
-              <FilterSelect value={props.institutionForm.type} onChange={(type) => props.onUpdateInstitutionForm({ ...props.institutionForm, type })} options={["PRIMARY", "SECONDARY", "TERTIARY", "EXAM_BODY"]} />
-              <input className={inputClass} placeholder="State" value={props.institutionForm.state} onChange={(event) => props.onUpdateInstitutionForm({ ...props.institutionForm, state: event.target.value })} />
+              <FilterSelect value={props.institutionForm.type} onChange={(type) => props.onUpdateInstitutionForm({ ...props.institutionForm, type })} options={institutionCategoryOptions} labels={institutionCategoryLabels} />
+              <FilterSelect value={props.institutionForm.state} onChange={(state) => props.onUpdateInstitutionForm({ ...props.institutionForm, state })} options={states} />
             </div>
             <FilterSelect value={props.institutionForm.tier} onChange={(tier) => props.onUpdateInstitutionForm({ ...props.institutionForm, tier })} options={["FOUNDING", "ACTIVE", "VERIFIED"]} />
             <button className={primaryButtonClass} disabled={props.loading}>Create Institution</button>
@@ -4331,7 +4397,7 @@ function ApplicationDetail({
 }
 
 function Card({ children }: { children: ReactNode }) {
-  return <section className="rounded-xl border border-borderLight bg-white p-4 shadow-sm">{children}</section>;
+  return <section className="min-w-0 rounded-xl border border-borderLight bg-white p-4 shadow-sm">{children}</section>;
 }
 
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
