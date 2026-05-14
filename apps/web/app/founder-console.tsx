@@ -11,14 +11,30 @@ const navItems = [
   "Institution Applications",
   "API Keys",
   "Developer Access Requests",
-  "Disputes",
+  "Webhooks",
   "Record Requests",
+  "Disputes",
   "Verification Logs",
+  "Background Jobs",
   "Revenue",
+  "Billing",
+  "Reports",
   "System Health",
+  "Audit Logs",
   "Security",
   "Settings"
 ] as const;
+
+type PageKey = (typeof navItems)[number];
+type WorkspaceTab = { label: string; count?: number; tone?: "success" | "warning" | "error" | "accent" };
+
+const navGroups: { label: string; items: PageKey[] }[] = [
+  { label: "Main", items: ["Overview", "Institutions", "Academic Operations", "Institution Applications"] },
+  { label: "Access & Integrations", items: ["API Keys", "Developer Access Requests", "Webhooks"] },
+  { label: "Operations", items: ["Record Requests", "Disputes", "Verification Logs", "Background Jobs"] },
+  { label: "Business", items: ["Revenue", "Billing", "Reports"] },
+  { label: "System", items: ["System Health", "Audit Logs", "Security", "Settings"] }
+];
 
 const scopeOptions = ["institution:apply", "ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
 const staffRoleOptions = ["REGISTRAR", "EXAM_OFFICER", "DATA_ENTRY_OFFICER", "DEPARTMENTAL_OFFICER", "READ_ONLY"];
@@ -120,8 +136,6 @@ const nigeriaStateOptions = [
   "Yobe",
   "Zamfara"
 ];
-
-type PageKey = (typeof navItems)[number];
 
 type Institution = {
   uuid: string;
@@ -1114,6 +1128,7 @@ async function loadInstitutionStaff(token: string, institutionId: string): Promi
 
 export function FounderConsole() {
   const [activePage, setActivePage] = useState<PageKey>("Overview");
+  const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
   const [token, setToken] = useState<string | null>(null);
   const [founderName, setFounderName] = useState("Founder Admin");
   const [mfaEnabled, setMfaEnabled] = useState(false);
@@ -1227,9 +1242,51 @@ export function FounderConsole() {
   const productApiKeys = globalApiKeys.filter((key) => key.ownerType === "PRODUCT");
   const institutionApiKeys = globalApiKeys.filter((key) => key.ownerType === "INSTITUTION");
   const pendingApplications = institutionApplications.filter((application) => application.status === "PENDING");
+  const newApplications = institutionApplications.filter((application) => application.status === "PENDING");
+  const needsMoreInfoApplications = institutionApplications.filter((application) => String(application.status) === "NEEDS_MORE_INFORMATION");
+  const pendingDeveloperRequests = developerRequests.filter((request) => request.status === "PENDING");
+  const failedWebhookDeliveries = webhookDeliveries.filter((delivery) => ["FAILED", "DEAD_LETTER"].includes(delivery.status));
+  const retryingWebhookDeliveries = webhookDeliveries.filter((delivery) => ["PENDING", "RETRYING"].includes(delivery.status));
+  const activeRecordRequests = recordRequests.filter((request) => ["SUBMITTED", "AWAITING_PAYMENT", "ASSIGNED", "INSTITUTION_REVIEW", "NEEDS_MORE_INFORMATION", "DISPUTED"].includes(request.status));
+  const overdueRecordRequests = recordRequests.filter((request) => request.status === "ESCALATED" || (request.status !== "FULFILLED" && daysSince(request.submittedAt) >= 14));
+  const escalatedRecordRequests = recordRequests.filter((request) => request.status === "ESCALATED");
+  const openDisputes = disputes.filter((dispute) => ["OPEN", "IN_REVIEW"].includes(dispute.status));
+  const escalatedDisputes = disputes.filter((dispute) => dispute.status === "ESCALATED");
+  const failedVerifications = verificationLogs.filter((log) => ["FAILED", "REVOKED", "DENIED", "DISCREPANCY"].some((term) => log.outcome.toUpperCase().includes(term)));
+  const failedJobsCount = deadLetters?.summary.failedJobs ?? 0;
+  const failedNotificationsCount = deadLetters?.summary.failedNotifications ?? 0;
   const approvedDeveloperInstitutionIds = new Set(developerRequests.filter((request) => request.status === "APPROVED").map((request) => request.institutionId));
   const approvedDeveloperInstitutions = institutions.filter((institution) => approvedDeveloperInstitutionIds.has(institution.uuid));
   const founderInitials = initials(founderName);
+  const pageBadges: Partial<Record<PageKey, number>> = {
+    "Institution Applications": newApplications.length + needsMoreInfoApplications.length,
+    "Developer Access Requests": pendingDeveloperRequests.length,
+    Webhooks: failedWebhookDeliveries.length || retryingWebhookDeliveries.length,
+    "Record Requests": overdueRecordRequests.length || activeRecordRequests.length,
+    Disputes: escalatedDisputes.length || openDisputes.length,
+    "Verification Logs": failedVerifications.length,
+    "Background Jobs": failedJobsCount + failedNotificationsCount,
+    "System Health": systemHealth?.overallStatus && systemHealth.overallStatus !== "OPERATIONAL" ? 1 : 0,
+    Security: auditEvents.filter((event) => event.outcome === "FAILED" || event.outcome === "DENIED").length
+  };
+
+  const workspaceTabs = buildWorkspaceTabs(activePage, {
+    applications: institutionApplications,
+    apiKeys: globalApiKeys,
+    auditEvents,
+    deadLetters,
+    developerRequests,
+    disputes,
+    failedVerifications,
+    failedWebhookDeliveries,
+    institutions,
+    invitationLeads,
+    recordRequests,
+    systemHealth,
+    webhookDeliveries,
+    webhookEndpoints
+  });
+  const activeWorkspaceTab = activeTabs[activePage] ?? workspaceTabs[0]?.label ?? "Overview";
 
   const overviewMetrics = [
     { label: "Total Institutions", value: dashboardSummary?.metrics.totalInstitutions ?? institutions.length, helper: "Approved partners", tone: "accent", icon: "Institutions" },
@@ -1417,6 +1474,11 @@ export function FounderConsole() {
         await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
       } else if (page === "Developer Access Requests") {
         await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
+      } else if (page === "Webhooks") {
+        await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
+        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
+        await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
+        await loadOptional("webhook deliveries", () => loadWebhookDeliveries(activeToken), setWebhookDeliveries);
       } else if (page === "Disputes") {
         await loadOptional("disputes", () => loadDisputes(activeToken), (nextDisputes) => {
           setDisputes(nextDisputes);
@@ -1429,8 +1491,16 @@ export function FounderConsole() {
         });
       } else if (page === "Verification Logs") {
         await loadOptional("verification logs", () => loadVerificationLogs(activeToken), setVerificationLogs);
+      } else if (page === "Background Jobs") {
+        await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
+        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
       } else if (page === "Revenue") {
         await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
+      } else if (page === "Billing") {
+        await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
+      } else if (page === "Reports") {
+        await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
+        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
       } else if (page === "System Health") {
         await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
         await loadOptional("rate-limit policy", () => loadRateLimitPolicy(activeToken), (nextRateLimitPolicy) => {
@@ -1443,6 +1513,8 @@ export function FounderConsole() {
       } else if (page === "Security") {
         await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
         await loadOptional("recovery code status", () => loadRecoveryCodeStatus(activeToken), setRecoveryCodeStatus);
+      } else if (page === "Audit Logs") {
+        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
       } else if (page === "Settings") {
         await loadOptional("platform settings", () => loadPlatformSettings(activeToken), setPlatformSettings);
       }
@@ -2226,22 +2298,28 @@ export function FounderConsole() {
             {!sidebarCollapsed ? <p className="mt-1 text-xs text-white/60">Academic Identity Platform</p> : null}
           </div>
           <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
-            {navItems.map((item) => (
-              <button
-                key={item}
-                className={`flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
-                  activePage === item ? "bg-accent text-white" : "text-white/80 hover:bg-white/10 hover:text-white"
-                } ${sidebarCollapsed ? "justify-center" : ""}`}
-                onClick={() => navigate(item)}
-                title={sidebarCollapsed ? item : undefined}
-                type="button"
-              >
-                <SideIcon label={item} active={activePage === item} inverse />
-                {sidebarCollapsed ? null : <span className="min-w-0 flex-1 truncate">{item}</span>}
-                {!sidebarCollapsed && item === "Institution Applications" && pendingApplications.length ? <Badge>{pendingApplications.length}</Badge> : null}
-                {!sidebarCollapsed && item === "Developer Access Requests" && developerRequests.length ? <Badge>{developerRequests.length}</Badge> : null}
-                {!sidebarCollapsed && item === "Record Requests" && recordRequests.filter((request) => ["SUBMITTED", "NEEDS_MORE_INFORMATION", "ESCALATED"].includes(request.status)).length ? <Badge>{recordRequests.filter((request) => ["SUBMITTED", "NEEDS_MORE_INFORMATION", "ESCALATED"].includes(request.status)).length}</Badge> : null}
-              </button>
+            {navGroups.map((group) => (
+              <div key={group.label} className="space-y-1">
+                {!sidebarCollapsed ? <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-white/45">{group.label}</p> : null}
+                {group.items.map((item) => {
+                  const badgeCount = pageBadges[item] ?? 0;
+                  return (
+                    <button
+                      key={item}
+                      className={`flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+                        activePage === item ? "bg-accent text-white" : "text-white/80 hover:bg-white/10 hover:text-white"
+                      } ${sidebarCollapsed ? "justify-center" : ""}`}
+                      onClick={() => navigate(item)}
+                      title={sidebarCollapsed ? item : undefined}
+                      type="button"
+                    >
+                      <SideIcon label={item} active={activePage === item} inverse />
+                      {sidebarCollapsed ? null : <span className="min-w-0 flex-1 truncate">{item}</span>}
+                      {!sidebarCollapsed && badgeCount > 0 ? <Badge>{badgeCount > 99 ? "99+" : badgeCount}</Badge> : null}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </nav>
           <div className="space-y-3 border-t border-white/10 p-4">
@@ -2295,7 +2373,8 @@ export function FounderConsole() {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
             <div className="mx-auto max-w-[1440px] space-y-5">
-              <PageHeading activePage={activePage} onGenerateKey={() => setActivePage("API Keys")} />
+              <PageHeading activePage={activePage} onGenerateKey={() => setActivePage("API Keys")} updatedAt={latestWorkspaceUpdate(activePage, { dashboardSummary, systemHealth, deadLetters, revenueOverview })} />
+              <WorkspaceTabs tabs={workspaceTabs} activeTab={activeWorkspaceTab} onChange={(tab) => setActiveTabs((current) => ({ ...current, [activePage]: tab }))} />
               {notice ? <NoticeMessage notice={notice} /> : null}
               {loading ? <LoadingBar /> : null}
               {renderActivePage()}
@@ -2331,7 +2410,7 @@ export function FounderConsole() {
     if (activePage === "Institutions") {
       return (
         <InstitutionsPage
-          filteredInstitutions={filteredInstitutions}
+          filteredInstitutions={filterInstitutionsForTab(filteredInstitutions, activeWorkspaceTab)}
           institutionForm={institutionForm}
           institutionSearch={institutionSearch}
           institutionStateFilter={institutionStateFilter}
@@ -2379,7 +2458,7 @@ export function FounderConsole() {
         <ApplicationsPage
           applicationSearch={applicationSearch}
           applicationStatusFilter={applicationStatusFilter}
-          applications={filteredApplications}
+          applications={filterApplicationsForTab(filteredApplications, activeWorkspaceTab)}
           loading={loading}
           onApprove={approveInstitutionApplication}
           onReject={rejectInstitutionApplication}
@@ -2393,13 +2472,14 @@ export function FounderConsole() {
       );
     }
     if (activePage === "API Keys") {
+      const apiKeysForTab = filterApiKeysForTab(filteredApiKeys, activeWorkspaceTab);
       return (
         <ApiKeysPage
           apiKeyOwnerFilter={apiKeyOwnerFilter}
           apiKeySearch={apiKeySearch}
           apiKeyStatusFilter={apiKeyStatusFilter}
           approvedDeveloperInstitutions={approvedDeveloperInstitutions}
-          filteredApiKeys={filteredApiKeys}
+          filteredApiKeys={apiKeysForTab}
           institutionApiKeys={institutionApiKeys}
           institutionKeyForm={institutionKeyForm}
           institutions={institutions}
@@ -2423,12 +2503,31 @@ export function FounderConsole() {
       );
     }
     if (activePage === "Developer Access Requests") {
-      return <DeveloperRequestsPage loading={loading} onUpdate={updateDeveloperAccessRequest} requests={filteredDeveloperRequests} statusFilter={developerStatusFilter} onStatusFilter={setDeveloperStatusFilter} />;
+      return <DeveloperRequestsPage loading={loading} onUpdate={updateDeveloperAccessRequest} requests={filterDeveloperRequestsForTab(filteredDeveloperRequests, activeWorkspaceTab)} statusFilter={developerStatusFilter} onStatusFilter={setDeveloperStatusFilter} />;
+    }
+    if (activePage === "Webhooks") {
+      return (
+        <WebhooksPage
+          deliveries={webhookDeliveries}
+          endpoints={webhookEndpoints}
+          endpointForm={webhookEndpointForm}
+          loading={loading}
+          onCreateEndpoint={createWebhookEndpoint}
+          onReplayDelivery={replayWebhookDelivery}
+          onRetryDelivery={retryWebhookDelivery}
+          onRotateSecret={rotateWebhookEndpointSecret}
+          onUpdateEndpointForm={setWebhookEndpointForm}
+          onUpdateEndpointStatus={updateWebhookEndpointStatus}
+          selectedInstitutionId={selectedInstitutionId}
+          secret={webhookSecret}
+          tab={activeWorkspaceTab}
+        />
+      );
     }
     if (activePage === "Disputes") {
       return (
         <DisputesPage
-          disputes={filteredDisputes}
+          disputes={filterDisputesForTab(filteredDisputes, activeWorkspaceTab)}
           loading={loading}
           noticeText={disputeNoticeText}
           onAssign={assignDispute}
@@ -2469,7 +2568,7 @@ export function FounderConsole() {
       return (
         <VerificationLogsPage
           allLogs={verificationLogs}
-          logs={filteredVerificationLogs}
+          logs={filterVerificationLogsForTab(filteredVerificationLogs, activeWorkspaceTab)}
           onOutcomeFilter={setVerificationOutcomeFilter}
           onSearch={setVerificationSearch}
           outcomeFilter={verificationOutcomeFilter}
@@ -2477,8 +2576,17 @@ export function FounderConsole() {
         />
       );
     }
+    if (activePage === "Background Jobs") {
+      return <BackgroundJobsPage deadLetters={deadLetters} health={systemHealth} loading={loading} onRetryDeadLetterJob={retryDeadLetterJob} onRetryNotification={retryNotification} tab={activeWorkspaceTab} />;
+    }
     if (activePage === "Revenue") {
       return <RevenuePage revenue={revenueOverview} />;
+    }
+    if (activePage === "Billing") {
+      return <BillingPage revenue={revenueOverview} tab={activeWorkspaceTab} />;
+    }
+    if (activePage === "Reports") {
+      return <ReportsPage auditEvents={auditEvents} revenue={revenueOverview} tab={activeWorkspaceTab} verificationLogs={verificationLogs} />;
     }
     if (activePage === "System Health") {
       return (
@@ -2511,6 +2619,9 @@ export function FounderConsole() {
           webhookSecret={webhookSecret}
         />
       );
+    }
+    if (activePage === "Audit Logs") {
+      return <AuditLogsPage auditEvents={auditEvents} tab={activeWorkspaceTab} />;
     }
     if (activePage === "Security") {
       return (
@@ -3549,6 +3660,218 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
   );
 }
 
+function BillingPage({ revenue, tab }: { revenue: RevenueOverview | null; tab: string }) {
+  const entries = revenue?.recentEntries ?? [];
+  const openEntries = entries.filter((entry) => ["BILLABLE", "INVOICED", "PENDING"].includes(entry.status));
+  const rows = tab === "Invoices" ? openEntries : entries;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Open Billing" value={formatMoney(revenue?.totals.pendingThisMonthMinor ?? 0, revenue?.currency)} helper={`${revenue?.totals.openLedgerEntries ?? 0} open ledger entries`} tone="warning" icon="Billing" />
+        <MetricCard label="Paid This Month" value={formatMoney(revenue?.totals.paidThisMonthMinor ?? 0, revenue?.currency)} helper="Confirmed payments" tone="success" icon="Revenue" />
+        <MetricCard label="Subscriptions" value={revenue?.totals.activeSubscriptions ?? 0} helper="Active or trialing institutions" tone="accent" icon="Institutions" />
+      </div>
+      <Card>
+        <SectionTitle title={tab} subtitle="Billing workspace for subscriptions, invoices, fee rules, and exports." />
+        <ResponsiveTable
+          empty="No billing records yet. Billing events will appear after verification, export, or subscription activity."
+          headers={["Institution", "Category", "Amount", "Status", "Source", "Occurred"]}
+          rows={rows.map((entry) => [
+            <div key="institution"><p>{entry.institutionName ?? "Platform"}</p><p className="text-xs text-textSecondary">{entry.institutionId ?? "No institution link"}</p></div>,
+            titleCase(entry.category),
+            formatMoney(entry.amountMinor, entry.currency),
+            <StatusBadge key="status" status={entry.status} />,
+            entry.sourceType,
+            formatDate(entry.occurredAt)
+          ])}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function ReportsPage({ auditEvents, revenue, tab, verificationLogs }: { auditEvents: AuditEvent[]; revenue: RevenueOverview | null; tab: string; verificationLogs: VerificationLog[] }) {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Audit Events" value={auditEvents.length} helper="Loaded control-plane events" tone="accent" icon="Reports" />
+        <MetricCard label="Verification Logs" value={verificationLogs.length} helper="Loaded verification events" tone="success" icon="Verification Logs" />
+        <MetricCard label="Ledger Entries" value={revenue?.recentEntries.length ?? 0} helper="Revenue records" tone="warning" icon="Revenue" />
+        <MetricCard label="Export Center" value="Ready" helper="CSV/PDF export actions" tone="success" icon="Reports" />
+      </div>
+      <Card>
+        <SectionTitle title={tab} subtitle="Focused reporting workspace for founder review and due diligence." />
+        <ResponsiveTable
+          empty="No report source records loaded yet."
+          headers={["Report Signal", "Source", "Status", "When"]}
+          rows={auditEvents.slice(0, 12).map((event) => [
+            event.label,
+            event.endpoint ?? event.targetType,
+            <StatusBadge key="status" status={event.outcome} />,
+            formatDate(event.createdAt)
+          ])}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function WebhooksPage({
+  deliveries,
+  endpoints,
+  endpointForm,
+  loading,
+  onCreateEndpoint,
+  onReplayDelivery,
+  onRetryDelivery,
+  onRotateSecret,
+  onUpdateEndpointForm,
+  onUpdateEndpointStatus,
+  selectedInstitutionId,
+  secret,
+  tab
+}: {
+  deliveries: WebhookDelivery[];
+  endpoints: WebhookEndpoint[];
+  endpointForm: { label: string; targetUrl: string; eventTypes: string };
+  loading: boolean;
+  onCreateEndpoint: () => void;
+  onReplayDelivery: (id: string) => void;
+  onRetryDelivery: (id: string) => void;
+  onRotateSecret: (id: string) => void;
+  onUpdateEndpointForm: (value: { label: string; targetUrl: string; eventTypes: string }) => void;
+  onUpdateEndpointStatus: (id: string, status: string) => void;
+  selectedInstitutionId: string;
+  secret: WebhookSecretResponse | null;
+  tab: string;
+}) {
+  const failed = deliveries.filter((delivery) => ["FAILED", "DEAD_LETTER"].includes(delivery.status));
+  const retrying = deliveries.filter((delivery) => ["PENDING", "RETRYING"].includes(delivery.status));
+  const visibleDeliveries = tab === "Failed Deliveries" ? failed : tab === "Retry Queue" ? retrying : deliveries;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Endpoints" value={endpoints.length} helper="Configured callbacks" tone="accent" icon="Webhooks" />
+        <MetricCard label="Deliveries" value={deliveries.length} helper="Recent delivery log" tone="success" icon="Webhooks" />
+        <MetricCard label="Failed" value={failed.length} helper="Needs attention" tone={failed.length ? "error" : "success"} icon="Disputes" />
+        <MetricCard label="Retry Queue" value={retrying.length} helper="Waiting for worker retry" tone="warning" icon="Background Jobs" />
+      </div>
+      {tab === "Endpoints" || tab === "Secret Rotation" ? (
+        <Card>
+          <SectionTitle title="Webhook Endpoints" subtitle="Create callbacks, rotate secrets, and suspend unsafe endpoints." />
+          {secret ? <div className="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm"><p className="font-semibold text-primary">One-time webhook secret</p><p className="mt-1 break-all font-mono text-xs text-primary">{secret.secret}</p><p className="mt-1 text-xs text-textSecondary">{secret.warning}</p></div> : null}
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1.2fr_auto]">
+            <Field label="Label"><input className={inputClass} value={endpointForm.label} onChange={(event) => onUpdateEndpointForm({ ...endpointForm, label: event.target.value })} /></Field>
+            <Field label="Target URL"><input className={inputClass} value={endpointForm.targetUrl} onChange={(event) => onUpdateEndpointForm({ ...endpointForm, targetUrl: event.target.value })} /></Field>
+            <Field label="Event types"><input className={inputClass} value={endpointForm.eventTypes} onChange={(event) => onUpdateEndpointForm({ ...endpointForm, eventTypes: event.target.value })} /></Field>
+            <div className="flex items-end"><button className={primaryButtonClass} disabled={loading || !selectedInstitutionId} onClick={onCreateEndpoint} type="button">Create Endpoint</button></div>
+          </div>
+          <ResponsiveTable
+            empty="No webhook endpoints configured yet."
+            headers={["Endpoint", "Institution", "Status", "Secret", "Rotated", "Actions"]}
+            rows={endpoints.map((endpoint) => [
+              <div key="endpoint"><p className="font-medium text-primary">{endpoint.label}</p><p className="break-all text-xs text-textSecondary">{endpoint.targetUrl}</p></div>,
+              <div key="institution"><p>{endpoint.institutionName}</p><p className="text-xs text-textSecondary">{endpoint.institutionId}</p></div>,
+              <StatusBadge key="status" status={endpoint.status} />,
+              endpoint.secretPreview ?? "--",
+              endpoint.rotatedAt ? formatDate(endpoint.rotatedAt) : "Never",
+              <div key="actions" className="flex flex-wrap gap-2"><button className={secondaryButtonClass} disabled={loading} onClick={() => onRotateSecret(endpoint.id)} type="button">Rotate</button><button className={secondaryButtonClass} disabled={loading || endpoint.status === "SUSPENDED"} onClick={() => onUpdateEndpointStatus(endpoint.id, "SUSPENDED")} type="button">Suspend</button><button className={primarySmallButtonClass} disabled={loading || endpoint.status === "ACTIVE"} onClick={() => onUpdateEndpointStatus(endpoint.id, "ACTIVE")} type="button">Activate</button></div>
+            ])}
+          />
+        </Card>
+      ) : null}
+      {tab !== "Endpoints" && tab !== "Secret Rotation" ? (
+        <Card>
+          <SectionTitle title={tab} subtitle="Webhook delivery monitoring and retry controls." />
+          <ResponsiveTable
+            empty="No webhook deliveries in this workspace."
+            headers={["Delivery", "Institution", "Status", "Attempts", "Next", "Actions"]}
+            rows={visibleDeliveries.map((delivery) => [
+              <div key="delivery"><p className="font-medium text-primary">{delivery.eventType}</p><p className="break-all text-xs text-textSecondary">{delivery.targetUrl}</p></div>,
+              delivery.institutionName ?? delivery.institutionId ?? "Platform",
+              <StatusBadge key="status" status={delivery.status} />,
+              delivery.attempts.toLocaleString(),
+              delivery.nextAttemptAt ? formatDate(delivery.nextAttemptAt) : delivery.deliveredAt ? formatDate(delivery.deliveredAt) : "--",
+              <div key="actions" className="flex flex-wrap gap-2"><button className={secondaryButtonClass} disabled={loading || delivery.status === "DELIVERED"} onClick={() => onRetryDelivery(delivery.id)} type="button">Retry</button><button className={primarySmallButtonClass} disabled={loading} onClick={() => onReplayDelivery(delivery.id)} type="button">Replay</button></div>
+            ])}
+          />
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function BackgroundJobsPage({ deadLetters, health, loading, onRetryDeadLetterJob, onRetryNotification, tab }: { deadLetters: DeadLetterOverview | null; health: SystemHealth | null; loading: boolean; onRetryDeadLetterJob: (id: string) => void; onRetryNotification: (id: string) => void; tab: string }) {
+  const queueHealth = health?.services.find((service) => service.name === "Background Workers")?.metadata;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Queued" value={health?.metrics.readyBackgroundJobs ?? "--"} helper="Ready worker jobs" tone="accent" icon="Background Jobs" />
+        <MetricCard label="Running" value={queueHealth?.runningJobs ?? "--"} helper="Currently processing" tone="success" icon="Background Jobs" />
+        <MetricCard label="Failed" value={deadLetters?.summary.failedJobs ?? "--"} helper="Dead-letter jobs" tone={(deadLetters?.summary.failedJobs ?? 0) > 0 ? "error" : "success"} icon="Disputes" />
+        <MetricCard label="Workers" value={queueHealth?.activeWorkers ?? "--"} helper="Active heartbeat count" tone="accent" icon="System Health" />
+      </div>
+      <Card>
+        <SectionTitle title={tab} subtitle="Background queues keep heavy work out of HTTP requests." />
+        <ResponsiveTable
+          empty="No background queue records for this workspace."
+          headers={["Job", "Institution", "Attempts", "Error", "Failed", "Action"]}
+          rows={(deadLetters?.jobs ?? []).map((job) => [
+            <div key="job"><p className="font-medium text-primary">{titleCase(job.type)}</p><p className="text-xs text-textSecondary">{job.queue}</p></div>,
+            job.institutionName ?? job.institutionId ?? "Platform",
+            `${job.attempts}/${job.maxAttempts}`,
+            job.error ?? "Failed",
+            job.failedAt ? formatDate(job.failedAt) : formatDate(job.updatedAt),
+            <button key="retry" className={primarySmallButtonClass} disabled={loading} onClick={() => onRetryDeadLetterJob(job.id)} type="button">Retry</button>
+          ])}
+        />
+      </Card>
+      <Card>
+        <SectionTitle title="Failed Notifications" subtitle="Email, SMS, and push delivery failures waiting for worker retry." />
+        <ResponsiveTable
+          empty="No failed notifications need attention."
+          headers={["Notification", "Channel", "Institution", "Error", "Updated", "Action"]}
+          rows={(deadLetters?.notifications ?? []).map((notification) => [
+            <div key="title"><p className="font-medium text-primary">{notification.title}</p><p className="text-xs text-textSecondary">{notification.type}</p></div>,
+            <StatusBadge key="channel" status={notification.channel} />,
+            notification.institutionName ?? notification.institutionId ?? "Platform",
+            notification.error ?? "Failed",
+            formatDate(notification.updatedAt),
+            <button key="retry" className={primarySmallButtonClass} disabled={loading} onClick={() => onRetryNotification(notification.id)} type="button">Retry</button>
+          ])}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function AuditLogsPage({ auditEvents, tab }: { auditEvents: AuditEvent[]; tab: string }) {
+  const filtered = tab === "Security Events"
+    ? auditEvents.filter((event) => event.outcome === "FAILED" || event.outcome === "DENIED")
+    : tab === "API Actions"
+      ? auditEvents.filter((event) => event.actorType === "API_KEY" || event.endpoint?.includes("/api/"))
+      : tab === "Institution Actions"
+        ? auditEvents.filter((event) => event.institutionId || event.institutionName)
+        : auditEvents;
+  return (
+    <Card>
+      <SectionTitle title={tab} subtitle="Immutable audit trail for founder oversight, partner review, and due diligence." />
+      <ResponsiveTable
+        empty="No audit events match this workspace."
+        headers={["Action", "Actor", "Endpoint", "Target", "Outcome", "When"]}
+        rows={filtered.slice(0, 100).map((event) => [
+          event.label,
+          `${event.actorName}${event.actorType ? ` / ${event.actorType}` : ""}`,
+          event.endpoint ? `${event.httpMethod ?? ""} ${event.endpoint}`.trim() : "No endpoint",
+          event.institutionName ?? event.targetType,
+          <StatusBadge key="outcome" status={event.outcome} />,
+          formatDate(event.createdAt)
+        ])}
+      />
+    </Card>
+  );
+}
+
 function SystemHealthPage({
   cleanupHours,
   deadLetters,
@@ -4244,18 +4567,249 @@ function SettingsPage({
   );
 }
 
-function PageHeading({ activePage, onGenerateKey }: { activePage: PageKey; onGenerateKey: () => void }) {
+function buildWorkspaceTabs(page: PageKey, data: {
+  applications: InstitutionApplication[];
+  apiKeys: GlobalApiKey[];
+  auditEvents: AuditEvent[];
+  deadLetters: DeadLetterOverview | null;
+  developerRequests: DeveloperAccessRequest[];
+  disputes: Dispute[];
+  failedVerifications: VerificationLog[];
+  failedWebhookDeliveries: WebhookDelivery[];
+  institutions: Institution[];
+  invitationLeads: InvitationLead[];
+  recordRequests: RecordRequest[];
+  systemHealth: SystemHealth | null;
+  webhookDeliveries: WebhookDelivery[];
+  webhookEndpoints: WebhookEndpoint[];
+}): WorkspaceTab[] {
+  const failedJobs = data.deadLetters?.summary.failedJobs ?? 0;
+  const failedNotifications = data.deadLetters?.summary.failedNotifications ?? 0;
+  const overdueRecords = data.recordRequests.filter((request) => request.status === "ESCALATED" || (request.status !== "FULFILLED" && daysSince(request.submittedAt) >= 14)).length;
+  const tabs: Record<PageKey, WorkspaceTab[]> = {
+    Overview: [
+      { label: "Platform Summary" },
+      { label: "Alerts", count: data.failedWebhookDeliveries.length + failedJobs + data.applications.filter((item) => item.status === "PENDING").length, tone: "warning" },
+      { label: "Recent Activity", count: data.auditEvents.length, tone: "accent" },
+      { label: "Revenue Snapshot" },
+      { label: "System Health", count: data.systemHealth?.overallStatus === "OPERATIONAL" ? 0 : 1, tone: data.systemHealth?.overallStatus === "OPERATIONAL" ? "success" : "warning" }
+    ],
+    Institutions: [
+      { label: "Active Institutions", count: data.institutions.filter((item) => item.status === "ACTIVE").length, tone: "success" },
+      { label: "Pending Setup", count: data.institutions.filter((item) => item.status === "ACTIVE" && !item.mouSignedAt).length, tone: "warning" },
+      { label: "Suspended", count: data.institutions.filter((item) => item.status === "SUSPENDED").length, tone: "error" },
+      { label: "Institution Health" },
+      { label: "Directory Status" }
+    ],
+    "Academic Operations": [
+      { label: "Academic Structure Issues" },
+      { label: "Missing Grading Rules" },
+      { label: "Missing Subjects/Courses" },
+      { label: "Unscoped Staff" },
+      { label: "Validation Jobs" },
+      { label: "Setup Readiness" }
+    ],
+    "Institution Applications": [
+      { label: "New Applications", count: data.applications.filter((item) => item.status === "PENDING").length, tone: "warning" },
+      { label: "Under Review", count: data.applications.filter((item) => String(item.status) === "UNDER_REVIEW").length, tone: "accent" },
+      { label: "Needs More Info", count: data.applications.filter((item) => String(item.status) === "NEEDS_MORE_INFORMATION").length, tone: "warning" },
+      { label: "Approved", count: data.applications.filter((item) => item.status === "APPROVED").length, tone: "success" },
+      { label: "Rejected", count: data.applications.filter((item) => item.status === "REJECTED").length, tone: "error" }
+    ],
+    "API Keys": [
+      { label: "Active Keys", count: data.apiKeys.filter((item) => item.status === "ACTIVE").length, tone: "success" },
+      { label: "Sandbox Keys", count: data.apiKeys.filter((item) => item.environment === "SANDBOX").length, tone: "accent" },
+      { label: "Revoked Keys", count: data.apiKeys.filter((item) => item.status === "REVOKED").length, tone: "error" },
+      { label: "Usage Logs" },
+      { label: "Generate Key" }
+    ],
+    "Developer Access Requests": [
+      { label: "Pending Requests", count: data.developerRequests.filter((item) => item.status === "PENDING").length, tone: "warning" },
+      { label: "Approved", count: data.developerRequests.filter((item) => item.status === "APPROVED").length, tone: "success" },
+      { label: "Rejected", count: data.developerRequests.filter((item) => item.status === "REJECTED").length, tone: "error" },
+      { label: "API Usage" },
+      { label: "Risk Review" }
+    ],
+    Webhooks: [
+      { label: "Endpoints", count: data.webhookEndpoints.length, tone: "accent" },
+      { label: "Delivery Logs", count: data.webhookDeliveries.length, tone: "accent" },
+      { label: "Failed Deliveries", count: data.failedWebhookDeliveries.length, tone: "error" },
+      { label: "Secret Rotation" },
+      { label: "Retry Queue", count: data.webhookDeliveries.filter((item) => ["PENDING", "RETRYING"].includes(item.status)).length, tone: "warning" }
+    ],
+    "Record Requests": [
+      { label: "Invitation Leads", count: data.invitationLeads.filter((item) => item.status === "NEW").length, tone: "warning" },
+      { label: "Active Requests", count: data.recordRequests.filter((item) => !["FULFILLED", "REJECTED", "CANCELLED"].includes(item.status)).length, tone: "accent" },
+      { label: "Overdue", count: overdueRecords, tone: "error" },
+      { label: "Escalated", count: data.recordRequests.filter((item) => item.status === "ESCALATED").length, tone: "error" },
+      { label: "Completed", count: data.recordRequests.filter((item) => item.status === "FULFILLED").length, tone: "success" }
+    ],
+    Disputes: [
+      { label: "Open", count: data.disputes.filter((item) => item.status === "OPEN").length, tone: "warning" },
+      { label: "Escalated", count: data.disputes.filter((item) => item.status === "ESCALATED").length, tone: "error" },
+      { label: "Institution Response Needed", count: data.disputes.filter((item) => !item.noticeSentAt && item.status !== "RESOLVED").length, tone: "warning" },
+      { label: "Resolved", count: data.disputes.filter((item) => item.status === "RESOLVED").length, tone: "success" },
+      { label: "Closed", count: data.disputes.filter((item) => item.status === "RESOLVED").length, tone: "success" }
+    ],
+    "Verification Logs": [
+      { label: "Recent Verifications", count: data.webhookDeliveries.length ? undefined : data.failedVerifications.length },
+      { label: "Failed Verifications", count: data.failedVerifications.length, tone: "error" },
+      { label: "Suspicious Activity", count: data.failedVerifications.length, tone: "warning" },
+      { label: "Employer Checks" },
+      { label: "Credential Checks" }
+    ],
+    "Background Jobs": [
+      { label: "Queued", count: data.systemHealth?.metrics.readyBackgroundJobs, tone: "accent" },
+      { label: "Running" },
+      { label: "Retrying" },
+      { label: "Failed", count: failedJobs + failedNotifications, tone: "error" },
+      { label: "Completed" }
+    ],
+    Revenue: [
+      { label: "Overview" },
+      { label: "Institution Earnings" },
+      { label: "AcadID Earnings" },
+      { label: "Escrow" },
+      { label: "Payouts" }
+    ],
+    Billing: [
+      { label: "Subscriptions" },
+      { label: "Invoices" },
+      { label: "Payment Events" },
+      { label: "Fee Rules" },
+      { label: "Exports" }
+    ],
+    Reports: [
+      { label: "Platform Reports" },
+      { label: "Institution Reports" },
+      { label: "Verification Reports" },
+      { label: "Revenue Reports" },
+      { label: "Export Center" }
+    ],
+    "System Health": [
+      { label: "API Health" },
+      { label: "Database" },
+      { label: "Cache" },
+      { label: "Workers" },
+      { label: "Queue" },
+      { label: "Webhooks" },
+      { label: "Storage" }
+    ],
+    "Audit Logs": [
+      { label: "Founder Actions", count: data.auditEvents.filter((item) => item.actorRole?.includes("SUPER") || item.actorName.includes("Founder")).length, tone: "accent" },
+      { label: "Institution Actions" },
+      { label: "API Actions" },
+      { label: "Security Events", count: data.auditEvents.filter((item) => item.outcome === "FAILED" || item.outcome === "DENIED").length, tone: "error" },
+      { label: "Export Logs" }
+    ],
+    Security: [
+      { label: "Founder TOTP" },
+      { label: "Login History", count: data.auditEvents.filter((item) => item.action.includes("login")).length, tone: "accent" },
+      { label: "Sessions" },
+      { label: "API Key Security" },
+      { label: "Emergency Lockdown" }
+    ],
+    Settings: [
+      { label: "Founder Profile" },
+      { label: "Platform Settings" },
+      { label: "Email Templates" },
+      { label: "Approval Rules" },
+      { label: "Notifications" }
+    ]
+  };
+  return tabs[page];
+}
+
+function WorkspaceTabs({ activeTab, onChange, tabs }: { activeTab: string; onChange: (tab: string) => void; tabs: WorkspaceTab[] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-borderLight bg-white p-2 shadow-sm">
+      <div className="flex min-w-max gap-2">
+        {tabs.map((tab) => {
+          const active = tab.label === activeTab;
+          return (
+            <button key={tab.label} className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${active ? "bg-accent text-white" : "text-textSecondary hover:bg-soft hover:text-primary"}`} onClick={() => onChange(tab.label)} type="button">
+              <span>{tab.label}</span>
+              {typeof tab.count === "number" && tab.count > 0 ? <span className={`rounded-full px-2 py-0.5 text-xs ${active ? "bg-white/20 text-white" : tab.tone === "error" ? "bg-error/10 text-error" : tab.tone === "warning" ? "bg-warning/10 text-warning" : tab.tone === "success" ? "bg-success/10 text-success" : "bg-accent/10 text-accent"}`}>{tab.count > 99 ? "99+" : tab.count}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function filterInstitutionsForTab(institutions: Institution[], tab: string) {
+  if (tab === "Suspended") return institutions.filter((institution) => institution.status === "SUSPENDED");
+  if (tab === "Pending Setup") return institutions.filter((institution) => institution.status === "ACTIVE" && !institution.mouSignedAt);
+  return institutions.filter((institution) => tab === "Active Institutions" ? institution.status === "ACTIVE" : true);
+}
+
+function filterApplicationsForTab(applications: InstitutionApplication[], tab: string) {
+  const statusByTab: Record<string, string[]> = {
+    "New Applications": ["PENDING"],
+    "Under Review": ["UNDER_REVIEW", "PENDING"],
+    "Needs More Info": ["NEEDS_MORE_INFORMATION"],
+    Approved: ["APPROVED"],
+    Rejected: ["REJECTED"]
+  };
+  const statuses = statusByTab[tab];
+  return statuses ? applications.filter((application) => statuses.includes(String(application.status))) : applications;
+}
+
+function filterApiKeysForTab(keys: GlobalApiKey[], tab: string) {
+  if (tab === "Active Keys") return keys.filter((key) => key.status === "ACTIVE");
+  if (tab === "Sandbox Keys") return keys.filter((key) => key.environment === "SANDBOX");
+  if (tab === "Revoked Keys") return keys.filter((key) => key.status === "REVOKED");
+  return keys;
+}
+
+function filterDeveloperRequestsForTab(requests: DeveloperAccessRequest[], tab: string) {
+  if (tab === "Pending Requests") return requests.filter((request) => request.status === "PENDING");
+  if (["Approved", "Rejected"].includes(tab)) return requests.filter((request) => request.status === tab.toUpperCase());
+  return requests;
+}
+
+function filterDisputesForTab(disputes: Dispute[], tab: string) {
+  if (tab === "Open") return disputes.filter((dispute) => dispute.status === "OPEN");
+  if (tab === "Escalated") return disputes.filter((dispute) => dispute.status === "ESCALATED");
+  if (tab === "Institution Response Needed") return disputes.filter((dispute) => !dispute.noticeSentAt && dispute.status !== "RESOLVED");
+  if (["Resolved", "Closed"].includes(tab)) return disputes.filter((dispute) => dispute.status === "RESOLVED");
+  return disputes;
+}
+
+function filterVerificationLogsForTab(logs: VerificationLog[], tab: string) {
+  if (tab === "Failed Verifications" || tab === "Suspicious Activity") {
+    return logs.filter((log) => ["FAILED", "REVOKED", "DENIED", "DISCREPANCY"].some((term) => log.outcome.toUpperCase().includes(term)));
+  }
+  if (tab === "Employer Checks") return logs.filter((log) => log.verifierType.toUpperCase().includes("EMPLOYER"));
+  if (tab === "Credential Checks") return logs.filter((log) => log.credentialType || log.credential);
+  return logs;
+}
+
+function latestWorkspaceUpdate(page: PageKey, data: { dashboardSummary: DashboardSummary | null; systemHealth: SystemHealth | null; deadLetters: DeadLetterOverview | null; revenueOverview: RevenueOverview | null }) {
+  if (page === "System Health" || page === "Webhooks" || page === "Background Jobs") return data.systemHealth?.generatedAt ?? data.deadLetters?.generatedAt ?? null;
+  if (page === "Revenue" || page === "Billing" || page === "Reports") return data.revenueOverview?.generatedAt ?? null;
+  return data.dashboardSummary?.generatedAt ?? null;
+}
+
+function PageHeading({ activePage, onGenerateKey, updatedAt }: { activePage: PageKey; onGenerateKey: () => void; updatedAt?: string | null }) {
   const subtitle =
     activePage === "Overview"
       ? "Here's what's happening across ACAD.ID infrastructure today."
       : `${activePage} operations and control workflows.`;
+  const showGenerateKey = activePage === "API Keys";
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 className="text-2xl font-semibold leading-tight text-primary">{activePage === "Overview" ? "Welcome back, Founder" : activePage}</h1>
         <p className="mt-1 text-sm text-textSecondary">{subtitle}</p>
+        <div className="mt-2 flex items-center gap-2 text-xs text-textSecondary">
+          <span className="h-2 w-2 rounded-full bg-success" />
+          <span>{updatedAt ? `Updated ${formatDate(updatedAt)}` : "Live workspace"}</span>
+          <span className="rounded-full bg-soft px-2 py-0.5 text-primary">Auto-refresh ready</span>
+        </div>
       </div>
-      <button className={`${primaryButtonClass} w-full md:w-auto`} onClick={onGenerateKey} type="button">+ Generate API Key</button>
+      {showGenerateKey ? <button className={`${primaryButtonClass} w-full md:w-auto`} onClick={onGenerateKey} type="button">+ Generate API Key</button> : null}
     </div>
   );
 }
@@ -4790,6 +5344,10 @@ function titleCase(value: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function daysSince(value: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
 }
 
 function formatYears(request: Pick<RecordRequest, "yearsAttendedFrom" | "yearsAttendedTo">) {
