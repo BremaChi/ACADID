@@ -1135,10 +1135,18 @@ export class AdminService {
       sessionGroups,
       structureGroups,
       structureTypeGroups,
+      structureReadinessGroups,
+      gradingRuleGroups,
+      staffRows,
       enrolmentGroups,
       batchGroups,
       rolloverGroups,
       transferGroups,
+      validationJobs,
+      importFileGroups,
+      mouDocumentGroups,
+      recordProofRequests,
+      applicationDocumentRows,
       sealedSessions,
       recentRollovers,
       recentTransfers,
@@ -1170,6 +1178,25 @@ export class AdminService {
         by: ["type"],
         _count: { _all: true }
       }),
+      this.prisma.academicStructure.groupBy({
+        by: ["institutionId", "type", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.gradingRuleSet.groupBy({
+        by: ["institutionId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.institutionUser.findMany({
+        where: { status: "ACTIVE" },
+        select: {
+          uuid: true,
+          institutionId: true,
+          role: true,
+          status: true,
+          assignedScopes: true,
+          user: { select: { fullName: true, email: true } }
+        }
+      }),
       this.prisma.enrolment.groupBy({
         by: ["institutionId", "status"],
         _count: { _all: true }
@@ -1185,6 +1212,42 @@ export class AdminService {
       this.prisma.transferRequest.groupBy({
         by: ["fromInstitutionId", "status"],
         _count: { _all: true }
+      }),
+      this.prisma.backgroundJob.findMany({
+        where: {
+          type: { in: ["BULK_STUDENT_UPLOAD", "RESULT_BATCH_VALIDATION"] },
+          status: { in: ["QUEUED", "RUNNING", "RETRYING", "FAILED"] }
+        },
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        select: {
+          uuid: true,
+          institutionId: true,
+          type: true,
+          status: true,
+          queue: true,
+          progress: true,
+          attempts: true,
+          error: true,
+          createdAt: true,
+          startedAt: true,
+          updatedAt: true
+        }
+      }),
+      this.prisma.importFile.groupBy({
+        by: ["institutionId", "kind"],
+        _count: { _all: true }
+      }),
+      this.prisma.mouDocument.groupBy({
+        by: ["institutionId"],
+        _count: { _all: true }
+      }),
+      this.prisma.recordRequest.findMany({
+        where: { proofDocumentUrls: { isEmpty: false } },
+        select: { institutionId: true, proofDocumentUrls: true }
+      }),
+      this.prisma.institutionApplication.findMany({
+        select: { approvedInstitutionId: true, documentUploads: true }
       }),
       this.prisma.academicSession.findMany({
         where: { status: "SEALED" },
@@ -1246,10 +1309,86 @@ export class AdminService {
       status?: string
     ) => rows.filter((row) => row.institutionId === institutionId && (!status || ("status" in row && row.status === status))).reduce((sum, row) => sum + row._count._all, 0);
 
+    const activeGradingRulesByInstitution = new Map<string, number>();
+    for (const row of gradingRuleGroups) {
+      if (row.status === "ACTIVE") {
+        activeGradingRulesByInstitution.set(row.institutionId, (activeGradingRulesByInstitution.get(row.institutionId) ?? 0) + row._count._all);
+      }
+    }
+
+    const subjectCourseNodesByInstitution = new Map<string, number>();
+    for (const row of structureReadinessGroups) {
+      if (row.status === "ACTIVE" && ["SUBJECT", "COURSE"].includes(row.type)) {
+        subjectCourseNodesByInstitution.set(row.institutionId, (subjectCourseNodesByInstitution.get(row.institutionId) ?? 0) + row._count._all);
+      }
+    }
+
+    const scopedStaffByInstitution = new Map<string, { scoped: number; unscoped: number; active: number }>();
+    for (const staff of staffRows) {
+      const current = scopedStaffByInstitution.get(staff.institutionId) ?? { scoped: 0, unscoped: 0, active: 0 };
+      current.active += 1;
+      const hasScope = staff.role === UserRole.REGISTRAR || this.assignedScopesCount(staff.assignedScopes) > 0;
+      if (hasScope) current.scoped += 1;
+      else current.unscoped += 1;
+      scopedStaffByInstitution.set(staff.institutionId, current);
+    }
+
+    const slowJobThreshold = new Date(generatedAt.getTime() - 30 * 60 * 1000);
+    const stuckRunningThreshold = new Date(generatedAt.getTime() - 15 * 60 * 1000);
+    const validationJobsByInstitution = new Map<string, { attention: number; slow: number; failed: number; running: number; queued: number }>();
+    for (const job of validationJobs) {
+      if (!job.institutionId) continue;
+      const current = validationJobsByInstitution.get(job.institutionId) ?? { attention: 0, slow: 0, failed: 0, running: 0, queued: 0 };
+      if (job.status === "FAILED") current.failed += 1;
+      if (job.status === "RUNNING") current.running += 1;
+      if (job.status === "QUEUED" || job.status === "RETRYING") current.queued += 1;
+      const isSlowQueued = (job.status === "QUEUED" || job.status === "RETRYING") && job.createdAt < slowJobThreshold;
+      const isStuckRunning = job.status === "RUNNING" && (job.startedAt ?? job.createdAt) < stuckRunningThreshold;
+      if (isSlowQueued || isStuckRunning) current.slow += 1;
+      if (job.status === "FAILED" || isSlowQueued || isStuckRunning) current.attention += 1;
+      validationJobsByInstitution.set(job.institutionId, current);
+    }
+
+    const storageByInstitution = new Map<string, { importFiles: number; mouDocuments: number; proofDocuments: number; applicationDocuments: number; totalObjects: number }>();
+    const ensureStorage = (institutionId: string) => {
+      const current = storageByInstitution.get(institutionId) ?? { importFiles: 0, mouDocuments: 0, proofDocuments: 0, applicationDocuments: 0, totalObjects: 0 };
+      storageByInstitution.set(institutionId, current);
+      return current;
+    };
+    for (const row of importFileGroups) {
+      const current = ensureStorage(row.institutionId);
+      current.importFiles += row._count._all;
+      current.totalObjects += row._count._all;
+    }
+    for (const row of mouDocumentGroups) {
+      const current = ensureStorage(row.institutionId);
+      current.mouDocuments += row._count._all;
+      current.totalObjects += row._count._all;
+    }
+    for (const request of recordProofRequests) {
+      if (!request.institutionId) continue;
+      const count = request.proofDocumentUrls.length;
+      const current = ensureStorage(request.institutionId);
+      current.proofDocuments += count;
+      current.totalObjects += count;
+    }
+    for (const application of applicationDocumentRows) {
+      if (!application.approvedInstitutionId) continue;
+      const count = this.documentUploadCount(application.documentUploads);
+      const current = ensureStorage(application.approvedInstitutionId);
+      current.applicationDocuments += count;
+      current.totalObjects += count;
+    }
+
     const institutionHealth = institutions.map((institution) => {
       const activeSessions = countForInstitution(sessionGroups, institution.uuid, "ACTIVE");
       const sealedSessionCount = countForInstitution(sessionGroups, institution.uuid, "SEALED");
       const structureNodes = countForInstitution(structureGroups, institution.uuid);
+      const activeGradingRules = activeGradingRulesByInstitution.get(institution.uuid) ?? 0;
+      const subjectCourseNodes = subjectCourseNodesByInstitution.get(institution.uuid) ?? 0;
+      const staffScope = scopedStaffByInstitution.get(institution.uuid) ?? { scoped: 0, unscoped: 0, active: 0 };
+      const validationJobHealth = validationJobsByInstitution.get(institution.uuid) ?? { attention: 0, slow: 0, failed: 0, running: 0, queued: 0 };
+      const storageUse = storageByInstitution.get(institution.uuid) ?? { importFiles: 0, mouDocuments: 0, proofDocuments: 0, applicationDocuments: 0, totalObjects: 0 };
       const activeEnrolments = countForInstitution(enrolmentGroups, institution.uuid, "ACTIVE");
       const pendingRollovers = countForInstitution(rolloverGroups, institution.uuid, "PENDING_ROLLOVER");
       const activeTransfers = transferGroups
@@ -1258,14 +1397,22 @@ export class AdminService {
       const publishedBatches = countForInstitution(batchGroups, institution.uuid, "PUBLISHED");
       const rejectedBatches = countForInstitution(batchGroups, institution.uuid, "REJECTED");
       const completionScore =
-        (activeSessions > 0 ? 25 : 0) +
-        (structureNodes > 0 ? 25 : 0) +
-        (activeEnrolments > 0 ? 25 : 0) +
-        (publishedBatches > 0 ? 25 : 0);
+        (activeSessions > 0 ? 20 : 0) +
+        (structureNodes > 0 ? 15 : 0) +
+        (subjectCourseNodes > 0 ? 15 : 0) +
+        (activeGradingRules > 0 ? 15 : 0) +
+        (activeEnrolments > 0 ? 15 : 0) +
+        (staffScope.scoped > 0 ? 10 : 0) +
+        (publishedBatches > 0 ? 10 : 0);
       const flags = [
         activeSessions === 0 ? "Missing active session" : null,
         structureNodes === 0 ? "No academic structure" : null,
+        structureNodes > 0 && subjectCourseNodes === 0 ? "Missing subjects/courses" : null,
+        activeGradingRules === 0 ? "Missing grading rules" : null,
         activeEnrolments === 0 ? "No active learners" : null,
+        staffScope.unscoped > 0 ? `${staffScope.unscoped} active staff without assigned scopes` : null,
+        validationJobHealth.slow > 0 ? `${validationJobHealth.slow} slow validation/upload job(s)` : null,
+        validationJobHealth.failed > 0 ? `${validationJobHealth.failed} failed validation/upload job(s)` : null,
         sealedSessionCount > 0 ? `${sealedSessionCount} sealed session(s)` : null,
         pendingRollovers > 0 ? `${pendingRollovers} pending rollover(s)` : null,
         activeTransfers > 0 ? `${activeTransfers} transfer request(s) need attention` : null,
@@ -1282,15 +1429,30 @@ export class AdminService {
         activeSessions,
         sealedSessions: sealedSessionCount,
         structureNodes,
+        subjectCourseNodes,
+        activeGradingRules,
         activeEnrolments,
         pendingRollovers,
         activeTransfers,
         publishedBatches,
         rejectedBatches,
+        scopedStaff: staffScope.scoped,
+        unscopedStaff: staffScope.unscoped,
+        activeStaff: staffScope.active,
+        validationJobsAttention: validationJobHealth.attention,
+        slowValidationJobs: validationJobHealth.slow,
+        failedValidationJobs: validationJobHealth.failed,
+        storageObjects: storageUse.totalObjects,
+        storageBreakdown: storageUse,
         completionScore,
         flags
       };
     });
+    const institutionsMissingGradingRules = institutionHealth.filter((institution) => institution.activeGradingRules === 0).length;
+    const institutionsMissingSubjectsOrCourses = institutionHealth.filter((institution) => institution.structureNodes > 0 && institution.subjectCourseNodes === 0).length;
+    const institutionsWithUnscopedStaff = institutionHealth.filter((institution) => institution.unscopedStaff > 0).length;
+    const institutionsWithValidationBacklog = institutionHealth.filter((institution) => institution.validationJobsAttention > 0).length;
+    const totalStorageObjects = institutionHealth.reduce((sum, institution) => sum + institution.storageObjects, 0);
 
     return {
       generatedAt,
@@ -1303,9 +1465,23 @@ export class AdminService {
         approvedRollovers: totalByStatus(rolloverGroups, "APPROVED"),
         requestedTransfers: totalByStatus(transferGroups, "REQUESTED"),
         disputedTransfers: totalByStatus(transferGroups, "DISPUTED"),
+        institutionsMissingGradingRules,
+        institutionsMissingSubjectsOrCourses,
+        institutionsWithUnscopedStaff,
+        institutionsWithValidationBacklog,
+        slowValidationJobs: institutionHealth.reduce((sum, institution) => sum + institution.slowValidationJobs, 0),
+        failedValidationJobs: institutionHealth.reduce((sum, institution) => sum + institution.failedValidationJobs, 0),
+        storageObjects: totalStorageObjects,
         publishedBatches: totalByStatus(batchGroups, "PUBLISHED"),
         rejectedBatches: totalByStatus(batchGroups, "REJECTED"),
         reopenEscalations: reopenEvents.filter((event) => event.action === "academic_session.reopen_requested").length
+      },
+      setupGaps: {
+        missingGradingRules: institutionsMissingGradingRules,
+        missingSubjectsOrCourses: institutionsMissingSubjectsOrCourses,
+        unscopedStaffInstitutions: institutionsWithUnscopedStaff,
+        validationBacklogInstitutions: institutionsWithValidationBacklog,
+        storageObjects: totalStorageObjects
       },
       sessionStatus: this.countRowsByStatus(sessionGroups),
       batchStatus: this.countRowsByStatus(batchGroups),
@@ -2910,6 +3086,16 @@ export class AdminService {
     return Array.from(counts.entries())
       .map(([status, count]) => ({ status, count }))
       .sort((left, right) => left.status.localeCompare(right.status));
+  }
+
+  private assignedScopesCount(value: Prisma.JsonValue) {
+    return Array.isArray(value) ? value.length : 0;
+  }
+
+  private documentUploadCount(value: Prisma.JsonValue) {
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === "object") return Object.keys(value).length;
+    return 0;
   }
 
   private describeAcademicStructure(structure: { type: string; name: string; code: string | null }) {

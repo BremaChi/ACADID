@@ -8,7 +8,9 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## v5 Implementation Gaps To Track
 
-- Founder Console v5 setup-health gaps: missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
+- Paystack webhook receiver/worker automation for RecordRequest payment confirmation.
+- CGPA/classification rollup after enough semester GPA records exist.
+- Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
 
 ## Product API Roots To Keep Stable
 
@@ -47,3 +49,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Modular grading rule sets are implemented as Data Center entities with `/api/ingest/grading-rules` create/list/update endpoints, score-to-grade computation during result ingestion, tertiary GPA summary support, W3C VC payload grade-point fields, audit logging, Supabase schema sync, tests, and `docs/api/grading-rules-contract.md`.
 - RecordRequest payment escrow and fulfillment are implemented with explicit escrow state, payment confirmation, signed credential publication into the learner passport, payment release revenue ledger entries, audit logging, Supabase migration, tests, and `docs/api/record-request-fulfillment-contract.md`.
 - Transfer workflows and disputed rollover surfaces are implemented with durable `TransferRequest` state, transfer IDs, source-enrolment transfer-out updates, linked `TRANSFERRED_OUT` rollover records, rollover-linked disputes, Founder Academic Operations visibility, audit logging, Supabase migration, tests, and `docs/api/transfer-and-rollover-disputes-contract.md`.
+- Founder v5 setup-health gaps are implemented in `/api/admin/academic-operations` and the Founder Console, covering missing grading rules, missing subjects/courses, incomplete staff assignments, slow/failed validation or upload jobs, storage object counts, transfer alerts, disputed rollovers, tests, and UI visibility.

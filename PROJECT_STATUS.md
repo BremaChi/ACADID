@@ -132,6 +132,7 @@ The API has these first modules:
 - v5 transfer and disputed rollover API foundation is implemented under `/api/govern`: transfer requests are durable, linked to enrolments and rollovers, source institution approval creates transfer-out state, and rollover disputes are linked to the Founder dispute system.
 - Founder v5 Academic Operations visibility is implemented through `/api/admin/academic-operations` and a dedicated Founder Console page for setup health, active/sealed sessions, structure mix, rollover activity, sealed-session escalations, and institution flags.
 - Founder v5 Academic Operations now includes transfer status counts, recent transfer requests, disputed rollovers, and institution health flags for transfers needing attention.
+- Founder v5 Academic Operations now includes deeper setup-health signals for missing grading rules, missing subjects/courses, incomplete staff scope assignment, slow/failed validation or upload jobs, and tracked storage-object counts.
 - Founder v5 Academic Operations now includes invitation leads for unregistered institutions with graduate demand, including Contacted, Invited, and Dismissed controls.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
@@ -276,7 +277,7 @@ Completed successfully:
 - v5 manual rollover API typechecks locally; tests cover preview, promotion confirmation, missing target-session rejection, and machine-key blocking.
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
 - v5 transfer and rollover-dispute workflows validate with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, and `npm test`; coverage confirms transfer request creation, transfer approval, source enrolment transfer-out, linked rollover creation, dispute open/resolve, and destination validation.
-- Founder Academic Operations summary has unit coverage for v5 aggregate counts, institution readiness flags, recent rollover data, and sealed-session escalation events.
+- Founder Academic Operations summary has unit coverage for v5 aggregate counts, setup gaps, institution readiness flags, staff-scope gaps, storage counts, recent rollover/transfer data, and sealed-session escalation events.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
@@ -312,10 +313,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Expand Founder v5 setup-health gaps for missing grading rules, missing subjects/courses, incomplete staff assignments, slow validation jobs, and storage use.
-2. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
-3. Add CGPA/classification rollup after enough semester GPA records exist.
-4. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
+1. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
+2. Add CGPA/classification rollup after enough semester GPA records exist.
+3. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
+4. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
 5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status

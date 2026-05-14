@@ -43,14 +43,47 @@ test("founder academic operations summary aggregates v5 control-plane health", a
     },
     academicStructure: {
       groupBy: async ({ by }) => {
+        if (by.includes("status")) {
+          return [
+            { institutionId: institutionOne.uuid, type: "CLASS", status: "ACTIVE", _count: { _all: 3 } },
+            { institutionId: institutionOne.uuid, type: "SUBJECT", status: "ACTIVE", _count: { _all: 5 } },
+            { institutionId: institutionTwo.uuid, type: "CLASS", status: "ACTIVE", _count: { _all: 1 } }
+          ];
+        }
         if (by.includes("type")) {
           return [
             { type: "CLASS", _count: { _all: 3 } },
             { type: "SUBJECT", _count: { _all: 5 } }
           ];
         }
-        return [{ institutionId: institutionOne.uuid, _count: { _all: 8 } }];
+        return [
+          { institutionId: institutionOne.uuid, _count: { _all: 8 } },
+          { institutionId: institutionTwo.uuid, _count: { _all: 1 } }
+        ];
       }
+    },
+    gradingRuleSet: {
+      groupBy: async () => [{ institutionId: institutionOne.uuid, status: "ACTIVE", _count: { _all: 1 } }]
+    },
+    institutionUser: {
+      findMany: async () => [
+        {
+          uuid: "staff-1",
+          institutionId: institutionOne.uuid,
+          role: "REGISTRAR",
+          status: "ACTIVE",
+          assignedScopes: [],
+          user: { fullName: "Registrar One", email: "registrar@example.edu.ng" }
+        },
+        {
+          uuid: "staff-2",
+          institutionId: institutionTwo.uuid,
+          role: "DATA_ENTRY_OFFICER",
+          status: "ACTIVE",
+          assignedScopes: [],
+          user: { fullName: "Data Officer", email: "data@example.edu.ng" }
+        }
+      ]
     },
     enrolment: {
       groupBy: async () => [{ institutionId: institutionOne.uuid, status: "ACTIVE", _count: { _all: 120 } }]
@@ -101,6 +134,35 @@ test("founder academic operations summary aggregates v5 control-plane health", a
         }
       ]
     },
+    backgroundJob: {
+      findMany: async () => [
+        {
+          uuid: "job-1",
+          institutionId: institutionTwo.uuid,
+          type: "RESULT_BATCH_VALIDATION",
+          status: "RUNNING",
+          queue: "validation",
+          progress: 20,
+          attempts: 1,
+          error: null,
+          createdAt: new Date("2026-05-01T10:00:00.000Z"),
+          startedAt: new Date("2026-05-01T10:00:00.000Z"),
+          updatedAt: new Date("2026-05-01T10:05:00.000Z")
+        }
+      ]
+    },
+    importFile: {
+      groupBy: async () => [{ institutionId: institutionOne.uuid, kind: "student_register", _count: { _all: 2 } }]
+    },
+    mouDocument: {
+      groupBy: async () => [{ institutionId: institutionOne.uuid, _count: { _all: 1 } }]
+    },
+    recordRequest: {
+      findMany: async () => [{ institutionId: institutionOne.uuid, proofDocumentUrls: ["storage://bucket/proof-a.pdf", "storage://bucket/proof-b.pdf"] }]
+    },
+    institutionApplication: {
+      findMany: async () => [{ approvedInstitutionId: institutionOne.uuid, documentUploads: { mou: "storage://bucket/mou.pdf" } }]
+    },
     auditEvent: {
       findMany: async () => [
         {
@@ -135,12 +197,18 @@ test("founder academic operations summary aggregates v5 control-plane health", a
 
   assert.equal(summary.metrics.activeSessions, 1);
   assert.equal(summary.metrics.sealedSessions, 1);
-  assert.equal(summary.metrics.structureNodes, 8);
+  assert.equal(summary.metrics.structureNodes, 9);
   assert.equal(summary.metrics.pendingRollovers, 1);
   assert.equal(summary.metrics.disputedTransfers, 1);
+  assert.equal(summary.metrics.institutionsMissingGradingRules, 1);
+  assert.equal(summary.metrics.institutionsMissingSubjectsOrCourses, 1);
+  assert.equal(summary.metrics.institutionsWithUnscopedStaff, 1);
+  assert.equal(summary.metrics.storageObjects, 6);
   assert.equal(summary.metrics.reopenEscalations, 1);
   assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00001").completionScore, 100);
   assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00002").flags.includes("Missing active session"), true);
+  assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00002").flags.includes("Missing grading rules"), true);
+  assert.equal(summary.institutionHealth.find((item) => item.institutionId === "AINi-00002").unscopedStaff, 1);
   assert.equal(summary.recentRollovers[0].learnerAin, "AIN-NG-2026-0000001");
   assert.equal(summary.recentTransfers[0].transferId, "TRF-2026-ABC123");
   assert.equal(summary.sealedSessionEscalations[0].actorName, "Registrar One");

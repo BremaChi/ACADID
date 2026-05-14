@@ -670,13 +670,30 @@ type AcademicOperations = {
     activeEnrolments: number;
     pendingRollovers: number;
     approvedRollovers: number;
+    requestedTransfers?: number;
+    disputedTransfers?: number;
+    institutionsMissingGradingRules?: number;
+    institutionsMissingSubjectsOrCourses?: number;
+    institutionsWithUnscopedStaff?: number;
+    institutionsWithValidationBacklog?: number;
+    slowValidationJobs?: number;
+    failedValidationJobs?: number;
+    storageObjects?: number;
     publishedBatches: number;
     rejectedBatches: number;
     reopenEscalations: number;
   };
+  setupGaps?: {
+    missingGradingRules: number;
+    missingSubjectsOrCourses: number;
+    unscopedStaffInstitutions: number;
+    validationBacklogInstitutions: number;
+    storageObjects: number;
+  };
   sessionStatus: Array<{ status: string; count: number }>;
   batchStatus: Array<{ status: string; count: number }>;
   rolloverStatus: Array<{ status: string; count: number }>;
+  transferStatus?: Array<{ status: string; count: number }>;
   structureTypes: Array<{ type: string; count: number }>;
   institutionHealth: Array<{
     institutionUuid: string;
@@ -688,10 +705,27 @@ type AcademicOperations = {
     activeSessions: number;
     sealedSessions: number;
     structureNodes: number;
+    subjectCourseNodes?: number;
+    activeGradingRules?: number;
     activeEnrolments: number;
     pendingRollovers: number;
+    activeTransfers?: number;
     publishedBatches: number;
     rejectedBatches: number;
+    scopedStaff?: number;
+    unscopedStaff?: number;
+    activeStaff?: number;
+    validationJobsAttention?: number;
+    slowValidationJobs?: number;
+    failedValidationJobs?: number;
+    storageObjects?: number;
+    storageBreakdown?: {
+      importFiles: number;
+      mouDocuments: number;
+      proofDocuments: number;
+      applicationDocuments: number;
+      totalObjects: number;
+    };
     completionScore: number;
     flags: string[];
   }>;
@@ -719,6 +753,34 @@ type AcademicOperations = {
     fromStructure: string;
     toStructure: string;
     createdAt: string;
+  }>;
+  recentTransfers?: Array<{
+    id: string;
+    transferId: string;
+    status: string;
+    learnerAin: string;
+    learnerName: string;
+    fromInstitutionId: string;
+    fromInstitutionName: string;
+    toInstitutionId: string | null;
+    toInstitutionName: string | null;
+    rolloverId: string | null;
+    disputeId: string | null;
+    createdAt: string;
+  }>;
+  disputedRollovers?: Array<{
+    id: string;
+    institutionId: string;
+    institutionName: string;
+    learnerAin: string;
+    learnerName: string;
+    decision: string;
+    disputeId: string | null;
+    disputeTitle: string | null;
+    disputeStatus: string | null;
+    transferId: string | null;
+    disputedAt: string | null;
+    resolutionNote: string | null;
   }>;
   sealedSessionEscalations: AuditEvent[];
 };
@@ -2571,12 +2633,31 @@ function AcademicOperationsPage({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Active Sessions" value={metrics?.activeSessions ?? "--"} helper="Open academic periods" tone="success" icon="Academic Operations" />
         <MetricCard label="Structure Nodes" value={metrics?.structureNodes ?? "--"} helper="Classes, subjects, departments, courses" tone="accent" icon="Institutions" />
+        <MetricCard label="Setup Gaps" value={(metrics?.institutionsMissingGradingRules ?? 0) + (metrics?.institutionsMissingSubjectsOrCourses ?? 0)} helper="Grading and subject/course gaps" tone={(metrics?.institutionsMissingGradingRules || metrics?.institutionsMissingSubjectsOrCourses) ? "warning" : "success"} icon="Settings" />
         <MetricCard label="Pending Rollovers" value={metrics?.pendingRollovers ?? "--"} helper="Manual progression queue" tone={metrics?.pendingRollovers ? "warning" : "success"} icon="Record Requests" />
+        <MetricCard label="Transfer Alerts" value={(metrics?.requestedTransfers ?? 0) + (metrics?.disputedTransfers ?? 0)} helper="Requested or disputed transfers" tone={(metrics?.requestedTransfers || metrics?.disputedTransfers) ? "warning" : "success"} icon="Disputes" />
         <MetricCard label="Sealed Sessions" value={metrics?.sealedSessions ?? "--"} helper="Locked academic periods" tone={metrics?.sealedSessions ? "warning" : "accent"} icon="Security" />
-        <MetricCard label="Invitation Leads" value={activeInvitationLeads.length} helper="Unregistered schools with learner demand" tone={activeInvitationLeads.length ? "warning" : "success"} icon="Institution Applications" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Card>
+          <MetricLine label="Missing grading rules" value={String(metrics?.institutionsMissingGradingRules ?? 0)} />
+        </Card>
+        <Card>
+          <MetricLine label="Missing subjects/courses" value={String(metrics?.institutionsMissingSubjectsOrCourses ?? 0)} />
+        </Card>
+        <Card>
+          <MetricLine label="Unscoped staff institutions" value={String(metrics?.institutionsWithUnscopedStaff ?? 0)} />
+        </Card>
+        <Card>
+          <MetricLine label="Validation jobs needing attention" value={String(metrics?.institutionsWithValidationBacklog ?? 0)} />
+        </Card>
+        <Card>
+          <MetricLine label="Tracked storage objects" value={String(metrics?.storageObjects ?? 0)} />
+        </Card>
       </div>
 
       <Card>
@@ -2616,14 +2697,16 @@ function AcademicOperationsPage({
           </div>
           <ResponsiveTable
             empty="No institution academic health data yet."
-            headers={["Institution", "Setup", "Sessions", "Structure", "Learners", "Rollovers", "Flags"]}
+            headers={["Institution", "Setup", "Sessions", "Structure", "Rules", "Staff", "Jobs", "Storage", "Flags"]}
             rows={institutionHealth.map((institution) => [
               <div key="institution"><p className="font-medium text-primary">{institution.institutionName}</p><p className="text-xs text-textSecondary">{institution.institutionId} / {institution.state}</p></div>,
               <StatusBadge key="setup" status={`${institution.completionScore}% Ready`} />,
               `${institution.activeSessions} active / ${institution.sealedSessions} sealed`,
-              institution.structureNodes.toLocaleString(),
-              institution.activeEnrolments.toLocaleString(),
-              String(institution.pendingRollovers),
+              `${institution.structureNodes.toLocaleString()} nodes / ${(institution.subjectCourseNodes ?? 0).toLocaleString()} subjects-courses`,
+              `${institution.activeGradingRules ?? 0} active`,
+              `${institution.scopedStaff ?? 0} scoped / ${institution.unscopedStaff ?? 0} unscoped`,
+              `${institution.validationJobsAttention ?? 0} attention`,
+              `${institution.storageObjects ?? 0} objects`,
               institution.flags.length ? institution.flags.slice(0, 3).join(", ") : "Clear"
             ])}
           />
@@ -2637,6 +2720,8 @@ function AcademicOperationsPage({
               <MetricLine label="Published result batches" value={String(metrics?.publishedBatches ?? "--")} />
               <MetricLine label="Rejected result batches" value={String(metrics?.rejectedBatches ?? "--")} />
               <MetricLine label="Reopen escalations" value={String(metrics?.reopenEscalations ?? "--")} />
+              <MetricLine label="Slow validation jobs" value={String(metrics?.slowValidationJobs ?? 0)} />
+              <MetricLine label="Failed validation jobs" value={String(metrics?.failedValidationJobs ?? 0)} />
             </div>
           </Card>
           <Card>
@@ -2666,6 +2751,37 @@ function AcademicOperationsPage({
               <div key="from"><p>{rollover.fromSession}</p><p className="text-xs text-textSecondary">{rollover.fromStructure}</p></div>,
               <div key="to"><p>{rollover.toSession}</p><p className="text-xs text-textSecondary">{rollover.toStructure}</p></div>,
               <StatusBadge key="status" status={rollover.status} />
+            ])}
+          />
+        </Card>
+        <Card>
+          <SectionTitle title="Recent Transfers" subtitle="Durable transfer requests and transfer-out decisions." />
+          <ResponsiveTable
+            empty="No transfer requests have been created yet."
+            headers={["Transfer", "Learner", "From", "To", "Status"]}
+            rows={(operations?.recentTransfers ?? []).map((transfer) => [
+              <span key="transfer" className="font-mono text-xs text-primary">{transfer.transferId}</span>,
+              <div key="learner"><p className="font-medium text-primary">{transfer.learnerName}</p><p className="text-xs text-textSecondary">{transfer.learnerAin}</p></div>,
+              transfer.fromInstitutionName,
+              transfer.toInstitutionName ?? "External destination",
+              <StatusBadge key="status" status={transfer.status} />
+            ])}
+          />
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <SectionTitle title="Disputed Rollovers" subtitle="Rollover and transfer disputes that affect academic history." />
+          <ResponsiveTable
+            empty="No disputed rollover records."
+            headers={["Learner", "Institution", "Decision", "Transfer", "Dispute"]}
+            rows={(operations?.disputedRollovers ?? []).map((rollover) => [
+              <div key="learner"><p className="font-medium text-primary">{rollover.learnerName}</p><p className="text-xs text-textSecondary">{rollover.learnerAin}</p></div>,
+              rollover.institutionName,
+              titleCase(rollover.decision),
+              rollover.transferId ?? "No transfer link",
+              <div key="dispute"><StatusBadge status={rollover.disputeStatus ?? "Open"} /><p className="mt-1 text-xs text-textSecondary">{rollover.disputeTitle ?? "Dispute title pending"}</p></div>
             ])}
           />
         </Card>

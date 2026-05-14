@@ -456,6 +456,7 @@ Already present:
 - Transfer workflows now exist as first-class Data Center state through `TransferRequest`: institutions can request, approve, reject, or cancel transfer-out flows; approval marks the source enrolment transferred out and creates a linked `TRANSFERRED_OUT` rollover record.
 - Disputed rollover surfaces now exist through linked `Dispute` rows: rollover disputes can be opened and resolved, transfer-linked requests move through `DISPUTED`, and Founder Academic Operations exposes transfer/dispute health.
 - Founder Console v5 Academic Operations visibility now exists through `/admin/academic-operations` and the `Academic Operations` console page.
+- Founder Console v5 setup-health now includes missing grading rules, missing subjects/courses, staff assignment gaps, slow/failed validation or upload jobs, storage object counts, transfer alerts, and disputed rollovers.
 - Invitation leads now exist as a durable Data Center workflow with RecordRequest auto-capture, Founder list/update APIs, and Founder Academic Operations controls.
 - Registrar-facing staff assigned-scope management now exists for the Institution Portal through `/portal/staff`, `/portal/staff/scope-options`, `/portal/staff/invite`, and `/portal/staff/:id`.
 - Modular grading rule sets now exist as Data Center entities with `PRIMARY_SECONDARY` and `TERTIARY_GPA` engines, `/ingest/grading-rules` create/list/update endpoints, result-ingestion grade computation, tertiary GPA summaries, and computed grade-point fields in VC payloads.
@@ -469,7 +470,7 @@ Already present:
 
 Still needed:
 
-- Add Founder/Institution UI visibility for deeper AcademicSession and AcademicStructure setup health.
+- Add Institution Portal UI visibility for AcademicSession and AcademicStructure setup health.
 - Add Institution Portal UI for the Registrar staff assigned-scope endpoints now exposed by Engineer 1.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
