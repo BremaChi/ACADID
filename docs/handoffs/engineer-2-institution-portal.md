@@ -291,6 +291,10 @@ Engineer 2 is done with MVP integration when:
 - Student mobile app.
 - Employer verification portal.
 
+## Next Handoff After Founder Approval
+
+After the onboarding MVP is working, use `docs/handoffs/engineer-2-approved-institution-dashboard.md` for the approved-institution dashboard. That handoff covers staff management, academic setup, learner/result uploads, transfer workflows, rollover disputes, sealed-session reopen requests, record request governance, and async job polling.
+
 ## Engineer 1 Contact Surface
 
 If Engineer 2 needs a new field or route, request it through the Data Center API contract. Do not add a separate data store or shadow schema in the Institution Portal.

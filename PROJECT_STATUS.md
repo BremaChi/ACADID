@@ -92,7 +92,7 @@ The API has these first modules:
 - Credential signing operator tooling now includes `npm run crypto:keygen`, `npm run crypto:validate`, and `docs/runbooks/credential-signing-keys.md`.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
-- Engineer 2 Institution Portal handoff is documented with product boundary, API contract, and sandbox verification script.
+- Engineer 2 Institution Portal handoff is documented with product boundary, API contract, sandbox verification script, and approved-institution dashboard contract.
 - Cross-engineer coordination is documented through `docs/handoffs/engineering-coordination.md` and `docs/handoffs/engineer-1-api-requests.md` so product engineers can request Data Center API roots without creating shadow schemas.
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
@@ -215,6 +215,7 @@ The web app currently provides an operations dashboard for the first foundation 
 - Institution application approval now surfaces a one-time Registrar invite token so sandbox onboarding can move into the v4 human-session Institution Portal model.
 - Institution Portal API now exposes current MOU version metadata and scoped upload-ticket issuance for registration documents, signed MOU files, and supporting documents.
 - Institution Portal staff API contract is documented in `docs/api/institution-portal-staff-contract.md` for Engineer 2.
+- Approved Institution Dashboard handoff is documented in `docs/handoffs/engineer-2-approved-institution-dashboard.md`, covering staff scopes, academic setup, async upload polling, transfers, rollovers, rollover disputes, sealed-session reopen, and record request governance.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -257,7 +258,7 @@ Completed successfully:
 - v4 audit trace context validates with `npm run db:generate`, `npm run typecheck`, `npm run db:deploy`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/audit-events?search=acadid-local-audit-check-2`; Supabase migration `20260505020000_v4_audit_event_context` is applied.
 - Founder password recovery command validates with `npm run typecheck`, `npm test`, and missing-password guard checks; the command writes `founder.password.reset` audit events when executed.
 - Institution Portal MOU/upload-ticket endpoints validate with `npm run typecheck`, `npm test`, public `/api/portal/mou-version`, and scoped `/api/portal/upload-urls` checks.
-- Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
+- Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/handoffs/engineer-2-approved-institution-dashboard.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
 - Engineer coordination and operation runbook docs are in place for cross-team API requests, founder recovery, API key rotation, emergency lockdown, and signing key readiness.
 - Portal storage/MOU config docs and environment placeholders are in place; API health recognizes `SUPABASE_STORAGE_BUCKET`, `OBJECT_STORAGE_BUCKET`, or `STORAGE_BUCKET`.
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
@@ -284,6 +285,7 @@ Completed successfully:
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, setup gaps, institution readiness flags, staff-scope gaps, storage counts, recent rollover/transfer data, and sealed-session escalation events.
 - Paystack webhook automation validates with `npm run typecheck --workspace @acadid/api` and `npm test`; coverage confirms signed webhook job enqueueing and worker-side RecordRequest payment/audit updates.
 - AcademicStanding migration `20260514000000_academic_standings` is applied to Supabase and validates with `npm run db:generate`, `npm run typecheck`, `npm test`, `npm run db:deploy`, and `npm run smoke:api`; coverage confirms publish-time CGPA/classification recompute and student access.
+- Institution Portal dashboard handoff tests validate the approved-institution route contract for staff scopes, academic setup, async jobs, transfers, manual rollover, rollover disputes, sealed-session reopen, and record request governance.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
@@ -319,9 +321,9 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
-2. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-3. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
+2. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+3. Keep Engineer 2/3/4 API requests flowing through `docs/handoffs/engineer-1-api-requests.md` before adding new product data surfaces.
 
 ## GitHub Status
 
