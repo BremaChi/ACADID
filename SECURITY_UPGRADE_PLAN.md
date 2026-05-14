@@ -1,269 +1,174 @@
 # AcadID Security Upgrade Plan
 
-Status: Planned, not yet started  
-Upgrade branch: `security/framework-upgrade`  
+Status: Framework upgrade sprint executed on branch `security/framework-upgrade`  
+Last updated: 2026-05-14  
 Rule: do not run `npm audit fix --force` blindly.
 
 ## Purpose
 
-The current codebase has documented framework-level audit advisories. The fix path requires planned major upgrades, so this must be handled as a separate upgrade sprint with a branch, baseline validation, incremental changes, and a rollback path.
+AcadID is infrastructure, so dependency hardening must be deliberate. This plan records the framework upgrade path, validation requirements, rollback approach, and the remaining upstream-owned risk.
 
-## Baseline Before Upgrade Sprint
-
-Before changing framework versions:
+## Sprint Branch
 
 ```text
-git checkout main
-git pull
-git checkout -b security/framework-upgrade
-npm install
-npm run typecheck
-npm test
-npm run smoke:api
+security/framework-upgrade
 ```
 
-Do not begin the upgrade if baseline validation fails.
+This branch upgrades the major framework packages while preserving the existing API, worker, Supabase, and Founder Console behavior.
 
-## Planned Upgrades
+## Completed Upgrades
 
 ### 1. NestJS Framework
 
-Current versions:
+Previous versions:
 
 - `@nestjs/common`: `10.4.22`
 - `@nestjs/core`: `10.4.22`
 - `@nestjs/platform-express`: `10.4.22`
 - `@nestjs/cli`: `10.4.9`
 
-Target version:
+Current versions:
 
-- At least `11.1.19`, or latest stable after checking release notes.
+- `@nestjs/common`: `11.1.21`
+- `@nestjs/core`: `11.1.21`
+- `@nestjs/platform-express`: `11.1.21`
+- `@nestjs/cli`: `11.0.21`
 
 Reason:
 
-- `@nestjs/core` has a moderate advisory.
-- `@nestjs/platform-express` pulls vulnerable `multer@2.0.2`.
-- `@nestjs/common` pulls vulnerable `file-type@20.4.1`.
-- Audit recommends Nest 11.x for the automated fix path.
+- Remove framework advisories and resolve vulnerable transitive `file-type` and `multer` paths.
 
-Breaking changes to check:
+Files touched:
 
-- Nest application bootstrap behavior.
-- `NestFactory.create` and `createApplicationContext`.
-- Guards and decorators: `AuthGuard`, `RolesGuard`, `ScopesGuard`.
-- Interceptors, especially request audit interceptor.
-- `@nestjs/platform-express` request/response behavior.
-- Dependency injection metadata and module exports.
-
-Files likely affected:
-
-- `apps/api/src/main.ts`
-- `apps/api/src/worker.ts`
-- `apps/api/src/modules/app.module.ts`
-- `apps/api/src/modules/worker.module.ts`
-- `apps/api/src/modules/auth/guards/*.ts`
-- `apps/api/src/modules/platform/interceptors/request-audit.interceptor.ts`
-- API module files under `apps/api/src/modules/**`
 - `apps/api/package.json`
 - `package-lock.json`
 
-Migration considerations:
+Validation:
 
-- Upgrade Nest packages together; do not mix Nest 10 and Nest 11 core packages.
-- Review peer dependencies before installing.
-- Keep worker entrypoint functional; it uses `createApplicationContext`.
-- Check whether `@nestjs/config` should move in the same pass.
-
-Test plan:
-
-- `npm install`
-- `npm run typecheck`
-- `npm test`
-- `npm run smoke:api`
-- `npm run worker:once`
-- API health: `GET /api/health`
-- Founder login and MFA prompt behavior.
-- API key token exchange.
-- Institution creation and Authority Grant creation.
-- Student ingestion.
-- Result governance publish.
-- Credential verification.
+- API build passed through `npm test`.
+- API typecheck passed.
+- API health and Supabase smoke passed.
+- Worker once passed.
+- Existing 114 tests passed.
 
 Rollback plan:
 
-- Stop the upgrade branch.
-- Restore package files from `main`.
-- Reinstall dependencies.
-- Re-run baseline validation.
-- Do not merge the branch.
+- Restore `apps/api/package.json` and `package-lock.json` from `main`.
+- Run `npm install`.
+- Re-run `npm run typecheck`, `npm test`, and `npm run smoke:api`.
 
-### 2. Next.js Founder Console
+### 2. `@nestjs/config`
 
-Current version:
-
-- `next`: `14.2.35`
-
-Target version:
-
-- A safe newer major version outside the audit range. Current audit suggests `16.2.6`; confirm latest stable during sprint.
-
-Reason:
-
-- Multiple Next.js audit advisories remain.
-- Bundled `postcss@8.4.31` remains vulnerable through Next.js dependency tree.
-
-Breaking changes to check:
-
-- App router behavior.
-- Client component boundaries.
-- Build output paths.
-- Dev server behavior and `.next` cache behavior.
-- CSS/PostCSS/Tailwind integration.
-- Browser compatibility of Founder Console dashboard.
-
-Files likely affected:
-
-- `apps/web/package.json`
-- `apps/web/next.config.*` if added later
-- `apps/web/src/app/**`
-- `apps/web/src/components/**`
-- `apps/web/tailwind.config.*`
-- `apps/web/postcss.config.*`
-- `package-lock.json`
-
-Migration considerations:
-
-- Upgrade React only if the Next target requires it.
-- Keep Founder Console UI behavior stable.
-- Re-test mobile drawer/sidebar and routed page behavior.
-- Re-test API client calls from the dashboard.
-
-Test plan:
-
-- `npm install`
-- `npm run typecheck`
-- `npm test`
-- `npm run smoke:api`
-- Local `http://localhost:3000` render.
-- Founder login flow.
-- Founder dashboard navigation for all pages.
-- API key generation modal.
-- Institution Applications flow.
-- System Health page.
-- Mobile viewport smoke check.
-
-Rollback plan:
-
-- Restore `apps/web/package.json` and `package-lock.json` from `main`.
-- Clear `apps/web/.next`.
-- Reinstall dependencies.
-- Restart local web dev server.
-- Do not merge the branch.
-
-### 3. `@nestjs/config`
-
-Current version:
+Previous version:
 
 - `@nestjs/config`: `3.3.0`
 
-Target version:
+Current version:
 
-- `4.0.4` or latest stable compatible with the Nest target.
+- `@nestjs/config`: `4.0.4`
 
 Reason:
 
-- Audit reports `lodash` advisories through `@nestjs/config`.
-- Automated audit fix requires a major version.
+- Resolve lodash advisories through the config package.
+- Keep root `.env` behavior working for Supabase runtime and migration URLs.
 
-Breaking changes to check:
+Validation:
 
-- `ConfigModule.forRoot({ isGlobal: true })`.
-- Root `.env` loading expectations.
-- Runtime environment variables for Supabase, credential signing, storage, worker, JWT, and MFA.
-
-Files likely affected:
-
-- `apps/api/src/modules/app.module.ts`
-- `apps/api/src/modules/worker.module.ts`
-- scripts that load root `.env`
-- docs mentioning runtime variables
-- `apps/api/package.json`
-
-Migration considerations:
-
-- Keep root `.env` behavior unchanged.
-- Confirm worker process sees the same environment values as API process.
-- Do not log secrets during config validation.
-
-Test plan:
-
-- API startup with root `.env`.
-- `npm run smoke:api`.
-- `npm run worker:once`.
-- System Health page and API response.
-- Credential signing readiness check.
-- Storage download config check.
+- API startup loaded configuration successfully.
+- `npm run smoke:api` reached Supabase and completed full founder/institution/credential flow.
+- `npm run worker:once` started a worker application context successfully.
 
 Rollback plan:
 
-- Restore previous config package version.
-- Reinstall dependencies.
-- Re-run baseline API and worker checks.
+- Restore `@nestjs/config` version from `main`.
+- Reinstall and re-run API + worker checks.
 
-### 4. Affected Transitive Dependencies
+### 3. Next.js Founder Console
 
-Known transitive packages:
+Previous versions:
 
-- `file-type@20.4.1` through `@nestjs/common`
-- `multer@2.0.2` through `@nestjs/platform-express`
-- `lodash@4.17.21` through `@nestjs/config`
-- `postcss@8.4.31` bundled by `next@14.2.35`
+- `next`: `14.2.35`
+- `react`: `18.3.1`
+- `react-dom`: `18.3.1`
 
-Target versions:
+Current versions:
 
-- Let framework packages resolve safe compatible versions where possible.
-- Only use overrides if the framework package supports the newer version and tests pass.
+- `next`: `16.2.6`
+- `react`: `19.2.6`
+- `react-dom`: `19.2.6`
 
-Migration considerations:
+Reason:
 
-- Avoid direct transitive overrides that create a false sense of safety.
-- If an override is used, verify with `npm ls <package>` and `npm audit --omit=dev --json`.
+- Move off older Next advisories and keep Founder Console compatible with a current stable framework line.
 
-## Upgrade Sprint Rules
+Files touched:
 
-- Create branch `security/framework-upgrade` before starting.
-- Upgrade incrementally.
-- Prefer safe patch/minor updates first.
-- Do not run `npm audit fix --force`.
-- Do not merge until all validation passes.
-- Do not commit `.env` or secret values.
-- Update `SECURITY_NOTES.md` and this plan after the sprint.
+- `apps/web/package.json`
+- `apps/web/next-env.d.ts`
+- `package-lock.json`
 
-## Required Final Validation
+Validation:
 
-After all upgrades:
+- Founder Console production build passed with Next `16.2.6`.
+- Web TypeScript passed.
+- Root test command passed.
+
+Manual follow-up before merge:
+
+- Start the web dev server and visually confirm `http://localhost:3000`.
+- Confirm Founder Console login and routed dashboard pages in the browser.
+- Confirm mobile drawer/sidebar layout.
+
+Rollback plan:
+
+- Restore `apps/web/package.json`, `apps/web/next-env.d.ts`, and `package-lock.json` from `main`.
+- Clear `apps/web/.next`.
+- Run `npm install`, `npm run typecheck`, and `npm test`.
+
+## Remaining Upstream Item
+
+`next@16.2.6` still declares exact dependency `postcss@8.4.31`. npm audit reports this as a moderate advisory through `node_modules/next/node_modules/postcss`.
+
+Action:
+
+- Track the next stable Next.js release that updates its bundled PostCSS dependency.
+- Do not downgrade to `next@9.3.3`, even though npm audit suggests it.
+- Do not hide the issue with an ineffective override.
+
+## Required Final Validation Before Merge
+
+Already passed:
 
 ```text
-npm install
 npm run typecheck
 npm test
+npm run db:generate
+npm run db:deploy
 npm run smoke:api
 npm run worker:once
 ```
 
-Manual/local checks:
+Still recommended as a manual browser check before merge:
+
+```text
+npm run dev --workspace @acadid/web
+```
+
+Then verify:
 
 - Founder login flow.
-- API health.
-- Upload flow.
-- Supabase DB flow.
-- Webhook delivery.
-- Queue workers.
-- Founder Console page navigation.
+- Dashboard overview.
+- Institutions page.
+- Institution Applications page.
+- API key generation modal.
+- Developer Access Requests page.
+- System Health page.
+- Mobile sidebar/drawer behavior.
 
-Merge criteria:
+## Merge Criteria
 
-- All tests pass.
-- Smoke test is verified end to end.
-- No secret values are committed.
-- Remaining audit findings, if any, are documented with owners and dates.
+- All automated checks pass.
+- Manual Founder Console browser smoke passes.
+- `SECURITY_NOTES.md` documents any remaining audit findings.
+- No `.env` or secret values are committed.
+- Branch is pushed for review before merging to `main`.

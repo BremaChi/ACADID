@@ -1,60 +1,84 @@
 # AcadID Security Notes
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-14
 
 ## Dependency Hardening Policy
 
-Do not run `npm audit fix --force` blindly. Major framework upgrades must be planned, isolated, and tested because AcadID depends on NestJS routing/auth guards, Next.js dashboard behavior, Prisma build output, and worker entrypoints.
+Do not run `npm audit fix --force` blindly. Framework upgrades must be isolated, tested, and documented because AcadID relies on NestJS routing/auth guards, background workers, Prisma build output, and the Next.js Founder Console.
 
 This review used:
 
 ```text
 npm audit --omit=dev --json
-npm ls @nestjs/common @nestjs/core @nestjs/platform-express @nestjs/config next file-type lodash multer postcss --all
+npm ls @nestjs/common @nestjs/core @nestjs/platform-express @nestjs/config next react react-dom file-type lodash multer postcss --all
+npm run typecheck
+npm test
+npm run db:generate
+npm run db:deploy
+npm run smoke:api
+npm run worker:once
 ```
 
-`npm outdated --all --json` was attempted but the registry request failed with `ECONNRESET`, so package availability was checked with targeted package queries where needed.
+No secret values were read into this file or committed.
 
-## Direct Dependencies We Control
+## Upgraded Direct Dependencies
 
-| Package | Installed | Severity | Source | Status |
-| --- | ---: | --- | --- | --- |
-| `@nestjs/common` | `10.4.22` | Moderate | pulls vulnerable `file-type@20.4.1` | Requires Nest framework upgrade or upstream Nest patch beyond current installed line. |
-| `@nestjs/config` | `3.3.0` | Moderate/High via `lodash@4.17.21` | direct dependency | npm audit recommends `@nestjs/config@4.0.4`, a major upgrade. Defer to Nest upgrade task. |
-| `@nestjs/core` | `10.4.22` | Moderate | direct advisory plus platform-express chain | npm audit recommends `@nestjs/core@11.1.19`, a major upgrade. |
-| `@nestjs/platform-express` | `10.4.22` | High | pulls vulnerable `multer@2.0.2` and depends on core | npm audit recommends `@nestjs/platform-express@11.1.19`, a major upgrade. |
-| `next` | `14.2.35` | High/Moderate | multiple Next advisories plus bundled `postcss@8.4.31` | npm audit recommends `next@16.2.6`, a major upgrade. |
+| Package | Previous | Current | Status |
+| --- | ---: | ---: | --- |
+| `@nestjs/common` | `10.4.22` | `11.1.21` | Upgraded and deduped. `file-type` now resolves to `21.3.4`. |
+| `@nestjs/core` | `10.4.22` | `11.1.21` | Upgraded and validated by build, tests, API smoke, and worker smoke. |
+| `@nestjs/platform-express` | `10.4.22` | `11.1.21` | Upgraded. `multer` now resolves to `2.1.1`. |
+| `@nestjs/config` | `3.3.0` | `4.0.4` | Upgraded. `lodash` now resolves to `4.18.1`. |
+| `@nestjs/cli` | `10.4.9` | `11.0.21` | Upgraded with the API workspace. |
+| `next` | `14.2.35` | `16.2.6` | Upgraded and production build passes. One bundled PostCSS audit advisory remains. |
+| `react` / `react-dom` | `18.3.1` | `19.2.6` | Upgraded for Next 16 compatibility. |
+| `tailwindcss` | `3.4.17` | `3.4.19` | Safe patch/minor update. |
+| `postcss` | `8.5.10` | `8.5.14` | Root/web PostCSS is patched; Next still bundles its own `8.4.31`. |
 
-## Transitive Dependencies
+## Remaining Audit Finding
 
-| Package | Installed | Pulled By | Severity | Notes |
-| --- | ---: | --- | --- | --- |
-| `file-type` | `20.4.1` | `@nestjs/common` | Moderate | `file-type@20.x` remains in the vulnerable range reported by npm audit. Updating safely requires upstream Nest dependency movement or a tested major override. |
-| `lodash` | `4.17.21` | `@nestjs/config`, `@nestjs/cli` dev tree | High/Moderate | Production audit path is through `@nestjs/config`. npm audit points to a major `@nestjs/config` upgrade. |
-| `multer` | `2.0.2` | `@nestjs/platform-express` | High | `multer@2.1.1` exists, but Nest 10.4.22 pins `multer` exactly. An npm override was tested and did not change the lockfile, so this remains tied to the Nest upgrade. |
-| `postcss` | `8.4.31` | bundled under `next@14.2.35` | Moderate | Root `postcss` is `8.5.10`; the remaining vulnerable copy is bundled by Next and requires a Next upgrade. |
+`npm audit --omit=dev --json` now reports 2 moderate findings, both from the same framework-pinned path:
 
-## Safe Patch/Minor Review
+| Package | Path | Severity | Reason |
+| --- | --- | --- | --- |
+| `postcss` | `node_modules/next/node_modules/postcss@8.4.31` | Moderate | Next `16.2.6` declares exact dependency `postcss: 8.4.31`. |
+| `next` | affected through bundled `postcss` | Moderate | npm audit reports the direct `next` package because it owns the vulnerable nested dependency. |
 
-- `multer@2.1.1` is available in the same major line, but `@nestjs/platform-express@10.4.22` pins `multer@2.0.2`; npm override did not produce an effective lockfile change.
-- `file-type@20.5.0` exists, but npm audit reports `file-type` versions through `21.3.1` as vulnerable, so no safe `20.x` patch resolves the advisory.
-- The previously unsafe `xlsx` package was not kept. AcadID uses `read-excel-file` for XLSX parsing.
-- No secret values were read into this file or committed.
+Important note: npm audit suggests `next@9.3.3` as a "fix", but that is an unsafe major downgrade and is not acceptable for AcadID. A targeted npm override was tested and did not replace the exact bundled Next dependency, so the finding remains documented until Next publishes a stable release that updates its internal PostCSS.
 
-## Deferred Major Upgrade Tasks
+## Resolved Transitive Findings
 
-1. Plan Nest upgrade from `10.4.22` to at least `11.1.19`.
-   - Affected areas: API bootstrap, guards, interceptors, controllers, worker application context, platform-express behavior.
-   - Required tests: `npm run typecheck`, `npm test`, `npm run smoke:api`, worker once, authenticated founder login, API key token exchange, ingestion, governance publish, verification.
+| Package | Previous Path | Current Result |
+| --- | --- | --- |
+| `file-type` | `@nestjs/common -> file-type@20.4.1` | Resolved by Nest 11.1.21 and dedupe to `file-type@21.3.4`. |
+| `multer` | `@nestjs/platform-express -> multer@2.0.2` | Resolved by Nest 11.1.21 to `multer@2.1.1`. |
+| `lodash` | `@nestjs/config -> lodash@4.17.21` | Resolved by `@nestjs/config@4.0.4` to `lodash@4.18.1`. |
 
-2. Plan Next upgrade from `14.2.35` to a version outside the audit range, currently audit suggests `16.2.6`.
-   - Affected areas: Founder Console app router build, Next dev cache behavior, CSS/PostCSS pipeline, deployment build output.
-   - Required tests: `npm run typecheck`, `npm test`, local `http://localhost:3000` render, mobile/responsive dashboard smoke, founder login.
+## Validation Results
 
-3. Review `@nestjs/config@4.0.4` as part of the Nest upgrade.
-   - Affected areas: config module initialization and environment loading.
-   - Required tests: API startup with root `.env`, Supabase connection, credential-signing config, storage config, worker config.
+Passed on branch `security/framework-upgrade`:
+
+```text
+npm run typecheck
+npm test
+npm run db:generate
+npm run db:deploy
+npm run smoke:api
+npm run worker:once
+```
+
+Smoke coverage confirmed:
+
+- API health route returned `ok`.
+- Founder login worked.
+- Institution creation worked.
+- Developer access approval worked.
+- API client token exchange worked.
+- Learner ingestion worked.
+- Result governance publishing worked.
+- Credential issuance and verification worked with `cryptographicStatus: VALID`.
+- Worker processed queued jobs.
 
 ## Current Risk Position
 
-The remaining audit items are real and should be handled before production. For pilot development, they are documented and deferred because their automated fix path is a major framework upgrade. The current application does not expose direct file-upload parsing through Nest multipart routes yet; bulk import files are processed through queued worker jobs and controlled storage metadata.
+The high-severity audit findings from Nest/Next framework packages have been removed. The only remaining audit issue is a moderate Next-owned PostCSS dependency that cannot be safely fixed in this codebase without an upstream Next release or an unsafe downgrade. Keep tracking this before production hardening, but do not block current foundation work on a forced audit downgrade.
