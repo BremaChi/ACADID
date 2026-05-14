@@ -121,6 +121,7 @@ The API has these first modules:
 - Safe read-through caching is implemented with `CacheService`: credential status, platform settings, and founder institution metadata now use short TTLs with tag invalidation; cache health is visible in Founder System Health.
 - Distributed cache support is implemented with an in-process L1 cache plus optional Upstash Redis REST L2 adapter for multi-instance pilot/production deployments; configuration is documented in `docs/runbooks/distributed-cache.md`.
 - Webhook receiver behavior is documented for partners in `docs/api/webhook-receiver-contract.md`, including HMAC signature verification, idempotency keys, retries, replay behavior, timestamp checks, and response rules.
+- Paystack webhook behavior is documented in `docs/api/paystack-webhook-contract.md`, including signature verification, RecordRequest metadata matching, idempotency, worker processing, and failure rules.
 - Engineer 1 remaining foundation work is tracked in `ENGINEER_1_BACKLOG.md` so Data Center, Gateway, Founder Console, and reliability tasks stay visible before Engineer 2/3/4 product expansion.
 - Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
@@ -134,6 +135,7 @@ The API has these first modules:
 - Founder v5 Academic Operations now includes transfer status counts, recent transfer requests, disputed rollovers, and institution health flags for transfers needing attention.
 - Founder v5 Academic Operations now includes deeper setup-health signals for missing grading rules, missing subjects/courses, incomplete staff scope assignment, slow/failed validation or upload jobs, and tracked storage-object counts.
 - Founder v5 Academic Operations now includes invitation leads for unregistered institutions with graduate demand, including Contacted, Invited, and Dismissed controls.
+- Paystack webhook automation is implemented for RecordRequest payments: `/api/webhooks/paystack` verifies signed Paystack payloads, queues `PAYSTACK_PAYMENT_CONFIRMATION`, the worker confirms open requests into `PAID/HELD`, appends timeline notes, and writes immutable audit events.
 - Verification events now capture verifier context with hashed IP addresses and encrypted verifier email values.
 - Event-driven architecture foundation is implemented with durable `BackgroundJob`, `DomainEvent`, `WebhookDelivery`, and `Notification` models for bulk uploads, result validation, credential/PDF generation, SMS/email delivery, Paystack confirmation, record-request deadlines, callbacks, and push notifications.
 - Async gateway roots now include `POST /api/ingest/bulk-upload`, `POST /api/ingest/results/async`, and safe light polling through `GET /api/jobs/:id`.
@@ -278,6 +280,7 @@ Completed successfully:
 - v5 sealed-session reopen escalation tests cover registrar escalation, founder approval, and non-founder review blocking.
 - v5 transfer and rollover-dispute workflows validate with `npm run db:generate`, `npm run db:deploy`, `npm run typecheck`, and `npm test`; coverage confirms transfer request creation, transfer approval, source enrolment transfer-out, linked rollover creation, dispute open/resolve, and destination validation.
 - Founder Academic Operations summary has unit coverage for v5 aggregate counts, setup gaps, institution readiness flags, staff-scope gaps, storage counts, recent rollover/transfer data, and sealed-session escalation events.
+- Paystack webhook automation validates with `npm run typecheck --workspace @acadid/api` and `npm test`; coverage confirms signed webhook job enqueueing and worker-side RecordRequest payment/audit updates.
 - Invitation Lead checkpoint validates with `npm run db:generate`, `npm run db:push`, `npm run typecheck`, `npm test`, `npm run smoke:api`, and `http://localhost:3000` returning 200.
 - Institution Portal staff management checkpoint validates with `npm run typecheck` and `npm test`; coverage confirms staff listing, scope options, scoped updates, audit logging, machine-key rejection, and Registrar membership protection.
 - Founder TOTP migration deployed to Supabase.
@@ -313,11 +316,10 @@ API app:
 
 ## Next Engineering Steps
 
-1. Add Paystack webhook receiver/worker automation for payment confirmation now that RecordRequest escrow state exists.
-2. Add CGPA/classification rollup after enough semester GPA records exist.
-3. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
-4. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
-5. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+1. Add CGPA/classification rollup after enough semester GPA records exist.
+2. Add Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
+3. Add database-backed sealed-session reopen queue if audit-backed MVP escalation is not enough for Founder Console SLA tracking.
+4. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 
 ## GitHub Status
 

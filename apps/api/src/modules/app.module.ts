@@ -9,6 +9,7 @@ import { IngestionModule } from "./gateway/ingestion.module.js";
 import { VerificationModule } from "./gateway/verification.module.js";
 import { HealthController } from "./health.controller.js";
 import { JobsModule } from "./jobs/jobs.module.js";
+import { PaymentsModule } from "./payments/payments.module.js";
 import { RequestAuditInterceptor } from "./platform/interceptors/request-audit.interceptor.js";
 import { PlatformServicesModule } from "./platform/platform-services.module.js";
 import { PortalModule } from "./portal/portal.module.js";
@@ -24,6 +25,7 @@ import { PortalModule } from "./portal/portal.module.js";
     AccessModule,
     VerificationModule,
     JobsModule,
+    PaymentsModule,
     PortalModule
   ],
   controllers: [HealthController],

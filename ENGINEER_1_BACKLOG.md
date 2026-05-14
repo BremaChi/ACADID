@@ -8,7 +8,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## v5 Implementation Gaps To Track
 
-- Paystack webhook receiver/worker automation for RecordRequest payment confirmation.
 - CGPA/classification rollup after enough semester GPA records exist.
 - Institution Portal handoff tests for transfer, disputed rollover, staff scopes, academic setup, and record request flows.
 
@@ -50,3 +49,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - RecordRequest payment escrow and fulfillment are implemented with explicit escrow state, payment confirmation, signed credential publication into the learner passport, payment release revenue ledger entries, audit logging, Supabase migration, tests, and `docs/api/record-request-fulfillment-contract.md`.
 - Transfer workflows and disputed rollover surfaces are implemented with durable `TransferRequest` state, transfer IDs, source-enrolment transfer-out updates, linked `TRANSFERRED_OUT` rollover records, rollover-linked disputes, Founder Academic Operations visibility, audit logging, Supabase migration, tests, and `docs/api/transfer-and-rollover-disputes-contract.md`.
 - Founder v5 setup-health gaps are implemented in `/api/admin/academic-operations` and the Founder Console, covering missing grading rules, missing subjects/courses, incomplete staff assignments, slow/failed validation or upload jobs, storage object counts, transfer alerts, disputed rollovers, tests, and UI visibility.
+- Paystack webhook receiver/worker automation is implemented for RecordRequest payment confirmation, with signed webhook verification, background job handoff, escrow state update, idempotent worker behavior, audit logging, tests, and `docs/api/paystack-webhook-contract.md`.

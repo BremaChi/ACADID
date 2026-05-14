@@ -241,11 +241,12 @@ export class JobWorkerService {
         return this.processNotificationDelivery(job);
       case BackgroundJobType.CREDENTIAL_GENERATION:
       case BackgroundJobType.PDF_GENERATION:
-      case BackgroundJobType.PAYSTACK_PAYMENT_CONFIRMATION:
       case BackgroundJobType.RECORD_REQUEST_DEADLINE:
       case BackgroundJobType.LIVE_RESULTS_CALLBACK:
       case BackgroundJobType.EXAM_BODY_INGEST:
         return this.processDeferredIntegration(job);
+      case BackgroundJobType.PAYSTACK_PAYMENT_CONFIRMATION:
+        return this.processPaystackPaymentConfirmation(job);
       case BackgroundJobType.RATE_LIMIT_BUCKET_CLEANUP:
         return this.processRateLimitBucketCleanup(job);
       case BackgroundJobType.IDEMPOTENCY_RECORD_CLEANUP:
@@ -401,6 +402,189 @@ export class JobWorkerService {
       mode: "notification_records_marked",
       message: "Notification delivery adapter can replace this marker with real push/email/SMS transport."
     });
+  }
+
+  private async processPaystackPaymentConfirmation(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
+    const payload = this.asRecord(job.payload);
+    const event = this.asString(payload.event);
+    const reference = this.asString(payload.reference);
+    const status = this.asString(payload.status);
+    const amountMinor = this.asNumber(payload.amountMinor, 1, Number.MAX_SAFE_INTEGER, 0);
+    const currency = (this.asString(payload.currency) ?? "NGN").toUpperCase();
+    const paidAt = this.asDate(payload.paidAt) ?? new Date();
+
+    if (event !== "charge.success") {
+      return this.toJson({
+        mode: "ignored_paystack_event",
+        event,
+        message: "Only charge.success events confirm record request payments."
+      });
+    }
+    if (status && status !== "success") {
+      return this.toJson({
+        mode: "ignored_paystack_status",
+        event,
+        status,
+        reference
+      });
+    }
+    if (!reference) {
+      throw new NonRetryableJobError("Paystack payment confirmation requires a transaction reference.");
+    }
+    if (!amountMinor) {
+      throw new NonRetryableJobError("Paystack payment confirmation requires a positive amount.");
+    }
+
+    const request = await this.findRecordRequestForPayment({
+      recordRequestId: this.asString(payload.recordRequestId),
+      requestId: this.asString(payload.requestId),
+      reference
+    });
+    if (!request) {
+      throw new Error(`Record request for Paystack reference ${reference} was not found.`);
+    }
+    if (["REJECTED", "CANCELLED", "FULFILLED"].includes(request.status)) {
+      throw new NonRetryableJobError(`Payment cannot be confirmed for closed record request ${request.requestId}.`);
+    }
+    if (request.paymentStatus === "PAID") {
+      if (!request.paymentReference || request.paymentReference === reference) {
+        return this.toJson({
+          mode: "already_confirmed",
+          recordRequestId: request.uuid,
+          requestId: request.requestId,
+          reference,
+          paymentStatus: request.paymentStatus,
+          escrowStatus: request.escrowStatus
+        });
+      }
+      throw new NonRetryableJobError(`Record request ${request.requestId} is already paid with another reference.`);
+    }
+
+    const expectedAmount = request.amountMinor ?? amountMinor;
+    if (!expectedAmount || expectedAmount <= 0) {
+      throw new NonRetryableJobError(`Record request ${request.requestId} does not have a payable amount.`);
+    }
+    if (amountMinor < expectedAmount) {
+      throw new NonRetryableJobError(`Paystack payment ${reference} is below the required amount for ${request.requestId}.`);
+    }
+    if (request.currency && request.currency.toUpperCase() !== currency) {
+      throw new NonRetryableJobError(`Paystack payment ${reference} currency does not match record request ${request.requestId}.`);
+    }
+
+    const notes = this.appendRecordRequestNote(request.notes, {
+      at: paidAt.toISOString(),
+      by: "paystack-webhook",
+      role: "SYSTEM",
+      status: request.status,
+      note: "Payment confirmed by signed Paystack webhook and held in escrow.",
+      paymentReference: reference,
+      jobId: job.uuid
+    });
+
+    const updated = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const recordRequest = await tx.recordRequest.update({
+        where: { uuid: request.uuid },
+        data: {
+          status: request.status === "AWAITING_PAYMENT" ? "SUBMITTED" : request.status,
+          paymentStatus: "PAID",
+          escrowStatus: "HELD",
+          paymentReference: reference,
+          paymentProvider: "PAYSTACK",
+          amountMinor: expectedAmount,
+          currency,
+          paymentHeldAt: paidAt,
+          notes
+        },
+        select: {
+          uuid: true,
+          requestId: true,
+          institutionId: true,
+          status: true,
+          paymentStatus: true,
+          escrowStatus: true,
+          amountMinor: true,
+          currency: true,
+          paymentReference: true
+        }
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          actorType: "SYSTEM",
+          action: "record_request.payment_confirmed",
+          targetType: "RecordRequest",
+          targetId: recordRequest.uuid,
+          entityType: "RecordRequest",
+          entityId: recordRequest.uuid,
+          institutionId: recordRequest.institutionId,
+          outcome: "SUCCESS",
+          metadata: this.toJson({
+            source: "paystack_webhook",
+            requestId: recordRequest.requestId,
+            reference,
+            amountMinor: recordRequest.amountMinor,
+            currency: recordRequest.currency,
+            paymentProvider: "PAYSTACK",
+            escrowStatus: recordRequest.escrowStatus,
+            jobId: job.uuid
+          })
+        }
+      });
+
+      return recordRequest;
+    });
+
+    return this.toJson({
+      mode: "record_request_payment_confirmed",
+      recordRequestId: updated.uuid,
+      requestId: updated.requestId,
+      status: updated.status,
+      paymentStatus: updated.paymentStatus,
+      escrowStatus: updated.escrowStatus,
+      reference: updated.paymentReference,
+      amountMinor: updated.amountMinor,
+      currency: updated.currency
+    });
+  }
+
+  private async findRecordRequestForPayment(input: { recordRequestId?: string; requestId?: string; reference: string }) {
+    if (input.recordRequestId && this.isUuid(input.recordRequestId)) {
+      const request = await this.prisma.recordRequest.findUnique({
+        where: { uuid: input.recordRequestId },
+        select: this.recordRequestPaymentSelect()
+      });
+      if (request) return request;
+    }
+
+    if (input.requestId) {
+      const request = await this.prisma.recordRequest.findUnique({
+        where: { requestId: input.requestId },
+        select: this.recordRequestPaymentSelect()
+      });
+      if (request) return request;
+    }
+
+    return this.prisma.recordRequest.findFirst({
+      where: {
+        OR: [{ paymentReference: input.reference }, { requestId: input.reference }]
+      },
+      select: this.recordRequestPaymentSelect()
+    });
+  }
+
+  private recordRequestPaymentSelect() {
+    return {
+      uuid: true,
+      requestId: true,
+      institutionId: true,
+      status: true,
+      paymentStatus: true,
+      escrowStatus: true,
+      paymentReference: true,
+      amountMinor: true,
+      currency: true,
+      notes: true
+    } satisfies Prisma.RecordRequestSelect;
   }
 
   private async processRateLimitBucketCleanup(job: ClaimedJob): Promise<Prisma.InputJsonValue> {
@@ -615,6 +799,17 @@ export class JobWorkerService {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   }
 
+  private asString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  private asDate(value: unknown): Date | undefined {
+    const text = this.asString(value);
+    if (!text) return undefined;
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+
   private asNumber(value: unknown, min: number, max: number, fallback: number) {
     const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
     if (!Number.isFinite(parsed)) return fallback;
@@ -629,6 +824,15 @@ export class JobWorkerService {
       typeof request.storageUrl === "string" &&
       request.storageUrl.startsWith("pending://")
     );
+  }
+
+  private appendRecordRequestNote(existing: Prisma.JsonValue, note: Record<string, unknown>): Prisma.InputJsonValue {
+    const notes = Array.isArray(existing) ? existing : [];
+    return this.toJson([...notes, note]);
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {
