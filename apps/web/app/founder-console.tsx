@@ -2596,6 +2596,7 @@ function OverviewPage({
           <ListBlock
             empty="No institution applications yet."
             items={recentApplications.map((application) => ({
+              id: application.uuid,
               title: application.officialName,
               meta: `${titleCase(application.type)} / ${application.state}`,
               status: titleCase(application.status),
@@ -2611,7 +2612,7 @@ function OverviewPage({
         </Card>
         <Card>
           <SectionTitle title="Latest Audit Events" subtitle="Recent control-plane activity" />
-          <ListBlock empty="No audit events recorded yet." items={latestEvents.map((event) => ({ title: event.label, meta: event.institutionName ?? event.actorName, status: event.outcome, date: formatDate(event.createdAt) }))} />
+          <ListBlock empty="No audit events recorded yet." items={latestEvents.map((event) => ({ id: event.id, title: event.label, meta: event.institutionName ?? event.actorName, status: event.outcome, date: formatDate(event.createdAt) }))} />
         </Card>
         <SystemHealthCompact health={systemHealth} />
       </div>
@@ -4095,6 +4096,7 @@ function SecurityPage(props: {
             <ListBlock
               empty="No founder login audit events recorded yet."
               items={loginEvents.map((event) => ({
+                id: event.id,
                 title: event.actorName,
                 meta: event.actorEmail ?? event.actorRole ?? "Founder",
                 status: event.outcome,
@@ -4107,6 +4109,7 @@ function SecurityPage(props: {
             <ListBlock
               empty="No API key security events recorded yet."
               items={apiSecurityEvents.map((event) => ({
+                id: event.id,
                 title: event.label,
                 meta: event.institutionName ?? event.actorName,
                 status: event.outcome,
@@ -4328,6 +4331,7 @@ function InstitutionDetail({
       <ListBlock
         empty="No audit trail events for this institution yet."
         items={institutionAuditEvents.map((event) => ({
+          id: event.id,
           title: event.label,
           meta: event.actorName,
           status: event.outcome,
@@ -4507,9 +4511,9 @@ function ScopePicker({ recommendedScopes = [], selected, onToggle }: { recommend
   );
 }
 
-function ListBlock({ items, empty }: { items: { title: string; meta: string; status?: string; date?: string }[]; empty: string }) {
+function ListBlock({ items, empty }: { items: { id?: string; title: string; meta: string; status?: string; date?: string }[]; empty: string }) {
   if (!items.length) return <EmptyState text={empty} />;
-  return <div className="mt-4 divide-y divide-borderLight">{items.map((item, index) => <div key={`${item.title}-${item.date}-${index}`} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-primary">{item.title}</p><p className="text-xs text-textSecondary">{item.meta}</p></div><div className="text-right">{item.status ? <StatusBadge status={item.status} /> : null}<p className="mt-1 text-xs text-textSecondary">{item.date}</p></div></div>)}</div>;
+  return <div className="mt-4 divide-y divide-borderLight">{items.map((item, index) => <div key={item.id ?? `${item.title}-${item.date ?? "no-date"}-${index}`} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-primary">{item.title}</p><p className="text-xs text-textSecondary">{item.meta}</p></div><div className="text-right">{item.status ? <StatusBadge status={item.status} /> : null}<p className="mt-1 text-xs text-textSecondary">{item.date}</p></div></div>)}</div>;
 }
 
 function SystemHealthCompact({ health }: { health: SystemHealth | null }) {
