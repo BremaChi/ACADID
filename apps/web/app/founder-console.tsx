@@ -2404,6 +2404,7 @@ export function FounderConsole() {
           onGenerateKey={() => setActivePage("API Keys")}
           onViewApplications={() => setActivePage("Institution Applications")}
           systemHealth={systemHealth}
+          tab={activeWorkspaceTab}
         />
       );
     }
@@ -2450,6 +2451,7 @@ export function FounderConsole() {
           onUpdateInvitationLead={updateInvitationLead}
           onViewHealth={() => setActivePage("System Health")}
           operations={academicOperations}
+          tab={activeWorkspaceTab}
         />
       );
     }
@@ -2499,6 +2501,7 @@ export function FounderConsole() {
           productApiKeys={productApiKeys}
           productKeyForm={productKeyForm}
           selectedInstitutionId={selectedInstitutionId}
+          tab={activeWorkspaceTab}
         />
       );
     }
@@ -2555,11 +2558,14 @@ export function FounderConsole() {
           onSelectRequest={setSelectedRecordRequestId}
           onStatusFilter={setRecordRequestStatusFilter}
           onReviewStatus={setRecordRequestReviewStatus}
+          onUpdateInvitationLead={updateInvitationLead}
+          invitationLeads={invitationLeads}
           requests={filteredRecordRequests}
           reviewStatus={recordRequestReviewStatus}
           search={recordRequestSearch}
           selectedRequest={selectedRecordRequest}
           statusFilter={recordRequestStatusFilter}
+          tab={activeWorkspaceTab}
           totalRequests={recordRequests}
         />
       );
@@ -2573,6 +2579,7 @@ export function FounderConsole() {
           onSearch={setVerificationSearch}
           outcomeFilter={verificationOutcomeFilter}
           search={verificationSearch}
+          tab={activeWorkspaceTab}
         />
       );
     }
@@ -2580,7 +2587,7 @@ export function FounderConsole() {
       return <BackgroundJobsPage deadLetters={deadLetters} health={systemHealth} loading={loading} onRetryDeadLetterJob={retryDeadLetterJob} onRetryNotification={retryNotification} tab={activeWorkspaceTab} />;
     }
     if (activePage === "Revenue") {
-      return <RevenuePage revenue={revenueOverview} />;
+      return <RevenuePage revenue={revenueOverview} tab={activeWorkspaceTab} />;
     }
     if (activePage === "Billing") {
       return <BillingPage revenue={revenueOverview} tab={activeWorkspaceTab} />;
@@ -2613,6 +2620,7 @@ export function FounderConsole() {
           rateLimitPolicy={rateLimitPolicy}
           rateLimitPolicyForm={rateLimitPolicyForm}
           selectedInstitutionId={selectedInstitutionId}
+          tab={activeWorkspaceTab}
           webhookDeliveries={webhookDeliveries}
           webhookEndpointForm={webhookEndpointForm}
           webhookEndpoints={webhookEndpoints}
@@ -2639,13 +2647,14 @@ export function FounderConsole() {
           setNewRecoveryCodes={setNewRecoveryCodes}
           setRecoveryRotateCode={setRecoveryRotateCode}
           setTotpEnableCode={setTotpEnableCode}
+          tab={activeWorkspaceTab}
           newRecoveryCodes={newRecoveryCodes}
           totpEnableCode={totpEnableCode}
           totpSetup={totpSetup}
         />
       );
     }
-    return <SettingsPage founderName={founderName} loading={loading} onSave={handleSaveSettings} settings={platformSettings} />;
+    return <SettingsPage founderName={founderName} loading={loading} onSave={handleSaveSettings} settings={platformSettings} tab={activeWorkspaceTab} />;
   }
 }
 
@@ -2657,7 +2666,8 @@ function OverviewPage({
   metrics,
   onGenerateKey,
   onViewApplications,
-  systemHealth
+  systemHealth,
+  tab
 }: {
   apiKeys: GlobalApiKey[];
   applications: InstitutionApplication[];
@@ -2667,9 +2677,53 @@ function OverviewPage({
   onGenerateKey: () => void;
   onViewApplications: () => void;
   systemHealth: SystemHealth | null;
+  tab: string;
 }) {
   const recentApplications = applications.slice(0, 5);
   const latestEvents = dashboardSummary?.latestAuditEvents ?? [];
+
+  if (tab === "Alerts") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <SectionTitle title="Pending Applications" subtitle="Institution applications waiting for founder review." />
+          <ListBlock
+            empty="No pending institution applications."
+            items={recentApplications.map((application) => ({
+              id: application.uuid,
+              title: application.officialName,
+              meta: `${titleCase(application.type)} / ${application.state}`,
+              status: titleCase(application.status),
+              date: formatDate(application.createdAt)
+            }))}
+          />
+        </Card>
+        <SystemHealthCompact health={systemHealth} />
+      </div>
+    );
+  }
+
+  if (tab === "Recent Activity") {
+    return (
+      <Card>
+        <SectionTitle title="Recent Activity" subtitle="Latest control-plane activity." />
+        <ListBlock empty="No audit events recorded yet." items={latestEvents.map((event) => ({ id: event.id, title: event.label, meta: event.institutionName ?? event.actorName, status: event.outcome, date: formatDate(event.createdAt) }))} />
+      </Card>
+    );
+  }
+
+  if (tab === "Revenue Snapshot") {
+    return (
+      <Card>
+        <SectionTitle title="Revenue Snapshot" subtitle="High-level platform revenue belongs here once revenue ledger summaries are loaded into the overview payload." />
+        <EmptyState text="Revenue snapshot is not yet included in the overview endpoint. Use the Revenue workspace for current ledger totals." />
+      </Card>
+    );
+  }
+
+  if (tab === "System Health") {
+    return <SystemHealthCompact health={systemHealth} />;
+  }
 
   return (
     <div className="space-y-5">
@@ -2840,13 +2894,15 @@ function AcademicOperationsPage({
   loading,
   onUpdateInvitationLead,
   operations,
-  onViewHealth
+  onViewHealth,
+  tab
 }: {
   invitationLeads: InvitationLead[];
   loading: boolean;
   onUpdateInvitationLead: (id: string, status: InvitationLeadStatus) => void;
   operations: AcademicOperations | null;
   onViewHealth: () => void;
+  tab: string;
 }) {
   const metrics = operations?.metrics;
   const institutionHealth = operations?.institutionHealth ?? [];
@@ -2855,6 +2911,48 @@ function AcademicOperationsPage({
   const completionAverage = institutionHealth.length
     ? Math.round(institutionHealth.reduce((sum, institution) => sum + institution.completionScore, 0) / institutionHealth.length)
     : 0;
+
+  const gradingRuleGaps = institutionHealth.filter((institution) => (institution.activeGradingRules ?? 0) === 0);
+  const subjectCourseGaps = institutionHealth.filter((institution) => (institution.subjectCourseNodes ?? 0) === 0);
+  const unscopedStaff = institutionHealth.filter((institution) => (institution.unscopedStaff ?? 0) > 0);
+  const validationBacklog = institutionHealth.filter((institution) => (institution.validationJobsAttention ?? 0) > 0);
+
+  const institutionIssueTable = (rows: typeof institutionHealth, empty: string) => (
+    <ResponsiveTable
+      empty={empty}
+      headers={["Institution", "Setup", "Sessions", "Structure", "Rules", "Staff", "Jobs", "Flags"]}
+      rows={rows.map((institution) => [
+        <div key="institution"><p className="font-medium text-primary">{institution.institutionName}</p><p className="text-xs text-textSecondary">{institution.institutionId} / {institution.state}</p></div>,
+        <StatusBadge key="setup" status={`${institution.completionScore}% Ready`} />,
+        `${institution.activeSessions} active / ${institution.sealedSessions} sealed`,
+        `${institution.structureNodes.toLocaleString()} nodes / ${(institution.subjectCourseNodes ?? 0).toLocaleString()} subjects-courses`,
+        `${institution.activeGradingRules ?? 0} active`,
+        `${institution.scopedStaff ?? 0} scoped / ${institution.unscopedStaff ?? 0} unscoped`,
+        `${institution.validationJobsAttention ?? 0} attention`,
+        institution.flags.length ? institution.flags.slice(0, 3).join(", ") : "Clear"
+      ])}
+    />
+  );
+
+  if (tab === "Missing Grading Rules") {
+    return <Card><SectionTitle title="Missing Grading Rules" subtitle="Institutions without active grading configuration." />{institutionIssueTable(gradingRuleGaps, "No institutions are missing grading rules.")}</Card>;
+  }
+
+  if (tab === "Missing Subjects/Courses") {
+    return <Card><SectionTitle title="Missing Subjects or Courses" subtitle="Institutions with no configured subject/course nodes." />{institutionIssueTable(subjectCourseGaps, "No institutions are missing subjects or courses.")}</Card>;
+  }
+
+  if (tab === "Unscoped Staff") {
+    return <Card><SectionTitle title="Unscoped Staff" subtitle="Institutions with staff who still need academic scope assignment." />{institutionIssueTable(unscopedStaff, "No institutions have unscoped staff.")}</Card>;
+  }
+
+  if (tab === "Validation Jobs") {
+    return <Card><SectionTitle title="Validation Jobs" subtitle="Institutions with academic validation jobs needing attention." />{institutionIssueTable(validationBacklog, "No validation jobs need founder attention.")}</Card>;
+  }
+
+  if (tab === "Academic Structure Issues") {
+    return <Card><SectionTitle title="Academic Structure Issues" subtitle="Institutions needing setup attention before academic operations are considered ready." />{institutionIssueTable(atRiskInstitutions, "No academic operations issues detected.")}</Card>;
+  }
 
   return (
     <div className="space-y-5">
@@ -3115,39 +3213,63 @@ function ApiKeysPage(props: {
   productApiKeys: GlobalApiKey[];
   productKeyForm: { productCode: string; productName: string; label: string; environment: "SANDBOX" | "PRODUCTION"; rateLimitPerMinute: number; scopes: string[] };
   selectedInstitutionId: string;
+  tab: string;
 }) {
-  return (
-    <div className="space-y-5">
+  if (props.tab === "Generate Key") {
+    return (
       <div className="grid gap-5 xl:grid-cols-2">
         <ProductApiKeyForm {...props} />
         <InstitutionApiKeyForm {...props} />
       </div>
+    );
+  }
+
+  if (props.tab === "Usage Logs") {
+    return (
       <Card>
-        <SectionTitle title="API Key Registry" subtitle="Product keys and approved institution Live Results keys." />
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <input className={`${inputClass} md:col-span-2`} placeholder="Search API keys" value={props.apiKeySearch} onChange={(event) => props.onUpdateSearch(event.target.value)} />
-          <FilterSelect value={props.apiKeyOwnerFilter} onChange={props.onOwnerFilter} options={["ALL", "PRODUCT", "INSTITUTION"]} />
-          <FilterSelect value={props.apiKeyStatusFilter} onChange={props.onStatusFilter} options={["ALL", "ACTIVE", "REVOKED", "EXPIRED"]} />
-        </div>
+        <SectionTitle title="API Key Usage Logs" subtitle="Last-used activity for product and institution keys." />
         <ResponsiveTable
-          empty="No API keys match your search or filters."
-          headers={["Key", "Owner", "Environment", "Scopes", "Rate", "Last Used", "Status", "Action"]}
+          empty="No API key usage has been recorded yet."
+          headers={["Key", "Owner", "Environment", "Scopes", "Last Used", "Status"]}
           rows={props.filteredApiKeys.map((apiKey) => [
             <div key="key"><p className="font-medium text-primary">{apiKey.label}</p><p className="font-mono text-xs text-textSecondary">{apiKey.clientId}</p></div>,
-            <div key="owner"><p>{apiKey.ownerLabel ?? "Unassigned"}</p><p className="text-xs text-textSecondary">{apiKey.ownerType} / {apiKey.ownerReference ?? "No reference"}</p></div>,
+            apiKey.ownerLabel ?? "Unassigned",
             titleCase(apiKey.environment),
             <span key="scopes" className="text-xs">{apiKey.scopes.join(", ")}</span>,
-            `${apiKey.rateLimitPerMinute}/min`,
             apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never",
-            <StatusBadge key="status" status={apiKey.status} />,
-            <div key="actions" className="flex gap-2">
-              <button className={secondaryButtonClass} disabled={props.loading} onClick={() => props.onRegenerate(apiKey.uuid)} type="button">Regenerate</button>
-              <button className={secondaryButtonClass} disabled={apiKey.status !== "ACTIVE" || props.loading} onClick={() => props.onRevoke(apiKey.uuid)} type="button">Revoke</button>
-            </div>
+            <StatusBadge key="status" status={apiKey.status} />
           ])}
         />
       </Card>
-    </div>
+    );
+  }
+
+  return (
+    <Card>
+      <SectionTitle title={props.tab} subtitle="Product keys and approved institution Live Results keys." />
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <input className={`${inputClass} md:col-span-2`} placeholder="Search API keys" value={props.apiKeySearch} onChange={(event) => props.onUpdateSearch(event.target.value)} />
+        <FilterSelect value={props.apiKeyOwnerFilter} onChange={props.onOwnerFilter} options={["ALL", "PRODUCT", "INSTITUTION"]} />
+        <FilterSelect value={props.apiKeyStatusFilter} onChange={props.onStatusFilter} options={["ALL", "ACTIVE", "REVOKED", "EXPIRED"]} />
+      </div>
+      <ResponsiveTable
+        empty="No API keys match your search or filters."
+        headers={["Key", "Owner", "Environment", "Scopes", "Rate", "Last Used", "Status", "Action"]}
+        rows={props.filteredApiKeys.map((apiKey) => [
+          <div key="key"><p className="font-medium text-primary">{apiKey.label}</p><p className="font-mono text-xs text-textSecondary">{apiKey.clientId}</p></div>,
+          <div key="owner"><p>{apiKey.ownerLabel ?? "Unassigned"}</p><p className="text-xs text-textSecondary">{apiKey.ownerType} / {apiKey.ownerReference ?? "No reference"}</p></div>,
+          titleCase(apiKey.environment),
+          <span key="scopes" className="text-xs">{apiKey.scopes.join(", ")}</span>,
+          `${apiKey.rateLimitPerMinute}/min`,
+          apiKey.lastUsedAt ? formatDate(apiKey.lastUsedAt) : "Never",
+          <StatusBadge key="status" status={apiKey.status} />,
+          <div key="actions" className="flex gap-2">
+            <button className={secondaryButtonClass} disabled={props.loading} onClick={() => props.onRegenerate(apiKey.uuid)} type="button">Regenerate</button>
+            <button className={secondaryButtonClass} disabled={apiKey.status !== "ACTIVE" || props.loading} onClick={() => props.onRevoke(apiKey.uuid)} type="button">Revoke</button>
+          </div>
+        ])}
+      />
+    </Card>
   );
 }
 
@@ -3360,6 +3482,7 @@ function DisputesPage({
 }
 
 function RecordRequestsPage({
+  invitationLeads,
   loading,
   note,
   onNote,
@@ -3368,13 +3491,16 @@ function RecordRequestsPage({
   onSearch,
   onSelectRequest,
   onStatusFilter,
+  onUpdateInvitationLead,
   requests,
   reviewStatus,
   search,
   selectedRequest,
   statusFilter,
+  tab,
   totalRequests
 }: {
+  invitationLeads: InvitationLead[];
   loading: boolean;
   note: string;
   onNote: (value: string) => void;
@@ -3383,11 +3509,13 @@ function RecordRequestsPage({
   onSearch: (value: string) => void;
   onSelectRequest: (id: string) => void;
   onStatusFilter: (value: string) => void;
+  onUpdateInvitationLead: (id: string, status: InvitationLeadStatus) => void;
   requests: RecordRequest[];
   reviewStatus: RecordRequestStatus;
   search: string;
   selectedRequest: RecordRequest | null;
   statusFilter: string;
+  tab: string;
   totalRequests: RecordRequest[];
 }) {
   const openCount = totalRequests.filter((request) => ["SUBMITTED", "AWAITING_PAYMENT", "ASSIGNED", "INSTITUTION_REVIEW", "NEEDS_MORE_INFORMATION"].includes(request.status)).length;
@@ -3405,6 +3533,42 @@ function RecordRequestsPage({
     "ESCALATED",
     "CANCELLED"
   ];
+  const visibleRequests = requests.filter((request) => {
+    if (tab === "Overdue") return request.status === "ESCALATED" || (request.status !== "FULFILLED" && daysSince(request.submittedAt) >= 14);
+    if (tab === "Escalated") return request.status === "ESCALATED";
+    if (tab === "Completed") return request.status === "FULFILLED";
+    return !["FULFILLED", "REJECTED", "CANCELLED"].includes(request.status);
+  });
+
+  if (tab === "Invitation Leads") {
+    return (
+      <Card>
+        <SectionTitle title="Invitation Leads" subtitle="Unregistered institutions graduates are requesting records from." />
+        <ResponsiveTable
+          empty="No unregistered institution demand has been captured yet."
+          headers={["Institution", "Demand", "Latest Request", "Status", "Last Activity", "Actions"]}
+          rows={invitationLeads.map((lead) => [
+            <div key="institution">
+              <p className="font-medium text-primary">{lead.institutionName}</p>
+              <p className="text-xs text-textSecondary">{lead.educationLevel ?? "Education level pending"}{lead.stateHint ? ` / ${lead.stateHint}` : ""}</p>
+            </div>,
+            <div key="demand">
+              <p className="font-medium text-primary">{lead.demandCount.toLocaleString()} request{lead.demandCount === 1 ? "" : "s"}</p>
+              <p className="text-xs text-textSecondary">{lead.requesterCount.toLocaleString()} requester signal{lead.requesterCount === 1 ? "" : "s"}</p>
+            </div>,
+            <span key="request" className="font-mono text-xs text-primary">{lead.latestRecordRequestCode ?? "No request code"}</span>,
+            <StatusBadge key="status" status={lead.status} />,
+            formatDate(lead.lastRequestedAt),
+            <div key="actions" className="flex flex-wrap gap-2">
+              <button className={secondaryButtonClass} disabled={loading || lead.status === "CONTACTED"} onClick={() => onUpdateInvitationLead(lead.uuid, "CONTACTED")} type="button">Contacted</button>
+              <button className={primarySmallButtonClass} disabled={loading || lead.status === "INVITED"} onClick={() => onUpdateInvitationLead(lead.uuid, "INVITED")} type="button">Invited</button>
+              <button className={secondaryButtonClass} disabled={loading || lead.status === "DISMISSED"} onClick={() => onUpdateInvitationLead(lead.uuid, "DISMISSED")} type="button">Dismiss</button>
+            </div>
+          ])}
+        />
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_0.82fr]">
@@ -3428,7 +3592,7 @@ function RecordRequestsPage({
         <ResponsiveTable
           empty="No record requests match this search or status filter."
           headers={["Request", "Learner", "Institution", "Records", "Status", "Submitted", "Action"]}
-          rows={requests.map((request) => [
+          rows={visibleRequests.map((request) => [
             <div key="request">
               <p className="font-mono text-xs font-semibold text-primary">{request.requestId}</p>
               <p className="text-xs text-textSecondary">{request.educationLevel}{formatYears(request) ? ` / ${formatYears(request)}` : ""}</p>
@@ -3508,7 +3672,8 @@ function VerificationLogsPage({
   onOutcomeFilter,
   onSearch,
   outcomeFilter,
-  search
+  search,
+  tab
 }: {
   allLogs: VerificationLog[];
   logs: VerificationLog[];
@@ -3516,6 +3681,7 @@ function VerificationLogsPage({
   onSearch: (value: string) => void;
   outcomeFilter: string;
   search: string;
+  tab: string;
 }) {
   const confirmed = allLogs.filter((log) => log.outcome === "CONFIRMED").length;
   const denied = allLogs.filter((log) => log.outcome === "DENIED").length;
@@ -3547,39 +3713,31 @@ function VerificationLogsPage({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Verification Events" value={allLogs.length} helper="Last 500 events" tone="accent" icon="Verification Logs" />
-        <MetricCard label="Confirmed" value={confirmed} helper="Successful checks" tone="success" icon="Verification Logs" />
-        <MetricCard label="Denied" value={denied} helper="Blocked or invalid access" tone="warning" icon="Verification Logs" />
-        <MetricCard label="Risk Events" value={riskEvents} helper="Discrepancy or revoked" tone="error" icon="Security" />
+    <Card>
+      <SectionTitle title={tab} subtitle={`Loaded events: ${allLogs.length}. Confirmed ${confirmed}, denied ${denied}, risk ${riskEvents}.`} />
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_120px]">
+        <input className={inputClass} placeholder="Search AIN, institution, verifier, credential..." value={search} onChange={(event) => onSearch(event.target.value)} />
+        <FilterSelect value={outcomeFilter} onChange={onOutcomeFilter} options={["ALL", "CONFIRMED", "DENIED", "DISCREPANCY", "REVOKED"]} />
+        <button className={secondaryButtonClass} disabled={!logs.length} onClick={exportCsv} type="button">Export CSV</button>
       </div>
-      <Card>
-        <SectionTitle title="Verification Logs" subtitle="Credential verification events and consent scope shown." />
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_120px]">
-          <input className={inputClass} placeholder="Search AIN, institution, verifier, credential..." value={search} onChange={(event) => onSearch(event.target.value)} />
-          <FilterSelect value={outcomeFilter} onChange={onOutcomeFilter} options={["ALL", "CONFIRMED", "DENIED", "DISCREPANCY", "REVOKED"]} />
-          <button className={secondaryButtonClass} disabled={!logs.length} onClick={exportCsv} type="button">Export CSV</button>
-        </div>
-        <ResponsiveTable
-          empty="No verification logs match this search or filter."
-          headers={["AIN", "Institution", "Verifier", "Credential", "Outcome", "Scope", "Verified"]}
-          rows={logs.map((log) => [
-            <div key="ain"><p className="font-medium text-primary">{log.ain}</p><p className="text-xs text-textSecondary">{log.learnerName}</p></div>,
-            <div key="institution"><p>{log.institutionName}</p><p className="text-xs text-textSecondary">{log.institutionId} / {log.institutionState}</p></div>,
-            <div key="verifier"><p>{log.verifier}</p><p className="text-xs text-textSecondary">{titleCase(log.verifierType)}</p></div>,
-            <div key="credential"><p className="font-mono text-xs text-primary">{log.credential}</p><p className="text-xs text-textSecondary">{titleCase(log.credentialType)} / {titleCase(log.credentialStatus)}</p></div>,
-            <StatusBadge key="status" status={log.outcome} />,
-            log.scopeShown,
-            formatDate(log.verifiedAt)
-          ])}
-        />
-      </Card>
-    </div>
+      <ResponsiveTable
+        empty="No verification logs match this search or filter."
+        headers={["AIN", "Institution", "Verifier", "Credential", "Outcome", "Scope", "Verified"]}
+        rows={logs.map((log) => [
+          <div key="ain"><p className="font-medium text-primary">{log.ain}</p><p className="text-xs text-textSecondary">{log.learnerName}</p></div>,
+          <div key="institution"><p>{log.institutionName}</p><p className="text-xs text-textSecondary">{log.institutionId} / {log.institutionState}</p></div>,
+          <div key="verifier"><p>{log.verifier}</p><p className="text-xs text-textSecondary">{titleCase(log.verifierType)}</p></div>,
+          <div key="credential"><p className="font-mono text-xs text-primary">{log.credential}</p><p className="text-xs text-textSecondary">{titleCase(log.credentialType)} / {titleCase(log.credentialStatus)}</p></div>,
+          <StatusBadge key="status" status={log.outcome} />,
+          log.scopeShown,
+          formatDate(log.verifiedAt)
+        ])}
+      />
+    </Card>
   );
 }
 
-function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
+function RevenuePage({ revenue, tab }: { revenue: RevenueOverview | null; tab: string }) {
   const verificationFees = revenue?.categoryBreakdown.find((entry) => entry.category === "VERIFICATION_FEE");
   const credentialExports = revenue?.categoryBreakdown.find((entry) => entry.category === "CREDENTIAL_EXPORT_FEE");
   const subscriptions = revenue?.categoryBreakdown.find((entry) => entry.category === "INSTITUTION_SUBSCRIPTION");
@@ -3606,6 +3764,53 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
     link.download = `acadid-revenue-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  if (tab === "Institution Earnings") {
+    return (
+      <Card>
+        <SectionTitle title="Institution Earnings" subtitle="Revenue ledger entries tied to institution partners." />
+        <ResponsiveTable
+          empty="No institution-linked revenue entries yet."
+          headers={["Institution", "Category", "Amount", "Status", "Occurred"]}
+          rows={(revenue?.recentEntries ?? []).filter((entry) => entry.institutionId).map((entry) => [
+            <div key="institution"><p>{entry.institutionName ?? "Institution"}</p><p className="text-xs text-textSecondary">{entry.institutionId}</p></div>,
+            titleCase(entry.category),
+            formatMoney(entry.amountMinor, entry.currency),
+            <StatusBadge key="status" status={entry.status} />,
+            formatDate(entry.occurredAt)
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "AcadID Earnings") {
+    return (
+      <Card>
+        <SectionTitle title="AcadID Earnings" subtitle="Platform-owned ledger entries with no institution owner." />
+        <ResponsiveTable
+          empty="No platform-only revenue entries yet."
+          headers={["Category", "Amount", "Source", "Status", "Occurred"]}
+          rows={(revenue?.recentEntries ?? []).filter((entry) => !entry.institutionId).map((entry) => [
+            titleCase(entry.category),
+            formatMoney(entry.amountMinor, entry.currency),
+            entry.sourceType,
+            <StatusBadge key="status" status={entry.status} />,
+            formatDate(entry.occurredAt)
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "Escrow" || tab === "Payouts") {
+    return (
+      <Card>
+        <SectionTitle title={tab} subtitle="Reserved revenue workspace." />
+        <EmptyState text={`${tab} ledger support is not exposed by the current backend yet. This tab is kept ready for the payment-ledger phase instead of mixing placeholder numbers into the overview.`} />
+      </Card>
+    );
   }
 
   return (
@@ -3663,56 +3868,103 @@ function RevenuePage({ revenue }: { revenue: RevenueOverview | null }) {
 function BillingPage({ revenue, tab }: { revenue: RevenueOverview | null; tab: string }) {
   const entries = revenue?.recentEntries ?? [];
   const openEntries = entries.filter((entry) => ["BILLABLE", "INVOICED", "PENDING"].includes(entry.status));
-  const rows = tab === "Invoices" ? openEntries : entries;
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Open Billing" value={formatMoney(revenue?.totals.pendingThisMonthMinor ?? 0, revenue?.currency)} helper={`${revenue?.totals.openLedgerEntries ?? 0} open ledger entries`} tone="warning" icon="Billing" />
-        <MetricCard label="Paid This Month" value={formatMoney(revenue?.totals.paidThisMonthMinor ?? 0, revenue?.currency)} helper="Confirmed payments" tone="success" icon="Revenue" />
-        <MetricCard label="Subscriptions" value={revenue?.totals.activeSubscriptions ?? 0} helper="Active or trialing institutions" tone="accent" icon="Institutions" />
-      </div>
+  const rows = tab === "Invoices"
+    ? openEntries
+    : tab === "Payment Events"
+      ? entries.filter((entry) => ["PAID", "FAILED", "PENDING"].includes(entry.status))
+      : entries;
+
+  if (tab === "Fee Rules" || tab === "Exports") {
+    return (
       <Card>
-        <SectionTitle title={tab} subtitle="Billing workspace for subscriptions, invoices, fee rules, and exports." />
+        <SectionTitle title={tab} subtitle="Billing configuration workspace." />
+        <EmptyState text={`${tab} is reserved for the next billing implementation slice. It stays separate so billing controls do not clutter subscription and invoice review.`} />
+      </Card>
+    );
+  }
+
+  if (tab === "Subscriptions") {
+    return (
+      <Card>
+        <SectionTitle title="Subscriptions" subtitle="Institution subscription plans and renewal dates." />
         <ResponsiveTable
-          empty="No billing records yet. Billing events will appear after verification, export, or subscription activity."
-          headers={["Institution", "Category", "Amount", "Status", "Source", "Occurred"]}
-          rows={rows.map((entry) => [
-            <div key="institution"><p>{entry.institutionName ?? "Platform"}</p><p className="text-xs text-textSecondary">{entry.institutionId ?? "No institution link"}</p></div>,
-            titleCase(entry.category),
-            formatMoney(entry.amountMinor, entry.currency),
-            <StatusBadge key="status" status={entry.status} />,
-            entry.sourceType,
-            formatDate(entry.occurredAt)
+          empty="No institution subscriptions are configured yet."
+          headers={["Institution", "Plan", "Amount", "Status", "Next Billing"]}
+          rows={(revenue?.subscriptions ?? []).map((subscription) => [
+            <div key="institution"><p>{subscription.institutionName}</p><p className="text-xs text-textSecondary">{subscription.institutionId}</p></div>,
+            subscription.planCode,
+            `${formatMoney(subscription.amountMinor, subscription.currency)} / ${titleCase(subscription.billingInterval)}`,
+            <StatusBadge key="status" status={subscription.status} />,
+            subscription.nextBillingAt ? formatDate(subscription.nextBillingAt) : `Period ends ${formatDate(subscription.currentPeriodEnd)}`
           ])}
         />
       </Card>
-    </div>
+    );
+  }
+
+  return (
+    <Card>
+      <SectionTitle title={tab} subtitle="Billing workspace for invoices and payment events." />
+      <ResponsiveTable
+        empty="No billing records yet. Billing events will appear after verification, export, or subscription activity."
+        headers={["Institution", "Category", "Amount", "Status", "Source", "Occurred"]}
+        rows={rows.map((entry) => [
+          <div key="institution"><p>{entry.institutionName ?? "Platform"}</p><p className="text-xs text-textSecondary">{entry.institutionId ?? "No institution link"}</p></div>,
+          titleCase(entry.category),
+          formatMoney(entry.amountMinor, entry.currency),
+          <StatusBadge key="status" status={entry.status} />,
+          entry.sourceType,
+          formatDate(entry.occurredAt)
+        ])}
+      />
+    </Card>
   );
 }
 
 function ReportsPage({ auditEvents, revenue, tab, verificationLogs }: { auditEvents: AuditEvent[]; revenue: RevenueOverview | null; tab: string; verificationLogs: VerificationLog[] }) {
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Audit Events" value={auditEvents.length} helper="Loaded control-plane events" tone="accent" icon="Reports" />
-        <MetricCard label="Verification Logs" value={verificationLogs.length} helper="Loaded verification events" tone="success" icon="Verification Logs" />
-        <MetricCard label="Ledger Entries" value={revenue?.recentEntries.length ?? 0} helper="Revenue records" tone="warning" icon="Revenue" />
-        <MetricCard label="Export Center" value="Ready" helper="CSV/PDF export actions" tone="success" icon="Reports" />
-      </div>
+  const rows = tab === "Verification Reports"
+    ? verificationLogs.slice(0, 12).map((log) => [
+      log.ain,
+      log.credential,
+      <StatusBadge key="status" status={log.outcome} />,
+      formatDate(log.verifiedAt)
+    ])
+    : tab === "Revenue Reports"
+      ? (revenue?.recentEntries ?? []).slice(0, 12).map((entry) => [
+        titleCase(entry.category),
+        formatMoney(entry.amountMinor, entry.currency),
+        <StatusBadge key="status" status={entry.status} />,
+        formatDate(entry.occurredAt)
+      ])
+      : auditEvents.slice(0, 12).map((event) => [
+        event.label,
+        event.endpoint ?? event.targetType,
+        <StatusBadge key="status" status={event.outcome} />,
+        formatDate(event.createdAt)
+      ]);
+
+  if (tab === "Export Center") {
+    return (
       <Card>
-        <SectionTitle title={tab} subtitle="Focused reporting workspace for founder review and due diligence." />
-        <ResponsiveTable
-          empty="No report source records loaded yet."
-          headers={["Report Signal", "Source", "Status", "When"]}
-          rows={auditEvents.slice(0, 12).map((event) => [
-            event.label,
-            event.endpoint ?? event.targetType,
-            <StatusBadge key="status" status={event.outcome} />,
-            formatDate(event.createdAt)
-          ])}
-        />
+        <SectionTitle title="Export Center" subtitle="Export actions stay separate from report review." />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className={secondaryButtonClass} disabled={!auditEvents.length} type="button">Export Audit CSV</button>
+          <button className={secondaryButtonClass} disabled={!verificationLogs.length} type="button">Export Verification CSV</button>
+          <button className={secondaryButtonClass} disabled={!revenue?.recentEntries.length} type="button">Export Revenue CSV</button>
+        </div>
       </Card>
-    </div>
+    );
+  }
+
+  return (
+    <Card>
+      <SectionTitle title={tab} subtitle="Focused reporting workspace for founder review and due diligence." />
+      <ResponsiveTable
+        empty="No report source records loaded yet."
+        headers={["Report Signal", "Source", "Status", "When"]}
+        rows={rows}
+      />
+    </Card>
   );
 }
 
@@ -3803,20 +4055,89 @@ function WebhooksPage({
 
 function BackgroundJobsPage({ deadLetters, health, loading, onRetryDeadLetterJob, onRetryNotification, tab }: { deadLetters: DeadLetterOverview | null; health: SystemHealth | null; loading: boolean; onRetryDeadLetterJob: (id: string) => void; onRetryNotification: (id: string) => void; tab: string }) {
   const queueHealth = health?.services.find((service) => service.name === "Background Workers")?.metadata;
+  const queues = queueHealth?.queues ?? [];
+  const runningWorkers = (queueHealth?.recentWorkers ?? []).filter((job) => job.status === "RUNNING" || job.lockedBy);
+  const failedJobs = deadLetters?.jobs ?? [];
+  const failedNotifications = deadLetters?.notifications ?? [];
+
+  if (tab === "Queued") {
+    const queuedRows = queues.filter((queue) => queue.queued > 0);
+    return (
+      <Card>
+        <SectionTitle title="Queued Jobs" subtitle="Ready background work waiting for a worker. Heavy uploads, credential generation, PDFs, notifications, and payment confirmations should land here first." />
+        <ResponsiveTable
+          empty="No queued jobs right now."
+          headers={["Queue", "Queued", "Retrying", "Running", "Failed", "Total"]}
+          rows={queuedRows.map((queue) => [
+            queue.queue,
+            queue.queued.toLocaleString(),
+            queue.retrying.toLocaleString(),
+            queue.running.toLocaleString(),
+            <StatusBadge key="failed" status={queue.failed > 0 ? `${queue.failed} Failed` : "0 Failed"} />,
+            queue.total.toLocaleString()
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "Running") {
+    return (
+      <Card>
+        <SectionTitle title="Running Jobs" subtitle="Work currently locked by active background workers." />
+        <ResponsiveTable
+          empty="No jobs are currently running."
+          headers={["Job", "Queue", "Worker", "Status", "Locked"]}
+          rows={runningWorkers.map((job) => [
+            <div key="job"><p className="font-medium text-primary">{titleCase(job.type)}</p><p className="text-xs text-textSecondary">{job.jobId}</p></div>,
+            job.queue,
+            job.lockedBy ?? "Unassigned",
+            <StatusBadge key="status" status={job.status} />,
+            formatDate(job.updatedAt)
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "Retrying") {
+    const retryingRows = queues.filter((queue) => queue.retrying > 0);
+    return (
+      <Card>
+        <SectionTitle title="Retrying Jobs" subtitle="Jobs that are waiting for retry after a recoverable failure." />
+        <ResponsiveTable
+          empty="No retrying jobs right now."
+          headers={["Queue", "Retrying", "Queued", "Running", "Failed", "Total"]}
+          rows={retryingRows.map((queue) => [
+            queue.queue,
+            queue.retrying.toLocaleString(),
+            queue.queued.toLocaleString(),
+            queue.running.toLocaleString(),
+            <StatusBadge key="failed" status={queue.failed > 0 ? `${queue.failed} Failed` : "0 Failed"} />,
+            queue.total.toLocaleString()
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "Completed") {
+    return (
+      <Card>
+        <SectionTitle title="Completed Jobs" subtitle="Completed-job history will use the worker completion ledger once retention is enabled." />
+        <EmptyState text="No completed-job ledger is exposed yet. The current MVP keeps queue success signals in audit logs and health metrics while failed/retry paths stay actionable here." />
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Queued" value={health?.metrics.readyBackgroundJobs ?? "--"} helper="Ready worker jobs" tone="accent" icon="Background Jobs" />
-        <MetricCard label="Running" value={queueHealth?.runningJobs ?? "--"} helper="Currently processing" tone="success" icon="Background Jobs" />
-        <MetricCard label="Failed" value={deadLetters?.summary.failedJobs ?? "--"} helper="Dead-letter jobs" tone={(deadLetters?.summary.failedJobs ?? 0) > 0 ? "error" : "success"} icon="Disputes" />
-        <MetricCard label="Workers" value={queueHealth?.activeWorkers ?? "--"} helper="Active heartbeat count" tone="accent" icon="System Health" />
-      </div>
       <Card>
-        <SectionTitle title={tab} subtitle="Background queues keep heavy work out of HTTP requests." />
+        <SectionTitle title="Failed Jobs" subtitle="Dead-lettered background work that needs founder or engineering action." />
         <ResponsiveTable
-          empty="No background queue records for this workspace."
+          empty="No failed background jobs need attention."
           headers={["Job", "Institution", "Attempts", "Error", "Failed", "Action"]}
-          rows={(deadLetters?.jobs ?? []).map((job) => [
+          rows={failedJobs.map((job) => [
             <div key="job"><p className="font-medium text-primary">{titleCase(job.type)}</p><p className="text-xs text-textSecondary">{job.queue}</p></div>,
             job.institutionName ?? job.institutionId ?? "Platform",
             `${job.attempts}/${job.maxAttempts}`,
@@ -3831,7 +4152,7 @@ function BackgroundJobsPage({ deadLetters, health, loading, onRetryDeadLetterJob
         <ResponsiveTable
           empty="No failed notifications need attention."
           headers={["Notification", "Channel", "Institution", "Error", "Updated", "Action"]}
-          rows={(deadLetters?.notifications ?? []).map((notification) => [
+          rows={failedNotifications.map((notification) => [
             <div key="title"><p className="font-medium text-primary">{notification.title}</p><p className="text-xs text-textSecondary">{notification.type}</p></div>,
             <StatusBadge key="channel" status={notification.channel} />,
             notification.institutionName ?? notification.institutionId ?? "Platform",
@@ -3895,6 +4216,7 @@ function SystemHealthPage({
   rateLimitPolicy,
   rateLimitPolicyForm,
   selectedInstitutionId,
+  tab,
   webhookDeliveries,
   webhookEndpointForm,
   webhookEndpoints,
@@ -3922,6 +4244,7 @@ function SystemHealthPage({
   rateLimitPolicy: RateLimitPolicyResponse | null;
   rateLimitPolicyForm: RateLimitPolicyControl;
   selectedInstitutionId: string;
+  tab: string;
   webhookDeliveries: WebhookDelivery[];
   webhookEndpointForm: { label: string; targetUrl: string; eventTypes: string };
   webhookEndpoints: WebhookEndpoint[];
@@ -3975,6 +4298,265 @@ function SystemHealthPage({
       }
     });
   };
+
+  if (tab === "API" || tab === "API Health") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+        <Card>
+          <SectionTitle title="API Health" subtitle="Gateway, authentication, and public API readiness." />
+          <div className="mt-4 divide-y divide-borderLight">
+            {services.filter((service) => ["API Gateway", "Authentication Service", "Log Sink"].includes(service.name)).map((service) => (
+              <div key={service.name} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-primary">{service.name}</p>
+                  <p className="text-xs text-textSecondary">{service.message}</p>
+                </div>
+                <div className="text-right">
+                  <StatusBadge status={service.status} />
+                  <p className="mt-1 text-xs text-textSecondary">{service.responseTimeMs}ms</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Gateway Metrics" subtitle="API metrics stay inside this tab instead of crowding the main screen." />
+          <div className="mt-4 grid gap-2">
+            <MetricLine label="Gateway requests today" value={String(metrics?.gatewayRequestsToday ?? "--")} />
+            <MetricLine label="Verification events today" value={String(metrics?.verificationEventsToday ?? "--")} />
+            <MetricLine label="Audit events today" value={String(metrics?.auditEventsToday ?? "--")} />
+            <MetricLine label="Error rate" value={typeof metrics?.errorRate === "number" ? `${metrics.errorRate}%` : "--"} />
+            <MetricLine label="Uptime" value={health ? formatDuration(health.uptimeSeconds) : "--"} />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (tab === "Database") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <SectionTitle title="Database" subtitle="Core Data Center persistence and Supabase connectivity." />
+          <div className="mt-4 divide-y divide-borderLight">
+            {services.filter((service) => ["Database", "Idempotency Ledger"].includes(service.name)).map((service) => (
+              <div key={service.name} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-primary">{service.name}</p>
+                  <p className="text-xs text-textSecondary">{service.message}</p>
+                </div>
+                <StatusBadge status={service.status} />
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Idempotency Ledger" subtitle="Retry-safe POST and background-job dedupe records." />
+          <div className="mt-4 grid gap-2">
+            <MetricLine label="Total records" value={String(idempotencyHealth?.totalRecords ?? "--")} />
+            <MetricLine label="Recent records" value={String(idempotencyHealth?.recentRecords ?? "--")} />
+            <MetricLine label="Expired records" value={String(idempotencyHealth?.expiredRecords ?? "--")} />
+            <MetricLine label="Stale in progress" value={String(idempotencyHealth?.staleInProgressRecords ?? "--")} />
+          </div>
+          <div className="mt-4 rounded-md border border-borderLight bg-soft p-3">
+            <label className="text-xs font-medium text-textSecondary" htmlFor="idempotency-cleanup-hours">Clean expired records older than</label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input id="idempotency-cleanup-hours" className={inputClass} min={1} max={2160} type="number" value={idempotencyCleanupHours} onChange={(event) => onIdempotencyCleanupHours(Number(event.target.value))} />
+              <button className={primaryButtonClass} disabled={loading} onClick={onQueueIdempotencyCleanup} type="button">Queue Cleanup Job</button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (tab === "Cache") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <SectionTitle title="Cache" subtitle="Cache service state and platform throttle counters." />
+          <div className="mt-4 grid gap-2">
+            <MetricLine label="Cache status" value={services.find((service) => service.name === "Cache Service")?.status ?? "PENDING_CONFIGURATION"} />
+            <MetricLine label="Cache hit rate" value={typeof cacheHealth?.metrics?.hitRate === "number" ? `${cacheHealth.metrics.hitRate}%` : "--"} />
+            <MetricLine label="Cache hits/misses" value={`${cacheHealth?.metrics?.totalHits ?? "--"} / ${cacheHealth?.metrics?.totalMisses ?? "--"}`} />
+            <MetricLine label="Recent rate-limit requests" value={String(rateLimitHealth?.recentRequests ?? "--")} />
+          </div>
+          <div className="mt-4 rounded-md border border-borderLight bg-soft p-3">
+            <label className="text-xs font-medium text-textSecondary" htmlFor="rate-limit-cleanup-hours">Clean buckets older than</label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input id="rate-limit-cleanup-hours" className={inputClass} min={1} max={720} type="number" value={cleanupHours} onChange={(event) => onCleanupHours(Number(event.target.value))} />
+              <button className={primaryButtonClass} disabled={loading} onClick={onQueueRateLimitCleanup} type="button">Queue Cleanup Job</button>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Top Throttled Scopes" subtitle="Highest rate-limit activity over the last 24 hours." />
+          <ResponsiveTable
+            empty="No rate-limit activity has been recorded yet."
+            headers={["Scope", "Requests", "Buckets"]}
+            rows={(rateLimitHealth?.topScopes ?? []).map((scope) => [
+              scope.scope,
+              scope.requests.toLocaleString(),
+              scope.buckets.toLocaleString()
+            ])}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  if (tab === "Workers") {
+    return (
+      <Card>
+        <SectionTitle title="Workers" subtitle="Live worker heartbeat registry for scaled background processing." />
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          <MetricLine label="Active workers" value={String(queueHealth?.activeWorkers ?? "--")} />
+          <MetricLine label="Stale workers" value={String(queueHealth?.staleWorkers ?? "--")} />
+          <MetricLine label="Stopped 24h" value={String(queueHealth?.stoppedWorkers ?? "--")} />
+          <MetricLine label="Stale after" value={queueHealth?.workerStaleAfterSeconds ? `${queueHealth.workerStaleAfterSeconds}s` : "--"} />
+        </div>
+        <ResponsiveTable
+          empty="No worker heartbeat has been recorded yet. Start an AcadID worker to register it."
+          headers={["Worker", "Status", "Concurrency", "Current Queue", "Queues", "Last Seen"]}
+          rows={(queueHealth?.workerHeartbeats ?? []).map((worker) => [
+            <div key="worker">
+              <p className="font-medium text-primary">{worker.workerId}</p>
+              <p className="text-xs text-textSecondary">{worker.hostname ?? "Unknown host"}{worker.processId ? ` / pid ${worker.processId}` : ""}</p>
+            </div>,
+            <StatusBadge key="status" status={worker.status} />,
+            worker.concurrency.toLocaleString(),
+            worker.currentQueue ?? "Idle",
+            worker.queues.slice(0, 3).join(", ") + (worker.queues.length > 3 ? ` +${worker.queues.length - 3}` : ""),
+            formatDate(worker.lastSeenAt)
+          ])}
+        />
+      </Card>
+    );
+  }
+
+  if (tab === "Queue") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <SectionTitle title="Queue Backlog" subtitle="Background jobs by queue and state." />
+          <ResponsiveTable
+            empty="No background queue activity yet."
+            headers={["Queue", "Queued", "Retrying", "Running", "Failed", "Total"]}
+            rows={(queueHealth?.queues ?? []).map((queue) => [
+              queue.queue,
+              queue.queued.toLocaleString(),
+              queue.retrying.toLocaleString(),
+              queue.running.toLocaleString(),
+              <StatusBadge key="failed" status={queue.failed > 0 ? `${queue.failed} Failed` : "0 Failed"} />,
+              queue.total.toLocaleString()
+            ])}
+          />
+        </Card>
+        <Card>
+          <SectionTitle title="Dead-Letter Review" subtitle="Exhausted jobs needing operator action." />
+          <ResponsiveTable
+            empty="No dead-letter jobs need operator review."
+            headers={["Job", "Institution", "Attempts", "Error", "Failed", "Action"]}
+            rows={(deadLetters?.jobs ?? []).slice(0, 12).map((job) => [
+              <div key="job"><p className="font-medium text-primary">{titleCase(job.type)}</p><p className="text-xs text-textSecondary">{job.queue}</p></div>,
+              job.institutionName ?? job.institutionId ?? "Platform",
+              `${job.attempts}/${job.maxAttempts}`,
+              job.error ?? "Failed",
+              job.failedAt ? formatDate(job.failedAt) : formatDate(job.updatedAt),
+              <button key="retry" className={primarySmallButtonClass} disabled={loading} onClick={() => onRetryDeadLetterJob(job.id)} type="button">Retry</button>
+            ])}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  if (tab === "Webhooks") {
+    return (
+      <div className="space-y-5">
+        <Card>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <SectionTitle title="Webhook Delivery" subtitle="Partner callback delivery state and retry readiness." />
+            <StatusBadge status={services.find((service) => service.name === "Webhook Delivery")?.status ?? "PENDING_CONFIGURATION"} />
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <MetricLine label="Secret configured" value={webhookHealth?.secretConfigured ? "Yes" : "No"} />
+            <MetricLine label="Due now" value={String(webhookHealth?.dueNow ?? "--")} />
+            <MetricLine label="Failed in 24h" value={String(webhookHealth?.failed24h ?? "--")} />
+          </div>
+        </Card>
+        <Card>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <SectionTitle title="Webhook Endpoints" subtitle="Create partner callbacks, rotate secrets, and recover failed delivery attempts." />
+            <StatusBadge status={`${webhookEndpoints.length} Endpoint(s)`} />
+          </div>
+          {webhookSecret ? (
+            <div className="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+              <p className="font-semibold text-primary">One-time webhook secret</p>
+              <p className="mt-1 break-all font-mono text-xs text-primary">{webhookSecret.secret}</p>
+              <p className="mt-1 text-xs text-textSecondary">{webhookSecret.warning}</p>
+            </div>
+          ) : null}
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1.2fr_auto]">
+            <Field label="Label">
+              <input className={inputClass} value={webhookEndpointForm.label} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, label: event.target.value })} />
+            </Field>
+            <Field label="Target URL">
+              <input className={inputClass} value={webhookEndpointForm.targetUrl} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, targetUrl: event.target.value })} />
+            </Field>
+            <Field label="Event types">
+              <input className={inputClass} value={webhookEndpointForm.eventTypes} onChange={(event) => onUpdateWebhookEndpointForm({ ...webhookEndpointForm, eventTypes: event.target.value })} />
+            </Field>
+            <div className="flex items-end">
+              <button className={primaryButtonClass} disabled={loading || !selectedInstitutionId} onClick={onCreateWebhookEndpoint} type="button">Create Endpoint</button>
+            </div>
+          </div>
+          <ResponsiveTable
+            empty="No webhook endpoints have been configured yet."
+            headers={["Endpoint", "Institution", "Status", "Secret", "Rotated", "Actions"]}
+            rows={webhookEndpoints.slice(0, 12).map((endpoint) => [
+              <div key="endpoint"><p className="font-medium text-primary">{endpoint.label}</p><p className="break-all text-xs text-textSecondary">{endpoint.targetUrl}</p></div>,
+              <div key="institution"><p>{endpoint.institutionName}</p><p className="text-xs text-textSecondary">{endpoint.institutionId}</p></div>,
+              <StatusBadge key="status" status={endpoint.status} />,
+              endpoint.secretPreview ?? "--",
+              endpoint.rotatedAt ? formatDate(endpoint.rotatedAt) : "Never",
+              <div key="actions" className="flex flex-wrap gap-2">
+                <button className={secondaryButtonClass} disabled={loading} onClick={() => onRotateWebhookEndpointSecret(endpoint.id)} type="button">Rotate</button>
+                <button className={secondaryButtonClass} disabled={loading || endpoint.status === "SUSPENDED"} onClick={() => onUpdateWebhookEndpointStatus(endpoint.id, "SUSPENDED")} type="button">Suspend</button>
+                <button className={primarySmallButtonClass} disabled={loading || endpoint.status === "ACTIVE"} onClick={() => onUpdateWebhookEndpointStatus(endpoint.id, "ACTIVE")} type="button">Activate</button>
+              </div>
+            ])}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  if (tab === "Storage") {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <SectionTitle title="Storage" subtitle="Object storage readiness for generated PDFs, exports, and credential artifacts." />
+          <div className="mt-4 grid gap-2">
+            <MetricLine label="Storage provider" value={titleCase(String(storageHealth?.provider ?? "unconfigured"))} />
+            <MetricLine label="Probe configured" value={storageHealth?.probeConfigured ? "Yes" : "No"} />
+            <MetricLine label="Probe status" value={storageHealth?.probeConfigured ? storageHealth.probeSucceeded ? "Passing" : "Failing" : "Not configured"} />
+            <MetricLine label="Probe bytes" value={storageHealth?.probeBytes == null ? "--" : formatCompactNumber(storageHealth.probeBytes)} />
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle title="Notification Delivery" subtitle="Email, SMS, and push provider health for platform notifications." />
+          <div className="mt-4 grid gap-2">
+            <MetricLine label="Pending" value={String(notificationHealth?.pending ?? "--")} />
+            <MetricLine label="Sent 24h" value={String(notificationHealth?.sent24h ?? "--")} />
+            <MetricLine label="Failed 24h" value={String(notificationHealth?.failed24h ?? "--")} />
+            <MetricLine label="Email provider" value={notificationHealth?.providers?.email.provider ?? "--"} />
+            <MetricLine label="SMS provider" value={notificationHealth?.providers?.sms.provider ?? "--"} />
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -4356,6 +4938,7 @@ function SecurityPage(props: {
   setNewRecoveryCodes: (value: RecoveryCodeRotation | null) => void;
   setRecoveryRotateCode: (value: string) => void;
   setTotpEnableCode: (value: string) => void;
+  tab: string;
   newRecoveryCodes: RecoveryCodeRotation | null;
   totpEnableCode: string;
   totpSetup: TotpSetup | null;
@@ -4364,6 +4947,68 @@ function SecurityPage(props: {
   const apiSecurityEvents = props.auditEvents.filter((event) => event.action.includes("api_key")).slice(0, 5);
   const activeSessions = loginEvents.length ? "Current browser session" : "No tracked session yet";
   const revokedKeys = props.apiKeys.filter((key) => key.status === "REVOKED").length;
+
+  if (props.tab === "Login History") {
+    return (
+      <Card>
+        <SectionTitle title="Login History" subtitle="Recent founder authentication events." />
+        <ListBlock
+          empty="No founder login audit events recorded yet."
+          items={loginEvents.map((event) => ({
+            id: event.id,
+            title: event.actorName,
+            meta: event.actorEmail ?? event.actorRole ?? "Founder",
+            status: event.outcome,
+            date: formatDate(event.createdAt)
+          }))}
+        />
+      </Card>
+    );
+  }
+
+  if (props.tab === "Sessions") {
+    return (
+      <Card>
+        <SectionTitle title="Sessions" subtitle="Founder session posture." />
+        <div className="mt-4 grid gap-3">
+          <MetricLine label="Current session" value={activeSessions} />
+          <MetricLine label="Recent login events" value={String(loginEvents.length)} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (props.tab === "API Key Security") {
+    return (
+      <Card>
+        <SectionTitle title="API Key Security" subtitle="Security-sensitive API key actions." />
+        <div className="mt-4 grid gap-3">
+          <MetricLine label="Recent API key events" value={String(apiSecurityEvents.length)} />
+          <MetricLine label="Revoked keys" value={String(revokedKeys)} />
+        </div>
+        <ListBlock
+          empty="No API key security events recorded yet."
+          items={apiSecurityEvents.map((event) => ({
+            id: event.id,
+            title: event.label,
+            meta: event.institutionName ?? event.actorName,
+            status: event.outcome,
+            date: formatDate(event.createdAt)
+          }))}
+        />
+      </Card>
+    );
+  }
+
+  if (props.tab === "Emergency Lockdown") {
+    return (
+      <Card>
+        <SectionTitle title="Emergency Lockdown" subtitle="Use only when founder access or platform trust is at risk." />
+        <button className="mt-4 h-10 rounded-md border border-error px-4 text-sm font-medium text-error disabled:opacity-60" disabled={props.loading} onClick={props.onEmergencyLockdown} type="button">Emergency lockdown</button>
+      </Card>
+    );
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
       <Card>
@@ -4406,55 +5051,6 @@ function SecurityPage(props: {
           </div>
         ) : null}
       </Card>
-      <Card>
-        <SectionTitle title="Security Operations" subtitle="Founder access, API key actions, and audit trail." />
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">Session</p><p className="mt-1 text-sm font-semibold text-primary">{activeSessions}</p></div>
-            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">API key events</p><p className="mt-1 text-sm font-semibold text-primary">{apiSecurityEvents.length}</p></div>
-            <div className="rounded-lg border border-borderLight bg-soft p-3"><p className="text-xs text-textSecondary">Revoked keys</p><p className="mt-1 text-sm font-semibold text-primary">{revokedKeys}</p></div>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-primary">Login history</p>
-            <ListBlock
-              empty="No founder login audit events recorded yet."
-              items={loginEvents.map((event) => ({
-                id: event.id,
-                title: event.actorName,
-                meta: event.actorEmail ?? event.actorRole ?? "Founder",
-                status: event.outcome,
-                date: formatDate(event.createdAt)
-              }))}
-            />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-primary">API key security logs</p>
-            <ListBlock
-              empty="No API key security events recorded yet."
-              items={apiSecurityEvents.map((event) => ({
-                id: event.id,
-                title: event.label,
-                meta: event.institutionName ?? event.actorName,
-                status: event.outcome,
-                date: formatDate(event.createdAt)
-              }))}
-            />
-          </div>
-          <ResponsiveTable
-            empty="No founder audit events recorded yet."
-            headers={["Action", "Actor", "Endpoint", "Trace", "Outcome", "When"]}
-            rows={props.auditEvents.slice(0, 12).map((event) => [
-              event.label,
-              `${event.actorName}${event.actorType ? ` / ${event.actorType}` : ""}`,
-              event.endpoint ? `${event.httpMethod ?? ""} ${event.endpoint}`.trim() : `${event.targetType}${event.institutionName ? ` / ${event.institutionName}` : ""}`,
-              event.requestId ? event.requestId.slice(0, 8) : "No request ID",
-              <StatusBadge key="outcome" status={event.outcome} />,
-              formatDate(event.createdAt)
-            ])}
-          />
-          <button className="h-10 rounded-md border border-error px-4 text-sm font-medium text-error disabled:opacity-60" disabled={props.loading} onClick={props.onEmergencyLockdown} type="button">Emergency lockdown</button>
-        </div>
-      </Card>
     </div>
   );
 }
@@ -4463,12 +5059,14 @@ function SettingsPage({
   founderName,
   loading,
   onSave,
-  settings
+  settings,
+  tab
 }: {
   founderName: string;
   loading: boolean;
   onSave: (settings: PlatformSettings) => Promise<void>;
   settings: PlatformSettingsResponse | null;
+  tab: string;
 }) {
   const [form, setForm] = useState<PlatformSettings>(settings?.settings ?? defaultPlatformSettings);
 
@@ -4491,15 +5089,22 @@ function SettingsPage({
     await onSave(form);
   }
 
+  if (tab === "Founder Profile") {
+    return (
+      <Card>
+        <SectionTitle title="Founder Profile" subtitle="Founder identity and settings metadata." />
+        <div className="mt-4 grid gap-2">
+          <MetricLine label="Founder" value={founderName} />
+          <MetricLine label="Persisted groups" value={String(settings?.metadata.persistedKeys.length ?? 0)} />
+          <MetricLine label="Last updated" value={settings?.metadata.updatedAt ? formatDate(settings.metadata.updatedAt) : "Defaults"} />
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Founder" value={founderName} helper="Super Admin profile" tone="accent" icon="Settings" />
-        <MetricCard label="Persisted Groups" value={settings?.metadata.persistedKeys.length ?? 0} helper="Approval, API, notifications, templates" tone="success" icon="Settings" />
-        <MetricCard label="Last Updated" value={settings?.metadata.updatedAt ? formatDate(settings.metadata.updatedAt) : "Defaults"} helper={settings?.metadata.updatedBy?.fullName ?? "Not persisted yet"} tone="warning" icon="Settings" />
-      </div>
-      <form className="grid gap-5 xl:grid-cols-2" onSubmit={submit}>
-        <Card>
+    <form className="grid gap-5 xl:grid-cols-2" onSubmit={submit}>
+        {tab === "Approval Rules" ? <Card>
           <SectionTitle title="Institution Approval" subtitle="Rules used by the Institution Portal review workflow." />
           <div className="mt-4 grid gap-3">
             <ToggleRow checked={form.approval.requireMou} label="Require signed MOU" onChange={(checked) => updateGroup("approval", { requireMou: checked })} />
@@ -4509,8 +5114,8 @@ function SettingsPage({
               <input className={inputClass} min={1} max={90} type="number" value={form.approval.maxApplicationReviewDays} onChange={(event) => updateGroup("approval", { maxApplicationReviewDays: Number(event.target.value) })} />
             </Field>
           </div>
-        </Card>
-        <Card>
+        </Card> : null}
+        {tab === "Platform Settings" ? <Card>
           <SectionTitle title="API Defaults" subtitle="Default environment, rate limits, and rotation windows." />
           <div className="mt-4 grid gap-3">
             <Field label="Default environment">
@@ -4529,8 +5134,8 @@ function SettingsPage({
               <input className={inputClass} min={1} max={730} type="number" value={form.api.institutionKeyRotationDays} onChange={(event) => updateGroup("api", { institutionKeyRotationDays: Number(event.target.value) })} />
             </Field>
           </div>
-        </Card>
-        <Card>
+        </Card> : null}
+        {tab === "Notifications" ? <Card>
           <SectionTitle title="Notifications" subtitle="Founder alert routing for control-plane events." />
           <div className="mt-4 grid gap-3">
             <Field label="Founder email">
@@ -4541,8 +5146,8 @@ function SettingsPage({
             <ToggleRow checked={form.notifications.notifyOnDispute} label="Credential disputes" onChange={(checked) => updateGroup("notifications", { notifyOnDispute: checked })} />
             <ToggleRow checked={form.notifications.weeklySummaryEnabled} label="Weekly founder summary" onChange={(checked) => updateGroup("notifications", { weeklySummaryEnabled: checked })} />
           </div>
-        </Card>
-        <Card>
+        </Card> : null}
+        {tab === "Email Templates" ? <Card>
           <SectionTitle title="Email Templates" subtitle="Subject lines used by institution and governance workflows." />
           <div className="mt-4 grid gap-3">
             <Field label="Application approved subject">
@@ -4558,12 +5163,11 @@ function SettingsPage({
               <input className={inputClass} value={form.emailTemplates.disputeNoticeSubject} onChange={(event) => updateGroup("emailTemplates", { disputeNoticeSubject: event.target.value })} />
             </Field>
           </div>
-        </Card>
+        </Card> : null}
         <div className="xl:col-span-2">
           <button className={`${primaryButtonClass} w-full md:w-auto`} disabled={loading} type="submit">{loading ? "Saving..." : "Save Settings"}</button>
         </div>
       </form>
-    </div>
   );
 }
 
@@ -4687,7 +5291,7 @@ function buildWorkspaceTabs(page: PageKey, data: {
       { label: "Export Center" }
     ],
     "System Health": [
-      { label: "API Health" },
+      { label: "API" },
       { label: "Database" },
       { label: "Cache" },
       { label: "Workers" },
