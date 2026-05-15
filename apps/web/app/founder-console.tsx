@@ -1171,7 +1171,7 @@ export function FounderConsole() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadedSections, setLoadedSections] = useState<Record<string, boolean>>({});
-  const loadingSectionsRef = useRef<Set<PageKey>>(new Set());
+  const loadingSectionsRef = useRef<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
@@ -1402,9 +1402,10 @@ export function FounderConsole() {
   }, [activePage, selectedInstitutionId, token]);
 
   useEffect(() => {
-    if (!token || loadedSections[activePage]) return;
-    void refreshPageData(activePage, token);
-  }, [activePage, loadedSections, token]);
+    const activeSectionKey = `${activePage}:${activeWorkspaceTab}`;
+    if (!token || loadedSections[activeSectionKey]) return;
+    void refreshPageData(activePage, activeWorkspaceTab, token);
+  }, [activePage, activeWorkspaceTab, loadedSections, token]);
 
   async function refreshInstitutionStaff(institutionId = selectedInstitutionId, activeToken = token) {
     if (!activeToken || !institutionId) return;
@@ -1440,10 +1441,11 @@ export function FounderConsole() {
     }
   }
 
-  async function refreshPageData(page: PageKey, activeToken = token, currentInstitutions = institutions) {
+  async function refreshPageData(page: PageKey, tab = activeWorkspaceTab, activeToken = token, currentInstitutions = institutions) {
     if (!activeToken) return;
-    if (loadingSectionsRef.current.has(page)) return;
-    loadingSectionsRef.current.add(page);
+    const sectionKey = `${page}:${tab}`;
+    if (loadingSectionsRef.current.has(sectionKey)) return;
+    loadingSectionsRef.current.add(sectionKey);
     const loadOptional = async <T,>(label: string, loader: () => Promise<T>, apply: (value: T) => void) => {
       try {
         apply(await loader());
@@ -1469,59 +1471,89 @@ export function FounderConsole() {
         await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
       } else if (page === "Academic Operations") {
         await loadOptional("academic operations", () => loadAcademicOperations(activeToken), setAcademicOperations);
-        await loadOptional("invitation leads", () => loadInvitationLeads(activeToken), setInvitationLeads);
+        if (tab === "Setup Readiness") {
+          await loadOptional("invitation leads", () => loadInvitationLeads(activeToken), setInvitationLeads);
+        }
       } else if (page === "API Keys") {
-        await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
+        if (tab === "Generate Key") {
+          await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
+        }
       } else if (page === "Developer Access Requests") {
         await loadOptional("developer access requests", () => loadDeveloperAccessRequests(activeToken), setDeveloperRequests);
       } else if (page === "Webhooks") {
-        await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
-        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
-        await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
-        await loadOptional("webhook deliveries", () => loadWebhookDeliveries(activeToken), setWebhookDeliveries);
+        if (["Endpoints", "Secret Rotation"].includes(tab)) {
+          await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
+        }
+        if (["Delivery Logs", "Failed Deliveries", "Retry Queue"].includes(tab)) {
+          await loadOptional("webhook deliveries", () => loadWebhookDeliveries(activeToken), setWebhookDeliveries);
+        }
       } else if (page === "Disputes") {
         await loadOptional("disputes", () => loadDisputes(activeToken), (nextDisputes) => {
           setDisputes(nextDisputes);
           setSelectedDisputeId((current) => current || nextDisputes[0]?.uuid || "");
         });
       } else if (page === "Record Requests") {
-        await loadOptional("record requests", () => loadRecordRequests(activeToken), (nextRecordRequests) => {
-          setRecordRequests(nextRecordRequests);
-          setSelectedRecordRequestId((current) => current || nextRecordRequests[0]?.uuid || "");
-        });
+        if (tab === "Invitation Leads") {
+          await loadOptional("invitation leads", () => loadInvitationLeads(activeToken), setInvitationLeads);
+        } else {
+          await loadOptional("record requests", () => loadRecordRequests(activeToken), (nextRecordRequests) => {
+            setRecordRequests(nextRecordRequests);
+            setSelectedRecordRequestId((current) => current || nextRecordRequests[0]?.uuid || "");
+          });
+        }
       } else if (page === "Verification Logs") {
         await loadOptional("verification logs", () => loadVerificationLogs(activeToken), setVerificationLogs);
       } else if (page === "Background Jobs") {
-        await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
-        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
+        if (["Queued", "Running", "Retrying"].includes(tab)) {
+          await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
+        }
+        if (tab === "Failed") {
+          await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
+        }
       } else if (page === "Revenue") {
         await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
       } else if (page === "Billing") {
         await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
       } else if (page === "Reports") {
-        await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
-        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
+        if (["Platform Reports", "Institution Reports"].includes(tab)) {
+          await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
+        }
+        if (tab === "Verification Reports" || tab === "Export Center") {
+          await loadOptional("verification logs", () => loadVerificationLogs(activeToken), setVerificationLogs);
+        }
+        if (tab === "Revenue Reports" || tab === "Export Center") {
+          await loadOptional("revenue", () => loadRevenueOverview(activeToken), setRevenueOverview);
+        }
       } else if (page === "System Health") {
         await loadOptional("system health", () => loadSystemHealth(activeToken), setSystemHealth);
-        await loadOptional("rate-limit policy", () => loadRateLimitPolicy(activeToken), (nextRateLimitPolicy) => {
-          setRateLimitPolicy(nextRateLimitPolicy);
-          setRateLimitPolicyForm(nextRateLimitPolicy.policy);
-        });
-        await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
-        await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
-        await loadOptional("webhook deliveries", () => loadWebhookDeliveries(activeToken), setWebhookDeliveries);
+        if (tab === "Queue") {
+          await loadOptional("dead letters", () => loadDeadLetters(activeToken), setDeadLetters);
+        }
+        if (tab === "Webhooks") {
+          await loadOptional("webhook endpoints", () => loadWebhookEndpoints(activeToken), setWebhookEndpoints);
+        }
+        if (tab === "API") {
+          await loadOptional("rate-limit policy", () => loadRateLimitPolicy(activeToken), (nextRateLimitPolicy) => {
+            setRateLimitPolicy(nextRateLimitPolicy);
+            setRateLimitPolicyForm(nextRateLimitPolicy.policy);
+          });
+        }
       } else if (page === "Security") {
-        await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
-        await loadOptional("recovery code status", () => loadRecoveryCodeStatus(activeToken), setRecoveryCodeStatus);
+        if (["Login History", "Sessions", "API Key Security"].includes(tab)) {
+          await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
+        }
+        if (tab === "Founder TOTP") {
+          await loadOptional("recovery code status", () => loadRecoveryCodeStatus(activeToken), setRecoveryCodeStatus);
+        }
       } else if (page === "Audit Logs") {
         await loadOptional("audit events", () => loadAuditEvents(activeToken), setAuditEvents);
       } else if (page === "Settings") {
         await loadOptional("platform settings", () => loadPlatformSettings(activeToken), setPlatformSettings);
       }
 
-      setLoadedSections((current) => ({ ...current, [page]: true }));
+      setLoadedSections((current) => ({ ...current, [sectionKey]: true }));
     } finally {
-      loadingSectionsRef.current.delete(page);
+      loadingSectionsRef.current.delete(sectionKey);
     }
   }
 

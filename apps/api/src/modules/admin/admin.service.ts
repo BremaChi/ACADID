@@ -1575,7 +1575,16 @@ export class AdminService {
     return this.readAuditEvents({ ...options, take: 250 });
   }
 
-  async readSystemHealth() {
+  readSystemHealth() {
+    return (
+      this.cache?.getOrSet("system-health:founder", () => this.computeSystemHealth(), {
+        ttlSeconds: 15,
+        tags: ["system-health"]
+      }) ?? this.computeSystemHealth()
+    );
+  }
+
+  private async computeSystemHealth() {
     const generatedAt = new Date();
     const [database, auth, storage, email, notificationDelivery, cache, queue, webhook, signing, rateLimitBuckets, idempotencyRecords, logSink, metrics] = await Promise.all([
       this.checkDatabase(),
