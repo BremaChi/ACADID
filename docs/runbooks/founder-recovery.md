@@ -1,6 +1,6 @@
 # Founder Recovery Runbook
 
-Owner: Engineer 1 / Data Center API  
+Owner: Core Platform Team / Data Center API
 Audience: Founder, operations engineer  
 Status: Pilot-ready procedure
 
@@ -72,4 +72,3 @@ Every reset writes a `founder.password.reset` audit event. Review the Founder Co
 - Do not send passwords through public chat.
 - Do not disable MFA permanently.
 - Do not reset a non-founder account with this command.
-

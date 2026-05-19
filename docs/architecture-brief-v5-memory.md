@@ -9,7 +9,7 @@ Source reviewed:
 
 ## Active Source Of Truth
 
-The v5 brief supersedes v4 for the next Engineer 1 and Engineer 2 work. It keeps the four-layer architecture, Supabase PostgreSQL direction, gateway boundary, human plus machine auth model, AIN strategy, W3C VC-aligned credential direction, institution workspace isolation, and RecordRequest model.
+The v5 brief supersedes v4 for the next Core Platform Team and Institution Portal Team work. It keeps the four-layer architecture, Supabase PostgreSQL direction, gateway boundary, human plus machine auth model, AIN strategy, W3C VC-aligned credential direction, institution workspace isolation, and RecordRequest model.
 
 v5 adds the academic operations layer needed for real Nigerian institutions:
 
@@ -47,11 +47,11 @@ AcadID remains academic identity infrastructure, not a school ERP. It must not e
 
 ## Deployment Map
 
-- `api.acadid.ng`: Data Center API, owned by Engineer 1.
-- `console.acadid.ng`: Founder Console, owned by Engineer 1.
-- `portal.acadid.ng`: Institution Portal, owned by Engineer 2.
-- Student mobile apps: learner passport and sharing, Engineer 3.
-- `verify.acadid.ng`: Employer Portal, Engineer 4.
+- `api.acadid.ng`: Data Center API, owned by Core Platform Team.
+- `console.acadid.ng`: Founder Console, owned by Core Platform Team.
+- `portal.acadid.ng`: Institution Portal, owned by Institution Portal Team.
+- Student mobile apps: learner passport and sharing, Student Product Team.
+- `verify.acadid.ng`: Employer Portal, Employer Verification Team.
 - Exam body integrations: scoped machine API access through Data Center API.
 
 Supabase PostgreSQL remains the active database direction. Docker PostgreSQL is optional local fallback only.
@@ -267,7 +267,7 @@ Payment remains escrowed until Registrar publishes the requested record. Unregis
 
 ## Institution Portal v5
 
-Engineer 2 builds public site plus private institution dashboard. The portal must stay academic-records-only.
+Institution Portal Team builds public site plus private institution dashboard. The portal must stay academic-records-only.
 
 Public side:
 
@@ -334,7 +334,7 @@ Do not show certification logos unless legitimately obtained.
 
 ## Founder Console v5 Updates
 
-Engineer 1 must add Founder Console support for the new operations layer:
+Core Platform Team must add Founder Console support for the new operations layer:
 
 - academic setup completion status,
 - AcademicSession list,
@@ -407,7 +407,7 @@ Prepare large tables for future partitioning:
 
 Use read replicas later for verification traffic and dashboards.
 
-## Engineer 1 Build Sequence From v5
+## Core Platform Team Build Sequence From v5
 
 1. Create schema for 14 entities in dependency order.
 2. Keep machine auth and human auth separate.
@@ -420,9 +420,9 @@ Use read replicas later for verification traffic and dashboards.
 9. Keep credential signing and W3C VC-aligned payload generation.
 10. Ensure append-only audit on every endpoint.
 11. Update Founder Console with academic setup, rollover status, invitation leads, and institution health.
-12. Create sandbox handoff tests for Engineer 2.
+12. Create sandbox handoff tests for Institution Portal Team.
 
-## Handoff Tests Before Engineer 2 Starts
+## Handoff Tests Before Institution Portal Team Starts
 
 Required behaviors:
 
@@ -473,9 +473,9 @@ Already present:
 Still needed:
 
 - Add Institution Portal UI visibility for AcademicSession and AcademicStructure setup health.
-- Add Institution Portal UI for the Registrar staff assigned-scope endpoints now exposed by Engineer 1.
+- Add Institution Portal UI for the Registrar staff assigned-scope endpoints now exposed by Core Platform Team.
 - Add Departmental Officer role behavior.
 - Add ResultBatch validation summary behavior and v5 upload modes.
 - Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
-- Continue routing Engineer 2/3/4 product API requests through `docs/handoffs/engineer-1-api-requests.md` before adding new data surfaces.
-- Add v5 API contracts and handoff tests for Engineer 2.
+- Continue routing product-team API requests through `docs/contracts/API_CONTRACTS.md` before adding new data surfaces.
+- Add v5 API contracts and handoff tests for Institution Portal Team.

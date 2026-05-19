@@ -225,9 +225,9 @@ Required next:
 - Every governance-sensitive action must write immutable audit logs.
 - Product teams must not create shadow queue, audit, webhook, or identity tables outside the Data Center foundation.
 
-## Near-Term Engineer 1 Build Order
+## Near-Term Core Platform Team Build Order
 
-1. Move into v5 Engineer 1 implementation gaps.
+1. Move into v5 Core Platform Team implementation gaps.
 
 Completed:
 

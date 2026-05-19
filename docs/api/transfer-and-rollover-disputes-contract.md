@@ -1,6 +1,6 @@
 # Transfer And Rollover Disputes Contract
 
-Engineer 1 owns these Data Center/Gateway roots. Product teams must call these APIs instead of writing transfer, rollover, or dispute state directly.
+Core Platform Team owns these Data Center/Gateway roots. Product teams must call these APIs instead of writing transfer, rollover, or dispute state directly.
 
 ## Transfer Requests
 

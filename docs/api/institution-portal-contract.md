@@ -145,7 +145,7 @@ Example response:
 }
 ```
 
-When `ACADID_PORTAL_UPLOAD_BASE_URL` is configured, `status` becomes `ISSUED` and `uploadUrl` contains the provider upload URL. Until then, Engineer 2 should use the returned `storageUrl` as sandbox metadata in `documentUploads`.
+When `ACADID_PORTAL_UPLOAD_BASE_URL` is configured, `status` becomes `ISSUED` and `uploadUrl` contains the provider upload URL. Until then, Institution Portal Team should use the returned `storageUrl` as sandbox metadata in `documentUploads`.
 
 ## Create Institution Application
 
@@ -259,7 +259,7 @@ Founder can:
 
 ## Contract Stability Notes
 
-This route is safe for Engineer 2 MVP work. Future additions should be additive where possible:
+This route is safe for Institution Portal Team MVP work. Future additions should be additive where possible:
 
 - Application status lookup endpoint.
 - Approved institution login bootstrap endpoint.

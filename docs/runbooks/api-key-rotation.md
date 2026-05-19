@@ -1,6 +1,6 @@
 # API Key Rotation Runbook
 
-Owner: Engineer 1 / Data Center API  
+Owner: Core Platform Team / Data Center API
 Audience: Founder, product engineers, institution operators  
 Status: Pilot-ready procedure
 
@@ -76,4 +76,3 @@ If a product key is suspected compromised:
 - Do not create product-local API keys outside the Data Center API.
 - Do not allow institutions to create Live Results keys without approved Developer Access.
 - Do not return old secrets from listing endpoints.
-

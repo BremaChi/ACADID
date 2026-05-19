@@ -1,6 +1,6 @@
 # Emergency Lockdown Runbook
 
-Owner: Engineer 1 / Data Center API  
+Owner: Core Platform Team / Data Center API
 Audience: Founder, operations engineer  
 Status: Pilot-ready procedure
 
@@ -65,4 +65,3 @@ Only re-enable integrations after:
 - Do not delete audit events.
 - Do not manually edit credential status outside governance endpoints.
 - Do not restore access before rotating compromised secrets.
-

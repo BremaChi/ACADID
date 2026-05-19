@@ -1,7 +1,7 @@
 # Institution Portal Storage And MOU Runbook
 
-Owner: Engineer 1 / Data Center API  
-Audience: Engineer 2, Founder, operations engineer  
+Owner: Core Platform Team / Data Center API
+Audience: Institution Portal Team, Founder, operations engineer
 Status: Pilot configuration guide
 
 ## Purpose
@@ -40,7 +40,7 @@ If `ACADID_PORTAL_UPLOAD_BASE_URL` is empty:
 
 - `POST /api/portal/upload-urls` returns `PROVIDER_CONFIGURATION_REQUIRED`.
 - The response still includes a `storageUrl`.
-- Engineer 2 may submit that `storageUrl` as sandbox metadata in `documentUploads`.
+- Institution Portal Team may submit that `storageUrl` as sandbox metadata in `documentUploads`.
 
 This is acceptable for UI integration, not for production document intake.
 
@@ -74,9 +74,9 @@ ISSUED
 - Do not let the Institution Portal write directly to Supabase core tables.
 - Let the background worker download `storage://bucket/key` files with backend credentials only.
 
-## Engineer 2 Contract
+## Institution Portal Team Contract
 
-Engineer 2 should call:
+Institution Portal Team should call:
 
 - `GET /api/portal/mou-version`
 - `POST /api/portal/upload-urls`
@@ -85,7 +85,7 @@ Engineer 2 should call:
 If the portal needs new document fields, add a request to:
 
 ```text
-docs/handoffs/engineer-1-api-requests.md
+docs/contracts/API_CONTRACTS.md
 ```
 
 ## Founder Console Check

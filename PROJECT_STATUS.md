@@ -4,6 +4,66 @@
 
 AcadID has moved from concept documents into a working TypeScript monorepo foundation.
 
+## Workstream Coordination Update
+
+The repository is now prepared for professional parallel workstreams:
+
+- Core Platform Team: `ACTIVE DEVELOPMENT`
+- Institution Portal Team: `STANDBY`
+- Student Product Team: `STANDBY`
+- Employer Verification Team: `STANDBY`
+- QA/Security/Release Team: `STANDBY`
+
+Start at `docs/START_HERE.md`, then read `docs/WORKSTREAM_STATUS.md` and the shared contracts in `docs/contracts/`.
+
+Current Core Platform completion:
+
+- Data Center schema, migrations, Supabase runtime, and production-scale indexes.
+- Gateway API roots for auth, portal, ingestion, governance, access, verification, jobs, webhooks, and admin operations.
+- Founder Console control plane with live institution, application, API key, developer access, record request, dispute, verification, revenue, health, security, and settings workflows.
+- Event-driven queue/worker foundation, webhook signing/retry/dead-letter handling, idempotency, rate limiting, structured audit logging, safe caching, notifications, Paystack payment confirmation, and error observability.
+- W3C VC-ready credential records with Ed25519 JOSE/JWS signing foundation.
+- Contract documentation and workstream handoff structure.
+
+Ready for Institution Portal planning:
+
+- Institution application intake.
+- MOU metadata.
+- Upload-ticket metadata.
+- Founder approval/rejection/request-more-info.
+- Approved institution workspace creation.
+- Registrar invite foundation.
+- Institution staff session and permission model.
+- Staff management, academic setup, grading rules, learner/result ingestion, governance, transfer, rollover, sealed-session reopen, and record-request API roots.
+
+Not ready yet:
+
+- Production deployment target.
+- Production signing keys and provider secrets.
+- Final learner authentication model.
+- Final verifier account/payment model beyond MVP verification.
+- Product workstream implementation while the workstream is still `STANDBY`.
+
+Known platform risks:
+
+- Localhost depends on local dev servers staying alive; use `scripts/start-acadid-local.cmd`.
+- Credential signing is degraded in local development until stable deployment keys are configured.
+- Major framework upgrades must stay controlled and tested.
+- National-scale load testing has not yet been completed.
+
+Pending infrastructure upgrades:
+
+- Production deployment topology for web, API, workers, and secrets.
+- Real provider configuration for storage, email, SMS, push, Paystack, and signing keys.
+- Monitoring/log sink production configuration.
+- Load and resilience testing against Supabase limits.
+
+Pending framework upgrades:
+
+- Follow `SECURITY_UPGRADE_PLAN.md` for framework upgrade validation.
+- Keep `SECURITY_NOTES.md` current.
+- Do not run force audit fixes blindly.
+
 Latest architecture source:
 
 - `C:\Users\HP\Downloads\AcadID_Architecture_Brief_v3.docx`
@@ -93,12 +153,12 @@ The API has these first modules:
 - Credential signing operator tooling now includes `npm run crypto:keygen`, `npm run crypto:validate`, and `docs/runbooks/credential-signing-keys.md`.
 - Founder MFA recovery codes are supported as hashed, one-time backup codes with TOTP-protected rotation and one-time login consumption.
 - Verification billing event writer is implemented for successful credential-reference checks when `ACADID_VERIFICATION_FEE_MINOR` is configured.
-- Engineer 2 Institution Portal handoff is documented with product boundary, API contract, sandbox verification script, and approved-institution dashboard contract.
-- Cross-engineer coordination is documented through `docs/handoffs/engineering-coordination.md` and `docs/handoffs/engineer-1-api-requests.md` so product engineers can request Data Center API roots without creating shadow schemas.
+- Institution Portal Team handoff is documented with product boundary, API contract, sandbox verification guidance, and approved-institution dashboard contract.
+- Cross-team coordination is documented through `docs/START_HERE.md` and `docs/contracts/API_CONTRACTS.md` so product teams can request Data Center API roots without creating shadow schemas.
 - Production operation runbooks now cover founder recovery, API key rotation, emergency lockdown, and credential signing keys.
 - Institution Portal storage/MOU configuration is documented in `docs/runbooks/portal-storage-and-mou.md`, with `SUPABASE_STORAGE_BUCKET` aligned to API health and upload-ticket metadata.
 - Dependency hardening notes are documented in `SECURITY_NOTES.md`, including direct vs transitive audit classification and major-upgrade paths for Nest/Next framework advisories.
-- Platform foundation priority order is documented in `docs/platform-foundation-roadmap.md`; Engineer 1 should stabilize reliability systems before feature expansion.
+- Platform foundation priority order is documented in `docs/platform-foundation-roadmap.md`; Core Platform Team should stabilize reliability systems before feature expansion.
 - Webhook delivery worker transport is implemented: outbound webhook jobs are signed, carry idempotency headers, retry with exponential backoff, and move exhausted deliveries to failed/dead-letter state.
 - Per-institution webhook endpoints are implemented with encrypted one-time secrets, secret rotation, endpoint status controls, endpoint-specific worker signing, and founder retry/replay APIs for webhook deliveries.
 - Founder System Health now reports queue and worker health: ready backlog, scheduled jobs, running jobs, stale locks, failed jobs, queue breakdown, recent worker activity, and webhook delivery status from durable delivery rows.
@@ -127,8 +187,8 @@ The API has these first modules:
 - Academic standing behavior is documented in `docs/api/academic-standing-contract.md`, including publish-time recompute, classification defaults, student access shape, and product boundaries.
 - Public verification behavior is documented in `docs/api/public-verification-contract.md`, including credential-reference verification, cached status checks, safe AIN lookup, bulk verification limits, verifier headers, and privacy boundaries.
 - Production-scale indexes are implemented in migration `20260519000000_production_scale_indexes` for verification, credential, audit, job, domain-event, API-key, record-request, and revenue lookups.
-- Engineer 1 remaining foundation work is tracked in `ENGINEER_1_BACKLOG.md` so Data Center, Gateway, Founder Console, and reliability tasks stay visible before Engineer 2/3/4 product expansion.
-- Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Engineer 1 foundation.
+- Core Platform Team remaining foundation work is tracked in `CORE_PLATFORM_BACKLOG.md` so Data Center, Gateway, Founder Console, and reliability tasks stay visible before product expansion.
+- Architecture v5 is reviewed and captured. It expands the system from 10 to 14 core entities and makes AcademicSession, AcademicStructure, assigned staff scopes, RolloverRecord, and richer ResultBatch governance the next Core Platform Team foundation.
 - Architecture v5 schema foundation is implemented in Prisma and Supabase: AcademicSession, AcademicStructure, RolloverRecord, InstitutionUser assigned scopes, Departmental Officer role, expanded Enrolment statuses, and richer ResultBatch/AcademicRecord links.
 - v5 Academic Setup API foundation is implemented under `/api/ingest`: AcademicSession create/list/update, AcademicStructure create/list/update, human-session-only setup writes, v5 ResultBatch intake fields, and assignedScopes carried in human auth tokens.
 - v5 modular grading rule sets are implemented under `/api/ingest/grading-rules`: institutions can create/list/update score scales for primary/secondary and tertiary GPA engines; result ingestion computes grades, grade points, quality points, and batch GPA summaries from configured rules; uploaded grades are advisory and audited through validation warnings.
@@ -219,8 +279,8 @@ The web app currently provides an operations dashboard for the first foundation 
 - Institution Applications page can request more information and record application email actions.
 - Institution application approval now surfaces a one-time Registrar invite token so sandbox onboarding can move into the v4 human-session Institution Portal model.
 - Institution Portal API now exposes current MOU version metadata and scoped upload-ticket issuance for registration documents, signed MOU files, and supporting documents.
-- Institution Portal staff API contract is documented in `docs/api/institution-portal-staff-contract.md` for Engineer 2.
-- Approved Institution Dashboard handoff is documented in `docs/handoffs/engineer-2-approved-institution-dashboard.md`, covering staff scopes, academic setup, async upload polling, transfers, rollovers, rollover disputes, sealed-session reopen, and record request governance.
+- Institution Portal staff API contract is documented in `docs/api/institution-portal-staff-contract.md` for Institution Portal Team.
+- Approved Institution Dashboard handoff is documented in `docs/handoff/INSTITUTION_PORTAL_HANDOFF.md`, covering staff scopes, academic setup, async upload polling, transfers, rollovers, rollover disputes, sealed-session reopen, and record request governance.
 - Real ACAD.ID symbol asset in the Founder Console brand mark.
 - ACAD.ID founder dashboard styling system with strict navy/blue brand colors, calm SaaS layout, small useful cards, clean tables, and a collapsible sidebar.
 - Founder Console upgraded into a routed control-console layout with fixed independently scrollable navy sidebar, top header, one active page at a time, responsive mobile drawer, functional Overview, Institutions, Applications, API Keys, Developer Access Requests, Disputes, Verification Logs, Revenue, System Health, Security, and Settings pages.
@@ -263,7 +323,7 @@ Completed successfully:
 - v4 audit trace context validates with `npm run db:generate`, `npm run typecheck`, `npm run db:deploy`, `npm test`, local web/API 200 checks, and authenticated `/api/admin/audit-events?search=acadid-local-audit-check-2`; Supabase migration `20260505020000_v4_audit_event_context` is applied.
 - Founder password recovery command validates with `npm run typecheck`, `npm test`, and missing-password guard checks; the command writes `founder.password.reset` audit events when executed.
 - Institution Portal MOU/upload-ticket endpoints validate with `npm run typecheck`, `npm test`, public `/api/portal/mou-version`, and scoped `/api/portal/upload-urls` checks.
-- Engineer 2 Institution Portal handoff is documented in `docs/handoffs/engineer-2-institution-portal.md`, `docs/handoffs/engineer-2-approved-institution-dashboard.md`, `docs/api/institution-portal-contract.md`, and `docs/handoffs/engineer-2-sandbox-test.md`.
+- Institution Portal Team handoff is documented in `docs/handoff/INSTITUTION_PORTAL_HANDOFF.md`, `docs/api/institution-portal-contract.md`, and `docs/api/institution-portal-staff-contract.md`.
 - Engineer coordination and operation runbook docs are in place for cross-team API requests, founder recovery, API key rotation, emergency lockdown, and signing key readiness.
 - Portal storage/MOU config docs and environment placeholders are in place; API health recognizes `SUPABASE_STORAGE_BUCKET`, `OBJECT_STORAGE_BUCKET`, or `STORAGE_BUCKET`.
 - Architecture Brief v5 is reviewed into `docs/architecture-brief-v5-memory.md`.
@@ -312,7 +372,7 @@ Known validation note:
 - Prisma migrate may still print a Supabase schema-engine warning, but the repository fallback migration runner applies pending migrations successfully.
 - On April 30, 2026, local Supabase runtime checks briefly returned Prisma `P1001` connection errors to the pooler even though the TCP port was reachable. Connectivity later recovered, and authenticated Verification Logs, System Health, Revenue, and Settings checks returned 200.
 - On May 1, 2026, local System Health correctly reports `Credential Signing` as `DEGRADED` because development is using an ephemeral signing key. This is expected until real deployment secrets are provisioned.
-- On May 1, 2026, Architecture Brief v4 was reviewed. It supersedes v3/v3.1 for the next Engineer 1 work: add/expand InstitutionUser human staff auth, RecordRequest, workspace isolation middleware, stronger audit fields, registrar invitation on approval, and record-request intelligence in the Founder Console.
+- On May 1, 2026, Architecture Brief v4 was reviewed. It supersedes v3/v3.1 for the next Core Platform Team work: add/expand InstitutionUser human staff auth, RecordRequest, workspace isolation middleware, stronger audit fields, registrar invitation on approval, and record-request intelligence in the Founder Console.
 
 ## Local Runtime
 
@@ -327,7 +387,7 @@ API app:
 ## Next Engineering Steps
 
 1. Execute the planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
-2. Keep Engineer 2/3/4 API requests flowing through `docs/handoffs/engineer-1-api-requests.md` before adding new product data surfaces.
+2. Keep product-team API requests flowing through `docs/contracts/API_CONTRACTS.md` before adding new product data surfaces.
 3. Add new product-facing APIs only after they are recorded in the handoff request log and mapped to Data Center ownership.
 
 ## GitHub Status

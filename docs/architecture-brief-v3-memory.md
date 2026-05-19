@@ -18,7 +18,7 @@ AcadID is now framed as an Option B standalone API platform:
 - Other products are separate clients and must never connect directly to the database.
 - Every product and partner connects only through API keys and gateway endpoints.
 
-The engineering scope for the current build is Engineer 1:
+The engineering scope for the current build is Core Platform Team:
 
 - Build the Data Center API.
 - Build the Founder Console.
@@ -131,7 +131,7 @@ Approved Institution Dashboard sections:
 
 ## Phase 0 Handoff Target
 
-Engineer 2 is unblocked only when these are working in sandbox:
+Institution Portal Team is unblocked only when these are working in sandbox:
 
 - `POST /auth/token` returns JWT for an internal product key, starting with the Institution Portal product key.
 - `POST /ingest/students` creates Learner and returns AIN.

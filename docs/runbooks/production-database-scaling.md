@@ -12,7 +12,7 @@ AcadID is national-scale academic identity infrastructure. The database plan mus
 
 ## Scale Targets
 
-Engineer 1 should assume:
+Core Platform Team should assume:
 
 - millions of learners,
 - millions of verification events,

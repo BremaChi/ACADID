@@ -19,8 +19,8 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test("approved institution dashboard handoff documents every Engineer 2 API surface", () => {
-  const handoff = read("docs/handoffs/engineer-2-approved-institution-dashboard.md");
+test("approved institution dashboard handoff documents every Institution Portal Team API surface", () => {
+  const handoff = read("docs/handoff/INSTITUTION_PORTAL_HANDOFF.md");
 
   assertIncludes(
     handoff,
@@ -135,4 +135,3 @@ test("existing focused tests cover each approved institution dashboard dependenc
   assert.match(coverageText, /RecordRequest|record request|record-requests/i);
   assert.match(coverageText, /idempotent|idempotency|background job/i);
 });
-

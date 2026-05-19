@@ -1,8 +1,8 @@
 # Institution Portal Staff Contract
 
-Owner: Engineer 1 Data Center / Gateway.
+Owner: Core Platform Team Data Center / Gateway.
 
-Consumer: Engineer 2 Institution Portal.
+Consumer: Institution Portal Team.
 
 These routes let a Registrar manage institution staff and assigned academic scopes without direct Supabase access. All routes require a human institution session with `staff:manage`; machine API keys are rejected.
 
@@ -90,4 +90,3 @@ Registrar membership changes remain Founder Console only.
 - Every update writes `portal.institution_user.update` to the audit log.
 - Invite actions reuse the central human invitation flow and write `institution_user.invite`.
 - `assignedScopes` is stored as JSON and later enforced by Gateway academic operations.
-

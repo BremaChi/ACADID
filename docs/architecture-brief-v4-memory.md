@@ -9,9 +9,9 @@ Source reviewed:
 
 ## Active Source Of Truth
 
-The v4 brief replaces the v3/v3.1 planning model for Engineer 1 work. It keeps the four-layer architecture, Supabase/PostgreSQL active database path, gateway boundary, AIN strategy, and W3C-ready credential direction, but adds mandatory institution workspace isolation, human institution authentication, and graduate RecordRequest workflows before AcadID scales institution onboarding.
+The v4 brief replaces the v3/v3.1 planning model for Core Platform Team work. It keeps the four-layer architecture, Supabase/PostgreSQL active database path, gateway boundary, AIN strategy, and W3C-ready credential direction, but adds mandatory institution workspace isolation, human institution authentication, and graduate RecordRequest workflows before AcadID scales institution onboarding.
 
-Engineer 1 remains responsible for:
+Core Platform Team remains responsible for:
 
 - Data Center API.
 - Founder Console.
@@ -337,12 +337,12 @@ Suggested record request fees:
 - Phase 3, months 9-16: Employer portal, billing, WAEC/NECO/JAMB integrations, certified PDF reports, W3C VC exports.
 - Phase 4, year 2+: Live Results API, SDKs, webhooks, professional body integrations, NYSC, government MOUs.
 
-## Engineer 1 Update / Remove Checklist
+## Core Platform Team Update / Remove Checklist
 
 Stop doing:
 
 - Treating Docker PostgreSQL as required.
-- Treating Engineer 2 product key as the identity for normal institution staff actions.
+- Treating Institution Portal Team product key as the identity for normal institution staff actions.
 - Generating keys for normal institutions or staff from Founder Console.
 - Only flipping institution status during approval.
 - Stopping at 8 entities.
@@ -360,7 +360,7 @@ Add/update:
 - Founder workspace view, registrar invite status, demand leads, record request intelligence.
 - Full RecordRequest entity, status lifecycle, queues, payment fields, escalation logic.
 
-## Engineer 1 Build Sequence
+## Core Platform Team Build Sequence
 
 1. Database and migrations: add/expand 10 entities, role/status/payment enums, and indexes on institution id, learner id, request id, AIN, status, created at, token.
 2. Auth systems: keep machine API key auth; add human auth endpoints; JWT includes user id, role, permissions, institution id where applicable.
@@ -371,11 +371,11 @@ Add/update:
 7. Gateway doors: update `/ingest`, `/govern`, `/access`, `/verify` for human sessions and RecordRequest flows.
 8. Founder Console updates: workspace details, registrar invite status, request demand, invitation leads, API key boundaries, overdue/escalation dashboards.
 9. Supabase deployment alignment.
-10. Engineer 2 handoff: product key, auth docs, permission matrix, JWT examples, RecordRequest endpoint docs, sandbox test accounts.
+10. Institution Portal Team handoff: product key, auth docs, permission matrix, JWT examples, RecordRequest endpoint docs, sandbox test accounts.
 
-## Handoff Checklist For Engineer 2
+## Handoff Checklist For Institution Portal Team
 
-Engineer 2 should receive:
+Institution Portal Team should receive:
 
 - Product key.
 - Auth endpoint docs.

@@ -1,7 +1,7 @@
 # v5 Academic Setup API Contract
 
-Owner: Engineer 1 / Data Center API  
-Audience: Engineer 2 / Institution Portal  
+Owner: Core Platform Team / Data Center API
+Audience: Institution Portal Team / Institution Portal
 Status: First v5 setup contract
 
 ## Purpose
@@ -314,7 +314,7 @@ Founder-only endpoint for the Founder Console. It returns:
 
 Product teams should use this endpoint for Founder Console visibility instead of creating direct product-to-database dashboards.
 
-## Engineer 2 Notes
+## Institution Portal Team Notes
 
 - Do not hardcode Nigerian academic structures.
 - Build setup screens from these API responses.

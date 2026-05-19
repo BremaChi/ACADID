@@ -8,7 +8,7 @@ Review date: `2026-05-19`
 
 ## Status
 
-AcadID v5 is substantially implemented for Engineer 1's Data Center, Gateway, Founder Console, and reliability responsibilities. The remaining gaps are now mostly product-surface work, production-scale database strategy, and a small set of advanced verification/payment workflows.
+AcadID v5 is substantially implemented for Core Platform Team's Data Center, Gateway, Founder Console, and reliability responsibilities. The remaining gaps are now mostly product-surface work, production-scale database strategy, and a small set of advanced verification/payment workflows.
 
 ## Implemented
 
@@ -42,16 +42,16 @@ AcadID v5 is substantially implemented for Engineer 1's Data Center, Gateway, Fo
 
 ## Not Fully Implemented Yet
 
-- Full Institution Portal v5 UI is Engineer 2 scope and not built here.
+- Full Institution Portal v5 UI is Institution Portal Team scope and not built here.
 - Departmental Officer behavior needs deeper product workflow coverage in the Institution Portal beyond Data Center schema/auth support.
 - Future physical partitioning/read-replica rollout remains an operations milestone after real traffic confirms pressure points.
 - Production hardening still needs the remaining dependency audit item tracked in `SECURITY_NOTES.md` and the final framework-upgrade merge checks in `SECURITY_UPGRADE_PLAN.md`.
 
-## Engineer 1 Implication
+## Core Platform Team Implication
 
-Engineer 1's remaining work should stay focused on platform hardening and product-team unblockers:
+Core Platform Team's remaining work should stay focused on platform hardening and product-team unblockers:
 
-- Keep Data Center API contracts stable for Engineer 2/3/4.
+- Keep Data Center API contracts stable for product teams.
 - Add missing API roots only through the gateway, then document them in the handoff files.
 - Continue dependency hardening without blind `npm audit fix --force`.
 - Plan production-scale database work, including partitioning, read replicas, and high-volume verification/index strategy.

@@ -15,10 +15,10 @@ Current implementation memory:
 
 Engineer handoff documents:
 
-- `ENGINEER_1_BACKLOG.md`
-- `docs/handoffs/engineer-2-institution-portal.md`
+- `CORE_PLATFORM_BACKLOG.md`
+- `docs/handoff/INSTITUTION_PORTAL_HANDOFF.md`
 - `docs/api/institution-portal-contract.md`
-- `docs/handoffs/engineer-2-sandbox-test.md`
+- `docs/WORKSTREAM_STATUS.md`
 - `docs/api/webhook-receiver-contract.md`
 
 Earlier note:
@@ -154,8 +154,8 @@ Credential signing:
 Engineering coordination:
 
 - Product engineers should build against the Data Center API, not direct Supabase tables.
-- Use `docs/handoffs/engineering-coordination.md` for cross-engineer rules.
-- Use `docs/handoffs/engineer-1-api-requests.md` when another product needs a new backend root, field, scope, or route.
+- Use `docs/START_HERE.md` for cross-team rules.
+- Use `docs/contracts/API_CONTRACTS.md` when another product needs a new backend root, field, scope, or route.
 
 Portal storage and MOU:
 
@@ -213,11 +213,11 @@ Current v3 checkpoint:
 - Scoped API clients can ingest and govern records through the gateway without direct database access.
 - Public verifiers can use `/api/verify/ref/:credentialRef`, `/api/verify/status/:credentialRef`, `/api/verify/ain/:ain`, and `/api/verify/bulk` without direct database access.
 - Founder Console uses the ACAD.ID symbol asset from `apps/web/public/acadid-symbol.png`.
-- Engineer 2 Institution Portal handoff is documented with API contract and sandbox test script.
+- Institution Portal Team handoff is documented with API contract and sandbox guidance.
 
 Current v4 architecture update:
 
-- `docs/architecture-brief-v4-memory.md` is now the active architecture memory for Engineer 1 next work.
+- `docs/architecture-brief-v4-memory.md` is now the active architecture memory for Core Platform Team next work.
 - v4 keeps the four-layer Data Center/Gateway/Product/Partner model and Supabase PostgreSQL path.
 - v4 adds mandatory institution workspace isolation, human InstitutionUser sessions, expanded audit logging, and Graduate Record Requests.
 - Normal institution dashboard actions must be attributed to human staff users, not only to a shared product API key.
@@ -225,4 +225,4 @@ Current v4 architecture update:
 - Human institution permissions are enforced through gateway scope guards for protected actions.
 - RecordRequest schema/API foundation is implemented for learner submission, institution/founder governance review, founder search, audit events, and Supabase migration.
 - Founder Console Record Request UI is implemented with a dedicated sidebar section, search/filter, detail review, and governance status updates.
-- The next build priority is expanded audit fields and updating Engineer 2 handoff docs for product-key plus human institution sessions.
+- The next build priority is expanded audit fields and updating Institution Portal Team handoff docs for product-key plus human institution sessions.
