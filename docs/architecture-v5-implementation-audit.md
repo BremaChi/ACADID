@@ -25,7 +25,7 @@ AcadID v5 is substantially implemented for Engineer 1's Data Center, Gateway, Fo
 - Manual rollover preview/confirm exists under `/api/govern`.
 - Sealed-session reopen request/review exists with Founder-only review.
 - RecordRequest model/API and Founder Console review queue exist.
-- RecordRequest payment escrow and fulfillment are implemented, including Paystack webhook confirmation, signed credential publication into the learner passport, and revenue ledger entries.
+- RecordRequest payment escrow, refund processing, and fulfillment are implemented, including Paystack webhook confirmation, signed credential publication into the learner passport, refund ledger entries, and release revenue ledger entries.
 - Invitation leads for unregistered institutions with graduate demand are implemented.
 - Transfer workflows and disputed rollover surfaces are implemented.
 - Registrar-facing staff assigned-scope management roots are implemented for the Institution Portal handoff.
@@ -43,7 +43,6 @@ AcadID v5 is substantially implemented for Engineer 1's Data Center, Gateway, Fo
 
 - Full Institution Portal v5 UI is Engineer 2 scope and not built here.
 - Departmental Officer behavior needs deeper product workflow coverage in the Institution Portal beyond Data Center schema/auth support.
-- Refund-processing flows for paid RecordRequests are not complete.
 - Future partitioning/read-replica work remains design-stage, not implemented.
 - Production hardening still needs the remaining dependency audit item tracked in `SECURITY_NOTES.md` and the final framework-upgrade merge checks in `SECURITY_UPGRADE_PLAN.md`.
 

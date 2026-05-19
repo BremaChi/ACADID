@@ -8,6 +8,7 @@ import {
   createTransferRequestSchema,
   fulfillRecordRequestSchema,
   previewRolloverSchema,
+  refundRecordRequestPaymentSchema,
   requestSealedSessionReopenSchema,
   resolveRolloverDisputeSchema,
   reviewRecordRequestSchema,
@@ -1197,6 +1198,127 @@ export class GovernanceService {
     });
 
     return { accepted: true, request };
+  }
+
+  async refundRecordRequestPayment(auth: AuthTokenPayload, id: string, body: unknown) {
+    const parsed = refundRecordRequestPaymentSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+
+    const existing = await this.prisma.recordRequest.findUnique({
+      where: { uuid: id },
+      include: this.recordRequestInclude()
+    });
+    if (!existing) {
+      throw new BadRequestException("Record request not found.");
+    }
+    await this.assertRecordRequestReviewer(auth, existing);
+    if (existing.fulfilledCredential || existing.status === "FULFILLED" || existing.escrowStatus === "RELEASED") {
+      throw new BadRequestException("Fulfilled or released record requests require manual finance review before refund.");
+    }
+    if (existing.paymentStatus !== "PAID") {
+      throw new BadRequestException("Only paid record requests can be refunded.");
+    }
+    if (parsed.data.action === "REQUEST" && existing.escrowStatus !== "HELD") {
+      throw new BadRequestException("Only paid record requests held in escrow can enter refund review.");
+    }
+    if (parsed.data.action === "CONFIRM" && !["HELD", "REFUND_PENDING"].includes(existing.escrowStatus)) {
+      throw new BadRequestException("Only paid record requests held or pending refund can be confirmed as refunded.");
+    }
+
+    const refundAmount = parsed.data.amountMinor ?? existing.amountMinor;
+    if (!refundAmount || refundAmount <= 0) {
+      throw new BadRequestException("Refund amount is required.");
+    }
+    if (existing.amountMinor && refundAmount > existing.amountMinor) {
+      throw new BadRequestException("Refund amount cannot exceed the paid record request amount.");
+    }
+    if (parsed.data.action === "CONFIRM" && !parsed.data.refundReference) {
+      throw new BadRequestException("Refund reference is required when confirming a refund.");
+    }
+
+    const now = parsed.data.refundedAt ? new Date(parsed.data.refundedAt) : new Date();
+    const nextEscrowStatus = parsed.data.action === "CONFIRM" ? "REFUNDED" : "REFUND_PENDING";
+    const nextPaymentStatus = parsed.data.action === "CONFIRM" ? "REFUNDED" : existing.paymentStatus;
+    const notes = this.appendRecordRequestNote(existing.notes, {
+      at: now.toISOString(),
+      by: auth.sub,
+      role: auth.role,
+      status: parsed.data.action === "CONFIRM" ? "REFUNDED" : "REFUND_PENDING",
+      note: parsed.data.note ?? parsed.data.reason,
+      reason: parsed.data.reason,
+      amountMinor: refundAmount,
+      refundReference: parsed.data.refundReference
+    });
+
+    const refunded = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const request = await tx.recordRequest.update({
+          where: { uuid: existing.uuid },
+          data: {
+            status: parsed.data.action === "CONFIRM" && !["REJECTED", "CANCELLED"].includes(existing.status) ? "CANCELLED" : existing.status,
+            paymentStatus: nextPaymentStatus,
+            escrowStatus: nextEscrowStatus,
+            refundRequestedAt: existing.refundRequestedAt ?? now,
+            paymentProvider: parsed.data.paymentProvider ?? existing.paymentProvider,
+            rejectionReason: existing.rejectionReason ?? (parsed.data.action === "CONFIRM" ? parsed.data.reason : undefined),
+            resolutionNote: parsed.data.action === "CONFIRM" ? parsed.data.reason : existing.resolutionNote,
+            notes
+          },
+          include: this.recordRequestInclude()
+        });
+
+        if (parsed.data.action === "CONFIRM") {
+          await tx.revenueLedgerEntry.create({
+            data: {
+              category: "CREDENTIAL_EXPORT_FEE",
+              status: "PAID",
+              amountMinor: -refundAmount,
+              currency: existing.currency,
+              institutionId: existing.institutionId,
+              sourceType: "RecordRequestRefund",
+              sourceId: existing.uuid,
+              description: "Record request payment refunded before credential fulfillment",
+              paidAt: now,
+              metadata: {
+                requestId: existing.requestId,
+                paymentReference: existing.paymentReference,
+                refundReference: parsed.data.refundReference,
+                paymentProvider: parsed.data.paymentProvider ?? existing.paymentProvider,
+                reason: parsed.data.reason
+              }
+            }
+          });
+        }
+
+        return request;
+      },
+      { maxWait: 20000, timeout: 60000 }
+    );
+
+    await this.audit.write({
+      actorId: auth.kind === "API_KEY" ? undefined : auth.sub,
+      actorRole: auth.kind === "API_KEY" ? undefined : auth.role,
+      action: parsed.data.action === "CONFIRM" ? "record_request.payment_refunded" : "record_request.refund_requested",
+      targetType: "RecordRequest",
+      targetId: refunded.uuid,
+      institutionId: refunded.institutionId ?? undefined,
+      outcome: "SUCCESS",
+      metadata: {
+        requestId: refunded.requestId,
+        amountMinor: refundAmount,
+        currency: refunded.currency,
+        paymentProvider: parsed.data.paymentProvider ?? existing.paymentProvider,
+        paymentReference: existing.paymentReference,
+        refundReference: parsed.data.refundReference,
+        escrowStatus: refunded.escrowStatus,
+        paymentStatus: refunded.paymentStatus,
+        apiKeyId: auth.apiKeyId
+      }
+    });
+
+    return { accepted: true, request: refunded };
   }
 
   async fulfillRecordRequest(auth: AuthTokenPayload, id: string, body: unknown) {

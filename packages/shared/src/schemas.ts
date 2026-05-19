@@ -437,6 +437,16 @@ export const confirmRecordRequestPaymentSchema = z.object({
   note: z.string().max(1000).optional()
 });
 
+export const refundRecordRequestPaymentSchema = z.object({
+  action: z.enum(["REQUEST", "CONFIRM"]).default("REQUEST"),
+  reason: z.string().min(3).max(1000),
+  amountMinor: z.number().int().positive().max(100_000_000).optional(),
+  refundReference: z.string().min(3).max(160).optional(),
+  paymentProvider: z.string().min(2).max(60).optional(),
+  refundedAt: z.string().datetime().optional(),
+  note: z.string().max(1000).optional()
+});
+
 export const fulfillRecordRequestSchema = z.object({
   credentialType: z.enum(["TRANSCRIPT", "RESULT_SLIP", "CERTIFICATE"]).default("TRANSCRIPT"),
   note: z.string().max(2000).optional(),
@@ -538,6 +548,7 @@ export type RevokeAccessGrantInput = z.infer<typeof revokeAccessGrantSchema>;
 export type CreateRecordRequestInput = z.infer<typeof createRecordRequestSchema>;
 export type ReviewRecordRequestInput = z.infer<typeof reviewRecordRequestSchema>;
 export type ConfirmRecordRequestPaymentInput = z.infer<typeof confirmRecordRequestPaymentSchema>;
+export type RefundRecordRequestPaymentInput = z.infer<typeof refundRecordRequestPaymentSchema>;
 export type FulfillRecordRequestInput = z.infer<typeof fulfillRecordRequestSchema>;
 export type UpdateInvitationLeadInput = z.infer<typeof updateInvitationLeadSchema>;
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>;

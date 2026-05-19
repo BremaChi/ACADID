@@ -117,6 +117,12 @@ export class GovernanceController {
     return this.governanceService.confirmRecordRequestPayment(request.auth, id, body);
   }
 
+  @Post("record-requests/:id/payment/refund")
+  @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR)
+  refundRecordRequestPayment(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {
+    return this.governanceService.refundRecordRequestPayment(request.auth, id, body);
+  }
+
   @Post("record-requests/:id/fulfill")
   @Roles(UserRole.ACADID_SUPER_ADMIN, UserRole.REGISTRAR)
   fulfillRecordRequest(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: unknown) {

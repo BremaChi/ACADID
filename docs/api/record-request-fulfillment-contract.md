@@ -77,6 +77,47 @@ Result:
 - `paymentHeldAt` set
 - audit action: `record_request.payment_confirmed`
 
+### `POST /govern/record-requests/:id/payment/refund`
+
+Requests or confirms a refund for a paid request that is still held in escrow and has not been fulfilled.
+
+Request refund:
+
+```json
+{
+  "action": "REQUEST",
+  "reason": "Institution cannot locate the historical file yet."
+}
+```
+
+Result:
+
+- `paymentStatus: PAID`
+- `escrowStatus: REFUND_PENDING`
+- `refundRequestedAt` set
+- audit action: `record_request.refund_requested`
+
+Confirm refund:
+
+```json
+{
+  "action": "CONFIRM",
+  "reason": "Refund completed through Paystack.",
+  "refundReference": "refund-ref-001",
+  "paymentProvider": "PAYSTACK"
+}
+```
+
+Result:
+
+- `status: CANCELLED` unless already rejected/cancelled
+- `paymentStatus: REFUNDED`
+- `escrowStatus: REFUNDED`
+- writes a negative `CREDENTIAL_EXPORT_FEE` ledger entry with `sourceType: RecordRequestRefund`
+- audit action: `record_request.payment_refunded`
+
+Fulfilled, released, or already-published requests are blocked from this automated path and require manual finance review.
+
 ### `POST /govern/record-requests/:id/fulfill`
 
 Publishes a signed credential into the learner passport and releases held payment.
@@ -107,4 +148,5 @@ Result:
 - Founder Admin can review unassigned requests.
 - Fulfillment requires a learner and institution link.
 - Paid requests must be held in escrow before fulfillment.
+- Refund automation is only allowed while paid funds are still held in escrow.
 - Fulfillment signs a W3C VC 2.0 aligned payload before database writes.

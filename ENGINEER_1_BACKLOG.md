@@ -11,7 +11,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 ## v5 Implementation Gaps To Track
 
 - Planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
-- Refund-processing flows for paid RecordRequests.
 - Production-scale database strategy: partitioning, read replicas, high-volume indexes, and verification/event retention policy.
 - Deeper Institution Portal UI workflows are Engineer 2 scope, but Engineer 1 must support any missing Data Center roots.
 
@@ -51,6 +50,7 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Registrar-facing staff assigned-scope management is implemented for the Institution Portal through `/api/portal/staff`, `/api/portal/staff/scope-options`, `/api/portal/staff/invite`, and `/api/portal/staff/:id`, with human-session enforcement, no machine-key access, audit logging, and contract docs for Engineer 2.
 - Modular grading rule sets are implemented as Data Center entities with `/api/ingest/grading-rules` create/list/update endpoints, score-to-grade computation during result ingestion, tertiary GPA summary support, W3C VC payload grade-point fields, audit logging, Supabase schema sync, tests, and `docs/api/grading-rules-contract.md`.
 - RecordRequest payment escrow and fulfillment are implemented with explicit escrow state, payment confirmation, signed credential publication into the learner passport, payment release revenue ledger entries, audit logging, Supabase migration, tests, and `docs/api/record-request-fulfillment-contract.md`.
+- RecordRequest refund processing is implemented for paid requests still held in escrow, with refund request/confirmation states, negative refund ledger entries, audit events, tests, and contract docs.
 - Transfer workflows and disputed rollover surfaces are implemented with durable `TransferRequest` state, transfer IDs, source-enrolment transfer-out updates, linked `TRANSFERRED_OUT` rollover records, rollover-linked disputes, Founder Academic Operations visibility, audit logging, Supabase migration, tests, and `docs/api/transfer-and-rollover-disputes-contract.md`.
 - Founder v5 setup-health gaps are implemented in `/api/admin/academic-operations` and the Founder Console, covering missing grading rules, missing subjects/courses, incomplete staff assignments, slow/failed validation or upload jobs, storage object counts, transfer alerts, disputed rollovers, tests, and UI visibility.
 - Paystack webhook receiver/worker automation is implemented for RecordRequest payment confirmation, with signed webhook verification, background job handoff, escrow state update, idempotent worker behavior, audit logging, tests, and `docs/api/paystack-webhook-contract.md`.

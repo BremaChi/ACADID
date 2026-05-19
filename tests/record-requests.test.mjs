@@ -266,3 +266,82 @@ test("paid record request is held in escrow until fulfillment publishes credenti
     else process.env.ACADID_RECORD_REQUEST_FEE_MINOR = previousFee;
   }
 });
+
+test("paid held record request can be refunded before fulfillment", async () => {
+  const previousFee = process.env.ACADID_RECORD_REQUEST_FEE_MINOR;
+  process.env.ACADID_RECORD_REQUEST_FEE_MINOR = "90000";
+  try {
+    const { accessService, auditEvents, institution, prisma, revenueEntries } = createRecordRequestHarness();
+    const studentAuth = {
+      sub: "student-user",
+      email: "student@example.com",
+      fullName: "Ada Student",
+      role: UserRole.STUDENT,
+      learnerId: "11111111-1111-4111-8111-111111111111",
+      iat: 1,
+      exp: 2
+    };
+    const created = await accessService.createRecordRequest(studentAuth, {
+      institutionId: institution.uuid,
+      institutionNameSubmitted: institution.officialName,
+      educationLevel: "Secondary School",
+      yearsAttendedFrom: 2015,
+      yearsAttendedTo: 2021,
+      recordTypesRequested: ["Transcript"],
+      proofDocumentUrls: ["storage://proof/example.pdf"]
+    });
+    const governance = new GovernanceService(
+      prisma,
+      { write: async (event) => auditEvents.push(event) },
+      {
+        institutionWhereForActor: async () => ({ institutionId: { in: [institution.uuid] } }),
+        assertActorCanOperateInstitution: async (_auth, institutionId) => assert.equal(institutionId, institution.uuid)
+      },
+      { sign: async (payload) => ({ payload, proof: { type: "DataIntegrityProof" }, signature: "signed-record-request" }) }
+    );
+    const registrarAuth = {
+      sub: "registrar-user",
+      email: "registrar@example.edu.ng",
+      fullName: "Registrar",
+      role: UserRole.REGISTRAR,
+      institutionUuid: institution.uuid,
+      institutionId: institution.institutionId,
+      iat: 1,
+      exp: 2
+    };
+
+    await governance.confirmRecordRequestPayment(registrarAuth, created.request.uuid, {
+      paymentReference: "paystack-ref-refund-001",
+      amountMinor: 90000,
+      paymentProvider: "PAYSTACK"
+    });
+    const pending = await governance.refundRecordRequestPayment(registrarAuth, created.request.uuid, {
+      action: "REQUEST",
+      reason: "Institution cannot locate the historical file yet."
+    });
+
+    assert.equal(pending.request.paymentStatus, "PAID");
+    assert.equal(pending.request.escrowStatus, "REFUND_PENDING");
+    assert.equal(revenueEntries.length, 0);
+
+    const refunded = await governance.refundRecordRequestPayment(registrarAuth, created.request.uuid, {
+      action: "CONFIRM",
+      reason: "Refund completed through Paystack.",
+      refundReference: "refund-ref-001",
+      paymentProvider: "PAYSTACK"
+    });
+
+    assert.equal(refunded.request.status, "CANCELLED");
+    assert.equal(refunded.request.paymentStatus, "REFUNDED");
+    assert.equal(refunded.request.escrowStatus, "REFUNDED");
+    assert.equal(revenueEntries.length, 1);
+    assert.equal(revenueEntries[0].category, "CREDENTIAL_EXPORT_FEE");
+    assert.equal(revenueEntries[0].amountMinor, -90000);
+    assert.equal(revenueEntries[0].sourceType, "RecordRequestRefund");
+    assert.equal(auditEvents.some((event) => event.action === "record_request.refund_requested"), true);
+    assert.equal(auditEvents.some((event) => event.action === "record_request.payment_refunded"), true);
+  } finally {
+    if (previousFee === undefined) delete process.env.ACADID_RECORD_REQUEST_FEE_MINOR;
+    else process.env.ACADID_RECORD_REQUEST_FEE_MINOR = previousFee;
+  }
+});
