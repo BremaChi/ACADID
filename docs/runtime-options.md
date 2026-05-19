@@ -27,8 +27,8 @@ From the repo root:
 npm run db:generate
 npm run db:deploy
 npm run db:seed
-scripts/start-api.cmd
-scripts/start-web.cmd
+npm run dev --workspace @acadid/api
+npm run dev --workspace @acadid/web
 npm run smoke:api
 ```
 
@@ -38,6 +38,8 @@ Then verify:
 http://localhost:4000/api/health
 http://localhost:3000
 ```
+
+On Windows, `scripts/start-api.cmd` and `scripts/start-web.cmd` start those same dev servers in minimized terminals. The API dev command uses the AcadID runner in `apps/api/scripts/dev.mjs`, which keeps Nest watch compilation but starts the server from `apps/api/dist/apps/api/src/main.js`.
 
 `npm run db:deploy` first tries Prisma's normal migration engine. If the local machine cannot reach Supabase through the migration connection, it falls back to the Prisma Client migration runner so the checked-in SQL migration is still applied safely.
 

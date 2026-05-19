@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "node scripts/dev.mjs",
     "build": "nest build",
     "start": "node dist/apps/api/src/main.js",
     "worker": "node dist/apps/api/src/worker.js",

@@ -69,12 +69,16 @@ See `docs/runtime-options.md` for the available local and production database se
 
 Useful commands:
 
+- `npm run dev --workspace @acadid/api`
+- `npm run dev --workspace @acadid/web`
 - `npm run db:generate`
 - `npm run db:deploy`
 - `npm run db:seed`
 - `npm run smoke:api`
 - `npm run crypto:keygen`
 - `npm run crypto:validate`
+
+API development uses `apps/api/scripts/dev.mjs` instead of `nest start --watch` so the Nest compiler can watch files while the API runs from the actual monorepo build output at `apps/api/dist/apps/api/src/main.js`.
 
 Webhook worker delivery:
 

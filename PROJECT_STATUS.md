@@ -27,6 +27,7 @@ Created:
 - Credential signing adapter package in `packages/crypto`.
 - Web dev helper script in `scripts/dev-web.cmd`.
 - API dev helper script in `scripts/start-api.cmd`.
+- API workspace dev runner in `apps/api/scripts/dev.mjs`, which fixes Nest watch startup after the framework upgrade by launching the compiled monorepo output path.
 - Optional WSL Docker PostgreSQL fallback helper script in `scripts/start-db-wsl.cmd`.
 - GitHub Actions CI workflow in `.github/workflows/ci.yml`.
 - Runtime setup guidance in `docs/runtime-options.md`.
