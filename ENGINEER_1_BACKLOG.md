@@ -4,11 +4,17 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 ## Active Build Order
 
-1. Begin v5 Engineer 1 implementation gaps in the order below.
+1. Finish the framework-upgrade branch validation and merge path.
+2. Keep Founder Console/Data Center reliability sharp while Engineer 2 begins Institution Portal work.
+3. Add new gateway API roots only when a product engineer needs them and document the request/response contract.
 
 ## v5 Implementation Gaps To Track
 
 - Planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
+- Refund-processing flows for paid RecordRequests.
+- Bulk verification and AIN lookup under `/verify`.
+- Production-scale database strategy: partitioning, read replicas, high-volume indexes, and verification/event retention policy.
+- Deeper Institution Portal UI workflows are Engineer 2 scope, but Engineer 1 must support any missing Data Center roots.
 
 ## Product API Roots To Keep Stable
 
