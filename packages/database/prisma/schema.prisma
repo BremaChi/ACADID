@@ -396,6 +396,7 @@ model Learner {
   academicStandings  AcademicStanding[]
 
   @@index([fullName, dateOfBirth])
+  @@index([identityStatus, createdAt])
 }
 
 model Institution {
@@ -603,6 +604,8 @@ model ApiKey {
   @@index([ownerType, status])
   @@index([productCode, status])
   @@index([clientId, status])
+  @@index([status, expiresAt])
+  @@index([lastUsedAt])
 }
 
 model Enrolment {
@@ -984,6 +987,10 @@ model Credential {
 
   @@index([learnerId, status])
   @@index([institutionId, status])
+  @@index([status, issuedAt])
+  @@index([type, status, issuedAt])
+  @@index([institutionId, issuedAt])
+  @@index([learnerId, issuedAt])
   @@index([recordRequestId])
 }
 
@@ -1025,6 +1032,11 @@ model VerificationEvent {
   revenueEntries RevenueLedgerEntry[]
 
   @@index([credentialId, verifiedAt])
+  @@index([verifiedAt])
+  @@index([outcome, verifiedAt])
+  @@index([verifierType, verifiedAt])
+  @@index([accessGrantId, verifiedAt])
+  @@index([ipAddressHash, verifiedAt])
 }
 
 model RevenueLedgerEntry {
@@ -1190,6 +1202,8 @@ model RecordRequest {
   @@index([requestId])
   @@index([assignedToId, status])
   @@index([paymentStatus, escrowStatus])
+  @@index([paymentStatus, escrowStatus, updatedAt])
+  @@index([deadlineAt, status])
 }
 
 model InvitationLead {
@@ -1275,6 +1289,10 @@ model AuditEvent {
   @@index([clientId, createdAt])
   @@index([institutionId, createdAt])
   @@index([endpoint, createdAt])
+  @@index([action, createdAt])
+  @@index([outcome, createdAt])
+  @@index([actorRole, createdAt])
+  @@index([ipAddressHash, createdAt])
   @@index([targetType, targetId])
   @@index([entityType, entityId])
 }
@@ -1314,6 +1332,9 @@ model BackgroundJob {
   @@index([institutionId, status, createdAt])
   @@index([type, status, createdAt])
   @@index([relatedEntityType, relatedEntityId])
+  @@index([completedAt])
+  @@index([failedAt])
+  @@index([lockedAt])
 }
 
 model WorkerHeartbeat {
@@ -1358,6 +1379,7 @@ model DomainEvent {
   @@index([aggregateType, aggregateId])
   @@index([institutionId, createdAt])
   @@index([jobId])
+  @@index([publishedAt])
 }
 
 model WebhookDelivery {

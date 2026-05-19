@@ -11,7 +11,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 ## v5 Implementation Gaps To Track
 
 - Planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
-- Production-scale database strategy: partitioning, read replicas, high-volume indexes, and verification/event retention policy.
 - Deeper Institution Portal UI workflows are Engineer 2 scope, but Engineer 1 must support any missing Data Center roots.
 
 ## Product API Roots To Keep Stable
@@ -58,3 +57,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - Institution Portal dashboard handoff tests are implemented for Engineer 2 approved-institution flows, covering staff scopes, academic setup, async upload polling roots, transfer, manual rollover, disputed rollover, sealed-session reopen, and record request routes through `tests/institution-portal-handoff.test.mjs` and `docs/handoffs/engineer-2-approved-institution-dashboard.md`.
 - Database-backed sealed-session reopen queue is implemented with durable `SealedSessionReopenRequest` state, one-open-request-per-session protection, 72-hour SLA due dates, Founder approval/rejection review fields, Supabase migration, audit events, and Founder Academic Operations visibility.
 - Public bulk verification and AIN lookup are implemented under `/api/verify`, with safe learner summaries, no internal UUID exposure, rate-limited routes, verification events, tests, and `docs/api/public-verification-contract.md`.
+- Production-scale database strategy is implemented with high-volume Prisma indexes, SQL partial operational indexes, Supabase/PostgreSQL partition/read-replica/retention guidance, and `docs/runbooks/production-database-scaling.md`.

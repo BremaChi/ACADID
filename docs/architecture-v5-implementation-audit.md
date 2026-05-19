@@ -38,12 +38,13 @@ AcadID v5 is substantially implemented for Engineer 1's Data Center, Gateway, Fo
 - W3C VC-ready credential payload/signing foundation exists with JOSE/JWS Ed25519.
 - Bulk student uploads, async result validation, credential/PDF generation, Paystack confirmation, webhook retries, notification delivery, and retention cleanup use the background job foundation.
 - Public bulk verification and AIN lookup are implemented under `/api/verify` with rate limits, safe summaries, and no internal UUID exposure.
+- Production-scale database strategy is implemented with high-volume indexes, SQL operational partial indexes, and a Supabase/PostgreSQL runbook for partitioning, read replicas, and retention policy.
 
 ## Not Fully Implemented Yet
 
 - Full Institution Portal v5 UI is Engineer 2 scope and not built here.
 - Departmental Officer behavior needs deeper product workflow coverage in the Institution Portal beyond Data Center schema/auth support.
-- Future partitioning/read-replica work remains design-stage, not implemented.
+- Future physical partitioning/read-replica rollout remains an operations milestone after real traffic confirms pressure points.
 - Production hardening still needs the remaining dependency audit item tracked in `SECURITY_NOTES.md` and the final framework-upgrade merge checks in `SECURITY_UPGRADE_PLAN.md`.
 
 ## Engineer 1 Implication

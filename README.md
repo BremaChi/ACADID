@@ -126,6 +126,7 @@ Caching:
 - Local development defaults to in-process memory cache.
 - Multi-instance pilot/production can enable the optional Upstash Redis REST L2 adapter with `ACADID_CACHE_ADAPTER=upstash`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN`.
 - See `docs/runbooks/distributed-cache.md`.
+- Production database scaling, retention, partitioning, read-replica, and index rules are documented in `docs/runbooks/production-database-scaling.md`.
 
 Observability:
 
