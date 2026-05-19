@@ -210,6 +210,7 @@ Current v3 checkpoint:
 - Founder can set up authenticator-code protection; once enabled, login requires the authenticator code.
 - External clients can exchange `client_id` and one-time `client_secret` through `POST /auth/token`.
 - Scoped API clients can ingest and govern records through the gateway without direct database access.
+- Public verifiers can use `/api/verify/ref/:credentialRef`, `/api/verify/status/:credentialRef`, `/api/verify/ain/:ain`, and `/api/verify/bulk` without direct database access.
 - Founder Console uses the ACAD.ID symbol asset from `apps/web/public/acadid-symbol.png`.
 - Engineer 2 Institution Portal handoff is documented with API contract and sandbox test script.
 

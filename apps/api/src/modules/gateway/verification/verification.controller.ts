@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { RateLimit } from "../../platform/decorators/rate-limit.decorator.js";
 import { RateLimitGuard } from "../../platform/guards/rate-limit.guard.js";
 import { VerificationService } from "./verification.service.js";
@@ -17,19 +17,31 @@ type VerificationRequest = {
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
-  @Get(":token")
-  verifyToken(@Param("token") token: string, @Req() request: VerificationRequest) {
-    return this.verificationService.verifyToken(token, this.verificationContext(request));
-  }
-
   @Get("ref/:refnum")
   verifyReference(@Param("refnum") refnum: string, @Req() request: VerificationRequest) {
     return this.verificationService.verifyReference(refnum, this.verificationContext(request));
   }
 
+  @RateLimit({ scope: "verify.bulk", key: "ip", limit: 20, windowSeconds: 60 })
+  @Post("bulk")
+  bulkVerify(@Body() body: unknown, @Req() request: VerificationRequest) {
+    return this.verificationService.bulkVerify(body, this.verificationContext(request));
+  }
+
+  @RateLimit({ scope: "verify.ain", key: "ip", limit: 60, windowSeconds: 60 })
+  @Get("ain/:ain")
+  lookupAin(@Param("ain") ain: string, @Req() request: VerificationRequest) {
+    return this.verificationService.lookupAin(ain, this.verificationContext(request));
+  }
+
   @Get("status/:credId")
   credentialStatus(@Param("credId") credId: string, @Req() request: VerificationRequest) {
     return this.verificationService.credentialStatus(credId, this.verificationContext(request));
+  }
+
+  @Get(":token")
+  verifyToken(@Param("token") token: string, @Req() request: VerificationRequest) {
+    return this.verificationService.verifyToken(token, this.verificationContext(request));
   }
 
   private verificationContext(request: VerificationRequest) {

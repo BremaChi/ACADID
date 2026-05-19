@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../platform/services/prisma.service.js";
@@ -9,6 +9,14 @@ type VerificationContext = {
   ipAddress?: string | null;
   verifierName?: string;
   verifierEmail?: string;
+};
+
+type BulkVerificationBody = {
+  credentialRefs?: unknown;
+  references?: unknown;
+  refnums?: unknown;
+  ains?: unknown;
+  ain?: unknown;
 };
 
 @Injectable()
@@ -110,7 +118,7 @@ export class VerificationService {
       await this.recordVerification(credential.uuid, undefined, "REVOKED", { credentialRef: credential.credentialRef }, "CREDENTIAL_REFERENCE", context);
       return {
         outcome: "REVOKED",
-        credential
+        credential: this.publicReferenceCredential(credential)
       };
     }
 
@@ -144,7 +152,7 @@ export class VerificationService {
     return {
       outcome: "CONFIRMED",
       cryptographicStatus,
-      credential
+      credential: this.publicReferenceCredential(credential)
     };
   }
 
@@ -156,6 +164,117 @@ export class VerificationService {
       });
     }
     return this.readCredentialStatus(credId);
+  }
+
+  async bulkVerify(body: unknown, context: VerificationContext = {}) {
+    const payload = this.bulkPayload(body);
+    const credentialRefs = this.normalizeList(payload.credentialRefs ?? payload.references ?? payload.refnums, 50);
+    const ains = this.normalizeList(payload.ains ?? payload.ain, 50);
+    const total = credentialRefs.length + ains.length;
+
+    if (total === 0) {
+      throw new BadRequestException("Provide at least one credentialRefs or ains value.");
+    }
+    if (total > 50) {
+      throw new BadRequestException("Bulk verification accepts a maximum of 50 identifiers per request.");
+    }
+
+    const [credentials, learnerLookups] = await Promise.all([
+      Promise.all(credentialRefs.map(async (credentialRef) => ({ credentialRef, result: await this.verifyReference(credentialRef, context) }))),
+      Promise.all(ains.map(async (ain) => ({ ain, result: await this.lookupAin(ain, context) })))
+    ]);
+    const flatResults = [...credentials.map((item) => item.result), ...learnerLookups.map((item) => item.result)];
+
+    return {
+      outcome: "COMPLETED",
+      total,
+      confirmed: flatResults.filter((result) => result.outcome === "CONFIRMED").length,
+      revoked: flatResults.filter((result) => result.outcome === "REVOKED").length,
+      denied: flatResults.filter((result) => result.outcome === "DENIED").length,
+      credentials,
+      learnerLookups
+    };
+  }
+
+  async lookupAin(ain: string, context: VerificationContext = {}) {
+    const normalizedAin = this.normalizeIdentifier(ain);
+    if (!normalizedAin) {
+      throw new BadRequestException("AIN is required.");
+    }
+
+    const [learner, activeCredentialCount] = await Promise.all([
+      this.prisma.learner.findUnique({
+        where: { ain: normalizedAin },
+        select: {
+          uuid: true,
+          ain: true,
+          fullName: true,
+          identityStatus: true,
+          credentials: {
+            orderBy: { issuedAt: "desc" },
+            take: 10,
+            select: {
+              uuid: true,
+              credentialRef: true,
+              type: true,
+              status: true,
+              issuedAt: true,
+              institution: {
+                select: {
+                  institutionId: true,
+                  officialName: true
+                }
+              }
+            }
+          }
+        }
+      }),
+      this.prisma.credential.count({
+        where: {
+          learner: { ain: normalizedAin },
+          status: "ACTIVE"
+        }
+      })
+    ]);
+
+    if (!learner) {
+      return { outcome: "DENIED", reason: "AIN not found." };
+    }
+
+    const visibleCredentials = learner.credentials.map(({ uuid: _uuid, ...credential }) => credential);
+    const scopeViewed = {
+      ain: learner.ain,
+      activeCredentialCount,
+      credentialRefs: visibleCredentials.map((credential) => credential.credentialRef)
+    };
+    const eventCredential = learner.credentials.find((credential) => credential.status === "ACTIVE") ?? learner.credentials[0];
+    if (eventCredential) {
+      await this.prisma.verificationEvent.create({
+        data: {
+          credentialId: eventCredential.uuid,
+          verifierType: "AIN_LOOKUP",
+          verifierName: context.verifierName,
+          verifierEmailEncrypted: this.encryptOptional(context.verifierEmail),
+          ipAddressHash: this.hashOptional(context.ipAddress),
+          outcome: activeCredentialCount > 0 ? "CONFIRMED" : "DENIED",
+          scopeViewed
+        }
+      });
+    }
+
+    return {
+      outcome: "CONFIRMED",
+      learner: {
+        ain: learner.ain,
+        fullName: learner.fullName,
+        identityStatus: learner.identityStatus
+      },
+      credentialSummary: {
+        activeCredentialCount,
+        returnedCredentialCount: visibleCredentials.length,
+        credentials: visibleCredentials
+      }
+    };
   }
 
   private async readCredentialStatus(credId: string) {
@@ -170,6 +289,34 @@ export class VerificationService {
     });
 
     return credential ?? { outcome: "DENIED", reason: "Credential not found." };
+  }
+
+  private publicReferenceCredential(credential: {
+    credentialRef: string;
+    status: string;
+    issuedAt: Date;
+    revokedAt: Date | null;
+    revocationReason: string | null;
+    signature: string | null;
+    vcPayload: Prisma.JsonValue;
+    institution: {
+      institutionId: string;
+      officialName: string;
+    };
+  }) {
+    return {
+      credentialRef: credential.credentialRef,
+      status: credential.status,
+      issuedAt: credential.issuedAt,
+      revokedAt: credential.revokedAt,
+      revocationReason: credential.revocationReason,
+      signature: credential.signature,
+      vcPayload: credential.vcPayload,
+      institution: {
+        institutionId: credential.institution.institutionId,
+        officialName: credential.institution.officialName
+      }
+    };
   }
 
   private deniedReason(accessGrant: {
@@ -285,6 +432,29 @@ export class VerificationService {
 
   private hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private bulkPayload(body: unknown): BulkVerificationBody {
+    return body && typeof body === "object" && !Array.isArray(body) ? (body as BulkVerificationBody) : {};
+  }
+
+  private normalizeList(value: unknown, limit: number): string[] {
+    const values = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+    const unique = new Set<string>();
+    for (const item of values) {
+      const normalized = this.normalizeIdentifier(String(item));
+      if (normalized) {
+        unique.add(normalized);
+      }
+      if (unique.size > limit) {
+        break;
+      }
+    }
+    return [...unique];
+  }
+
+  private normalizeIdentifier(value: string | undefined): string {
+    return value?.trim().slice(0, 120) ?? "";
   }
 
   private hashOptional(value: string | null | undefined): string | undefined {

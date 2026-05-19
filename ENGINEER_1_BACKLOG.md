@@ -12,7 +12,6 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 
 - Planned Nest/Next dependency hardening upgrades from `SECURITY_NOTES.md` and `SECURITY_UPGRADE_PLAN.md` before production.
 - Refund-processing flows for paid RecordRequests.
-- Bulk verification and AIN lookup under `/verify`.
 - Production-scale database strategy: partitioning, read replicas, high-volume indexes, and verification/event retention policy.
 - Deeper Institution Portal UI workflows are Engineer 2 scope, but Engineer 1 must support any missing Data Center roots.
 
@@ -58,3 +57,4 @@ Engineer 1 owns the AcadID Data Center, Gateway, founder control plane, security
 - CGPA/classification rollup is implemented as durable `AcademicStanding` state per enrolment, recomputed during result publication, exposed through `/api/access/academic-standing`, covered by tests, and documented in `docs/api/academic-standing-contract.md`.
 - Institution Portal dashboard handoff tests are implemented for Engineer 2 approved-institution flows, covering staff scopes, academic setup, async upload polling roots, transfer, manual rollover, disputed rollover, sealed-session reopen, and record request routes through `tests/institution-portal-handoff.test.mjs` and `docs/handoffs/engineer-2-approved-institution-dashboard.md`.
 - Database-backed sealed-session reopen queue is implemented with durable `SealedSessionReopenRequest` state, one-open-request-per-session protection, 72-hour SLA due dates, Founder approval/rejection review fields, Supabase migration, audit events, and Founder Academic Operations visibility.
+- Public bulk verification and AIN lookup are implemented under `/api/verify`, with safe learner summaries, no internal UUID exposure, rate-limited routes, verification events, tests, and `docs/api/public-verification-contract.md`.
