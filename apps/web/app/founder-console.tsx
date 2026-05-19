@@ -36,6 +36,18 @@ const navGroups: { label: string; items: PageKey[] }[] = [
   { label: "System", items: ["System Health", "Audit Logs", "Security", "Settings"] }
 ];
 
+const pageHashMap = new Map<string, PageKey>(
+  navItems.map((item) => [item.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), item])
+);
+
+function pageToHash(page: PageKey) {
+  return `#${page.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+}
+
+function pageFromHash(hash: string) {
+  return pageHashMap.get(hash.replace(/^#/, "").toLowerCase()) ?? null;
+}
+
 const scopeOptions = ["institution:apply", "ingest:write", "govern:write", "access:read", "verify:read", "identity:write", "webhook:manage"];
 const staffRoleOptions = ["REGISTRAR", "EXAM_OFFICER", "DATA_ENTRY_OFFICER", "DEPARTMENTAL_OFFICER", "READ_ONLY"];
 const staffPermissionDefaults: Record<string, string[]> = {
@@ -1394,6 +1406,18 @@ export function FounderConsole() {
   }, []);
 
   useEffect(() => {
+    const syncPageFromHash = () => {
+      const nextPage = pageFromHash(window.location.hash);
+      if (nextPage) {
+        setActivePage(nextPage);
+      }
+    };
+    syncPageFromHash();
+    window.addEventListener("hashchange", syncPageFromHash);
+    return () => window.removeEventListener("hashchange", syncPageFromHash);
+  }, []);
+
+  useEffect(() => {
     if (!token || !selectedInstitutionId || activePage !== "Institutions") {
       setInstitutionStaff([]);
       return;
@@ -1640,6 +1664,9 @@ export function FounderConsole() {
   function navigate(page: PageKey) {
     setActivePage(page);
     setDrawerOpen(false);
+    if (typeof window !== "undefined" && window.location.hash !== pageToHash(page)) {
+      window.history.replaceState(null, "", pageToHash(page));
+    }
   }
 
   async function queueRateLimitCleanup() {
@@ -2336,19 +2363,19 @@ export function FounderConsole() {
                 {group.items.map((item) => {
                   const badgeCount = pageBadges[item] ?? 0;
                   return (
-                    <button
+                    <a
                       key={item}
                       className={`flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
                         activePage === item ? "bg-accent text-white" : "text-white/80 hover:bg-white/10 hover:text-white"
                       } ${sidebarCollapsed ? "justify-center" : ""}`}
+                      href={pageToHash(item)}
                       onClick={() => navigate(item)}
                       title={sidebarCollapsed ? item : undefined}
-                      type="button"
                     >
                       <SideIcon label={item} active={activePage === item} inverse />
                       {sidebarCollapsed ? null : <span className="min-w-0 flex-1 truncate">{item}</span>}
                       {!sidebarCollapsed && badgeCount > 0 ? <Badge>{badgeCount > 99 ? "99+" : badgeCount}</Badge> : null}
-                    </button>
+                    </a>
                   );
                 })}
               </div>
