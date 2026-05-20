@@ -2,7 +2,7 @@
 
 Status: Active  
 Owner: Core Platform Team  
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ## Purpose
 
@@ -54,6 +54,14 @@ Detailed contracts remain in:
 
 - `docs/api/institution-portal-contract.md`
 - `docs/api/institution-portal-staff-contract.md`
+
+Current Institution Portal build credential:
+
+- Environment: Sandbox.
+- Product key: Institution Portal, founder-provided, stored outside the repository.
+- Required scope: `institution:apply`.
+- Token exchange: `POST /api/auth/token`, called only from the Institution Portal backend.
+- Production key: not authorized until release approval.
 
 ### Academic Setup And Ingestion
 
@@ -130,4 +138,3 @@ Detailed contract:
 - Long-running work must return a job ID and continue in workers.
 - Gateway-sensitive actions must write audit events.
 - Breaking changes require updated docs, shared schemas, tests, and a status note before handoff.
-

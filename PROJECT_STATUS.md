@@ -9,7 +9,7 @@ AcadID has moved from concept documents into a working TypeScript monorepo found
 The repository is now prepared for professional parallel workstreams:
 
 - Core Platform Team: `ACTIVE DEVELOPMENT`
-- Institution Portal Team: `STANDBY`
+- Institution Portal Team: `ACTIVE DEVELOPMENT`
 - Student Product Team: `STANDBY`
 - Employer Verification Team: `STANDBY`
 - QA/Security/Release Team: `STANDBY`
@@ -25,7 +25,7 @@ Current Core Platform completion:
 - W3C VC-ready credential records with Ed25519 JOSE/JWS signing foundation.
 - Contract documentation and workstream handoff structure.
 
-Ready for Institution Portal planning:
+Ready for Institution Portal development:
 
 - Institution application intake.
 - MOU metadata.
@@ -35,6 +35,9 @@ Ready for Institution Portal planning:
 - Registrar invite foundation.
 - Institution staff session and permission model.
 - Staff management, academic setup, grading rules, learner/result ingestion, governance, transfer, rollover, sealed-session reopen, and record-request API roots.
+- Founder-generated Sandbox Institution Portal product API key is available from the founder-controlled secure credential document.
+- Institution Portal backend should exchange `client_id` and `client_secret` through `POST /api/auth/token`.
+- `client_secret` must remain server-side only and must never be committed, logged, or exposed to browser JavaScript.
 
 Not ready yet:
 
@@ -42,7 +45,7 @@ Not ready yet:
 - Production signing keys and provider secrets.
 - Final learner authentication model.
 - Final verifier account/payment model beyond MVP verification.
-- Product workstream implementation while the workstream is still `STANDBY`.
+- Production Institution Portal API key and production deployment environment.
 
 Known platform risks:
 

@@ -60,6 +60,8 @@ Rules:
 - Never expose secrets to browser JavaScript.
 - Never log secrets.
 - Product keys are for internal products such as Institution Portal, Student Mobile App, Employer Verification Portal, and Exam Body Connector.
+- Institution Portal Team must use the founder-provided Sandbox Institution Portal product key during active development.
+- Production product keys are separate credentials and require release approval before use.
 - Institution live-result keys require approved Developer Access.
 - API keys are scope-limited and rate-limited.
 
@@ -101,4 +103,3 @@ Machine keys must not perform human-only governance actions unless the API contr
 - Learner authentication model for Student Product Team.
 - Employer/verifier account model beyond public verification MVP.
 - Production TOTP enrollment policy for all privileged institution roles.
-

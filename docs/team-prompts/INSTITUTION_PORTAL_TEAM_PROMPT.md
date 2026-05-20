@@ -2,11 +2,11 @@
 
 You are joining the AcadID Institution Portal Team.
 
-Current status: STANDBY unless `docs/WORKSTREAM_STATUS.md` says otherwise.
+Current status: ACTIVE DEVELOPMENT for the scope recorded in `docs/WORKSTREAM_STATUS.md`.
 
 ## Scope
 
-Prepare institution onboarding and approved-institution dashboard planning for AcadID. Do not begin production implementation while the team is in `STANDBY`.
+Build institution onboarding and approved-institution workspace surfaces for AcadID using the existing Data Center API contracts. Start with the Sandbox environment and do not introduce production credentials until release approval.
 
 ## Required Reading
 
@@ -25,9 +25,31 @@ Prepare institution onboarding and approved-institution dashboard planning for A
 
 - Do not access Supabase directly.
 - Do not create shadow schemas.
-- Do not add APIs or database migrations unless activated and coordinated.
+- Do not add APIs or database migrations unless coordinated through the relevant contract documents first.
 - Use Data Center API contracts only.
 - Keep secrets server-side.
+- Use the founder-provided **Sandbox Institution Portal product API key** for backend-to-Data-Center calls.
+- Store `client_id` and `client_secret` in the Institution Portal backend environment only.
+- Never commit credentials, access tokens, or links to secure credential documents.
+- Never call `/api/auth/token` from browser/client-side code.
+
+## Sandbox Auth Setup
+
+Expected backend environment shape:
+
+```env
+ACADID_API_BASE_URL=http://localhost:4000/api
+ACADID_CLIENT_ID=founder-provided-sandbox-client-id
+ACADID_CLIENT_SECRET=founder-provided-sandbox-client-secret
+```
+
+The backend exchanges credentials through:
+
+```http
+POST /api/auth/token
+```
+
+Use the resulting token only on the server when calling the allowed portal endpoints.
 
 ## Testing Expectations After Activation
 
@@ -35,4 +57,3 @@ Prepare institution onboarding and approved-institution dashboard planning for A
 - Unit or integration tests for service calls.
 - Browser validation for desktop and mobile.
 - No secret exposure in network calls.
-

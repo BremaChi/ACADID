@@ -1,13 +1,13 @@
 # Institution Portal Team Handoff
 
-Status: STANDBY  
-Owner area: Public institution onboarding and approved institution workspace  
-Dependency owner: Core Platform Team  
-Last updated: 2026-05-19
+Status: ACTIVE DEVELOPMENT
+Owner area: Public institution onboarding and approved institution workspace
+Dependency owner: Core Platform Team
+Last updated: 2026-05-20
 
 ## Mission
 
-Prepare the Institution Portal product without bypassing the AcadID Data Center API. Implementation must not begin until this workstream is explicitly moved from `STANDBY` to `ACTIVE DEVELOPMENT` in `docs/WORKSTREAM_STATUS.md`.
+Build the Institution Portal product without bypassing the AcadID Data Center API. This workstream is now activated for Institution Portal implementation under the scope recorded in `docs/WORKSTREAM_STATUS.md`.
 
 The Institution Portal Team must not connect directly to Supabase, Prisma, object storage internals, or private database tables.
 
@@ -83,8 +83,28 @@ Onboarding uses an internal product API key:
 
 - Product: Institution Portal.
 - Product code: `INSTITUTION_PORTAL`.
+- Environment for current build: `SANDBOX`.
 - Required scope: `institution:apply`.
+- The Founder has generated the Sandbox Institution Portal product API credentials and stored them in a secure founder-controlled document.
 - Secret stored only in the Institution Portal backend.
+- Never commit `client_id`, `client_secret`, access tokens, or the secure document link.
+- Never expose `client_secret` to browser JavaScript.
+
+Institution Portal backend environment variables should use a shape like:
+
+```env
+ACADID_API_BASE_URL=http://localhost:4000/api
+ACADID_CLIENT_ID=founder-provided-sandbox-client-id
+ACADID_CLIENT_SECRET=founder-provided-sandbox-client-secret
+```
+
+The portal backend exchanges those credentials through:
+
+```http
+POST /api/auth/token
+```
+
+Use the returned access token server-side when calling onboarding endpoints. Do not call `/api/auth/token` from client-side UI code.
 
 Approved institution dashboard uses human institution sessions:
 
@@ -127,9 +147,8 @@ Large uploads and validation-heavy flows should use async job-producing routes, 
 
 Record request work queues must use `/api/govern/record-requests`. Fulfillment creates signed credentials and may release held payment. Refunds are available before fulfillment where permitted.
 
-## What Not To Build While In STANDBY
+## What Not To Build In This Phase
 
-- Production Institution Portal screens.
 - New database tables.
 - New APIs.
 - New shared contracts.
@@ -137,12 +156,12 @@ Record request work queues must use `/api/govern/record-requests`. Fulfillment c
 - Supabase frontend SDK access to AcadID core data.
 - Local copies of business logic.
 - Credential signing, publication, or verification logic.
+- Production API key integration. Production credentials are generated only after the portal is tested and release-approved.
 
 ## Known Limitations
 
 - Product deployment target is not finalized.
 - Real file-storage upload provider may be dry-run in local/sandbox.
-- Institution dashboard UX is not yet authorized for implementation.
 - Learner-facing account flow is separate Student Product scope.
 
 ## Pending Dependencies From Core Platform
@@ -150,4 +169,4 @@ Record request work queues must use `/api/govern/record-requests`. Fulfillment c
 - Production deployment environment.
 - Final provider configuration for file storage, email, SMS, push, and signing keys.
 - Final learner auth and verifier account decisions for cross-product flows.
-- Activation update in `docs/WORKSTREAM_STATUS.md`.
+- Production Institution Portal credentials and deployment environment.
