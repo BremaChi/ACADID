@@ -54,6 +54,7 @@ Team-specific:
 - Additive database migrations preferred.
 - All changes must pass tests before handoff.
 - Infrastructure changes must remain backward compatible whenever possible.
+- Product teams should leave Core Platform requests in `docs/coordination/CORE_PLATFORM_REQUESTS.md` when they need API, auth, database, webhook, queue, worker, shared UI, security, audit, or Founder Console support.
 - Product teams must not connect directly to Supabase or Prisma for product behavior.
 
 ## Mandatory Coordination Rule
@@ -109,4 +110,3 @@ Use:
 - `scripts/stop-acadid-local.cmd` to stop local web/API.
 
 Localhost works only while those processes are running on the laptop.
-

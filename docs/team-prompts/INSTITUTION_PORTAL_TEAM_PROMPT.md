@@ -20,6 +20,7 @@ Build institution onboarding and approved-institution workspace surfaces for Aca
 8. `docs/api/institution-portal-contract.md`
 9. `docs/api/institution-portal-staff-contract.md`
 10. `docs/api/v5-academic-setup-contract.md`
+11. `docs/coordination/CORE_PLATFORM_REQUESTS.md`
 
 ## Boundaries
 
@@ -50,6 +51,12 @@ POST /api/auth/token
 ```
 
 Use the resulting token only on the server when calling the allowed portal endpoints.
+
+## Asking Core Platform For Help
+
+If the portal build needs a backend change, new API behavior, schema support, shared auth decision, worker/queue support, webhook behavior, or Founder Console control, add a request to `docs/coordination/CORE_PLATFORM_REQUESTS.md`.
+
+Do not create private product-local workarounds for Core Platform behavior.
 
 ## Testing Expectations After Activation
 
