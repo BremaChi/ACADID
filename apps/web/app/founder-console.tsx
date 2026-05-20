@@ -2143,12 +2143,19 @@ export function FounderConsole() {
     if (!token) return;
     setLoading(true);
     try {
+      const selectedProduct = getProductOption(productKeyForm.productCode);
       const apiKey = await apiRequest<CreatedApiKey>("/admin/product-api-keys", token, {
         method: "POST",
-        body: JSON.stringify(productKeyForm)
+        body: JSON.stringify({
+          ...productKeyForm,
+          productName: selectedProduct.name,
+          rateLimitPerMinute: productKeyForm.rateLimitPerMinute || selectedProduct.rateLimitPerMinute,
+          scopes: selectedProduct.recommendedScopes
+        })
       });
       setCreatedKey(apiKey);
-      setNotice({ tone: "success", text: "Product API key generated. Save the backend secret now." });
+      setProductKeyForm((current) => ({ ...current, scopes: selectedProduct.recommendedScopes }));
+      setNotice({ tone: "success", text: `${selectedProduct.name} API key generated. Save the backend secret now.` });
       await refreshData();
     } catch (error) {
       handleAuthenticatedError(error, "Product API key generation failed.");
@@ -3276,9 +3283,9 @@ function ApiKeysPage(props: {
 }) {
   if (props.tab === "Generate Key") {
     return (
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-5">
         <ProductApiKeyForm {...props} />
-        <InstitutionApiKeyForm {...props} />
+        <DeferredInstitutionApiKeyPanel {...props} />
       </div>
     );
   }
@@ -3335,10 +3342,23 @@ function ApiKeysPage(props: {
 function ProductApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
   const selectedProduct = getProductOption(props.productKeyForm.productCode);
   const productLabels = Object.fromEntries(productOptions.map((product) => [product.code, product.name]));
+  const isInstitutionPortal = selectedProduct.code === "INSTITUTION_PORTAL";
+  const buttonLabel = isInstitutionPortal ? "Generate Institution Portal API Key" : `Generate ${selectedProduct.name} API Key`;
   return (
     <Card>
-      <SectionTitle title="Internal Product API Keys" subtitle="Founder-generated keys for ACAD.ID-owned products." />
+      <SectionTitle title="Internal Product API Keys" subtitle="Founder-generated keys for ACAD.ID-owned products. Recommended scopes are selected automatically." />
       <form className="mt-4 space-y-3" onSubmit={props.onCreateProductKey}>
+        {isInstitutionPortal ? (
+          <div className="rounded-lg border border-success/25 bg-success/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-primary">Institution Portal Team setup</p>
+                <p className="mt-1 text-xs leading-5 text-textSecondary">Generate this key for the Institution Portal backend. It is not a Live Results API key.</p>
+              </div>
+              <span className="rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success">Ready</span>
+            </div>
+          </div>
+        ) : null}
         <FilterSelect
           value={props.productKeyForm.productCode}
           onChange={(code) => {
@@ -3358,31 +3378,30 @@ function ProductApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
         <div className="rounded-lg border border-accent/20 bg-accent/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-primary">Recommended for {selectedProduct.name}</p>
+              <p className="text-sm font-semibold text-primary">Auto-selected for {selectedProduct.name}</p>
               <p className="mt-1 text-xs leading-5 text-textSecondary">{selectedProduct.description}</p>
             </div>
             <span className="rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success">Auto-selected</span>
           </div>
-          <p className="mt-3 text-xs text-textSecondary">Recommended scopes: {selectedProduct.recommendedScopes.join(", ")}</p>
+          <AutoSelectedScopes scopes={selectedProduct.recommendedScopes} />
         </div>
         <input className={inputClass} value={props.productKeyForm.label} onChange={(event) => props.onUpdateProductKeyForm({ ...props.productKeyForm, label: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-2">
-          <FilterSelect value={props.productKeyForm.environment} onChange={(environment) => props.onUpdateProductKeyForm({ ...props.productKeyForm, environment: environment as "SANDBOX" | "PRODUCTION" })} options={["SANDBOX", "PRODUCTION"]} />
+          <FilterSelect value={props.productKeyForm.environment} onChange={(environment) => props.onUpdateProductKeyForm({ ...props.productKeyForm, environment: environment as "SANDBOX" | "PRODUCTION", label: `${selectedProduct.name} Backend - ${titleCase(environment)}` })} options={["SANDBOX", "PRODUCTION"]} />
           <input className={inputClass} type="number" min={1} max={10000} value={props.productKeyForm.rateLimitPerMinute} onChange={(event) => props.onUpdateProductKeyForm({ ...props.productKeyForm, rateLimitPerMinute: Number(event.target.value) })} />
         </div>
-        <ScopePicker selected={props.productKeyForm.scopes} onToggle={props.onToggleProductScope} recommendedScopes={selectedProduct.recommendedScopes} />
-        <button className={primaryButtonClass} disabled={props.loading}>Generate Product API Key</button>
+        <button className={primaryButtonClass} disabled={props.loading}>{buttonLabel}</button>
       </form>
     </Card>
   );
 }
 
-function InstitutionApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
+function InstitutionApiKeyForm(props: Parameters<typeof ApiKeysPage>[0] & { embedded?: boolean }) {
   const selectedInstitutionId = props.approvedDeveloperInstitutions.some((institution) => institution.uuid === props.selectedInstitutionId)
     ? props.selectedInstitutionId
     : "";
-  return (
-    <Card>
+  const content = (
+    <>
       <SectionTitle title="Institution Live Results API Keys" subtitle="Only for institutions approved for Developer Access." />
       <form className="mt-4 space-y-3" onSubmit={props.onCreateInstitutionKey}>
         <FilterSelect value={selectedInstitutionId} onChange={props.onSelectInstitution} options={["", ...props.approvedDeveloperInstitutions.map((institution) => institution.uuid)]} labels={{ "": "Select approved institution", ...Object.fromEntries(props.approvedDeveloperInstitutions.map((institution) => [institution.uuid, institution.officialName])) }} />
@@ -3395,7 +3414,41 @@ function InstitutionApiKeyForm(props: Parameters<typeof ApiKeysPage>[0]) {
         <button className={primaryButtonClass} disabled={props.loading || !selectedInstitutionId}>Generate Institution Key</button>
         {!props.approvedDeveloperInstitutions.length ? <EmptyState text="No institution has approved developer access yet." /> : null}
       </form>
-    </Card>
+    </>
+  );
+  return props.embedded ? <div>{content}</div> : <Card>{content}</Card>;
+}
+
+function DeferredInstitutionApiKeyPanel(props: Parameters<typeof ApiKeysPage>[0]) {
+  return (
+    <details className="min-w-0 rounded-xl border border-borderLight bg-white p-4 shadow-sm">
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-primary">Institution Live Results API Keys</p>
+            <p className="mt-1 text-sm text-textSecondary">Use this later only for approved schools that need Live Results API access. It is not needed for the Institution Portal Team.</p>
+          </div>
+          <span className="w-fit rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">Later setup</span>
+        </div>
+      </summary>
+      <div className="mt-4 border-t border-borderLight pt-4">
+        <InstitutionApiKeyForm {...props} embedded />
+      </div>
+    </details>
+  );
+}
+
+function AutoSelectedScopes({ scopes }: { scopes: string[] }) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {scopes.map((scope) => (
+        <div key={scope} className="flex items-center gap-2 rounded-md border border-accent/30 bg-white px-3 py-2 text-sm text-primary">
+          <input checked disabled readOnly type="checkbox" />
+          <span className="min-w-0 flex-1 break-words">{scope}</span>
+          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">Recommended</span>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -49,6 +49,11 @@ function startApi() {
     if (signal) log(`api stopped by ${signal}`);
     else if (code !== 0 && code !== null) log(`api exited with code ${code}`);
     apiProcess = null;
+    if (!restarting && !shuttingDown) {
+      log("api stopped unexpectedly; restarting api");
+      setTimeout(startApi, 1000);
+      return;
+    }
     if (restarting && !shuttingDown) {
       restarting = false;
       startApi();
