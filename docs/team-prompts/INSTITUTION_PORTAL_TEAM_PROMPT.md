@@ -20,7 +20,8 @@ Build institution onboarding and approved-institution workspace surfaces for Aca
 8. `docs/api/institution-portal-contract.md`
 9. `docs/api/institution-portal-staff-contract.md`
 10. `docs/api/v5-academic-setup-contract.md`
-11. `docs/coordination/CORE_PLATFORM_REQUESTS.md`
+11. `docs/design/INSTITUTION_PORTAL_TYPE_AWARE_BRIEF.md`
+12. `docs/coordination/CORE_PLATFORM_REQUESTS.md`
 
 ## Boundaries
 
@@ -33,6 +34,9 @@ Build institution onboarding and approved-institution workspace surfaces for Aca
 - Store `client_id` and `client_secret` in the Institution Portal backend environment only.
 - Never commit credentials, access tokens, or links to secure credential documents.
 - Never call `/api/auth/token` from browser/client-side code.
+- Build one Institution Portal with category-aware setup paths for nursery, primary, secondary, combined schools, universities, polytechnics, colleges, exam bodies, and other accredited institutions.
+- Use `institutionCategory` for detailed setup guidance. Do not use broad `Institution.type` as the detailed product flow switch.
+- Do not hardcode final academic structures. Use templates as starting guidance only; final structures must come from Data Center academic setup APIs.
 
 ## Sandbox Auth Setup
 

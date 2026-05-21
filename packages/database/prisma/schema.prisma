@@ -404,6 +404,8 @@ model Institution {
   institutionId String            @unique
   officialName  String
   type          InstitutionType
+  institutionCategory String      @default("OTHER_ACCREDITED")
+  academicTemplateCode String     @default("OTHER_ACCREDITED")
   state         String
   tier          InstitutionTier   @default(FOUNDING)
   signingKeyId  String?
@@ -438,12 +440,17 @@ model Institution {
   webhookDeliveries       WebhookDelivery[]
   notifications           Notification[]
   academicStandings       AcademicStanding[]
+
+  @@index([institutionCategory])
+  @@index([type, status])
 }
 
 model InstitutionApplication {
   uuid                  String                       @id @default(uuid()) @db.Uuid
   officialName          String
   type                  String
+  institutionCategory   String                       @default("OTHER_ACCREDITED")
+  academicTemplateCode  String                       @default("OTHER_ACCREDITED")
   state                 String
   address               String
   contactPersonName     String
@@ -462,6 +469,7 @@ model InstitutionApplication {
   approvedInstitution Institution? @relation(fields: [approvedInstitutionId], references: [uuid])
 
   @@index([status, createdAt])
+  @@index([institutionCategory, status])
   @@index([contactEmail])
 }
 

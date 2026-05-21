@@ -2,7 +2,7 @@
 
 Status: Active  
 Owner: Core Platform Team  
-Last updated: 2026-05-19
+Last updated: 2026-05-21
 
 ## Database Ownership
 
@@ -57,6 +57,35 @@ Current core models include:
 - `credential_id` or credential reference: public verification/sharing reference.
 - API client IDs are public identifiers; API client secrets are one-time private secrets.
 
+## Institution Type Awareness
+
+`Institution.type` remains the broad compatibility grouping:
+
+- `PRIMARY`
+- `SECONDARY`
+- `TERTIARY`
+- `EXAM_BODY`
+
+`Institution.institutionCategory` is the exact permanent category used by product setup flows:
+
+- `NURSERY`
+- `PRIMARY`
+- `SECONDARY`
+- `NURSERY_PRIMARY`
+- `PRIMARY_SECONDARY`
+- `NURSERY_PRIMARY_SECONDARY`
+- `FEDERAL_UNIVERSITY`
+- `STATE_UNIVERSITY`
+- `PRIVATE_UNIVERSITY`
+- `POLYTECHNIC`
+- `COLLEGE_OF_EDUCATION`
+- `EXAM_BODY`
+- `OTHER_ACCREDITED`
+
+`InstitutionApplication.institutionCategory` captures the applying institution's exact category. Founder approval must copy it to the approved `Institution` record and set `Institution.academicTemplateCode`.
+
+Template codes are guided starting points only. Product teams must not hardcode final academic structures from templates. Final sessions, classes, departments, courses, subjects, grading rules, and scopes must be stored through Data Center `AcademicSession`, `AcademicStructure`, and `GradingRuleSet` records.
+
 ## Migration Rules
 
 - Additive migrations are preferred.
@@ -89,4 +118,3 @@ These files require Core Platform review:
 - `packages/shared/src/**`
 - `packages/crypto/src/**`
 - Contract docs in `docs/contracts/**`
-

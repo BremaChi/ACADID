@@ -20,6 +20,9 @@ import {
   createDisputeSchema,
   createInstitutionSchema,
   escalateDisputeSchema,
+  academicTemplateForInstitutionCategory,
+  institutionCategoryToBroadType,
+  normalizeInstitutionCategory,
   platformSettingsSchema,
   reviewDeveloperAccessRequestSchema,
   sendDisputeNoticeSchema,
@@ -107,11 +110,19 @@ export class AdminService {
       throw new BadRequestException(parsed.error.flatten());
     }
 
+    const institutionCategory = parsed.data.institutionCategory
+      ? normalizeInstitutionCategory(parsed.data.institutionCategory)
+      : this.defaultCategoryForBroadType(parsed.data.type);
+    const academicTemplate = academicTemplateForInstitutionCategory(institutionCategory);
+    const broadType = parsed.data.institutionCategory ? institutionCategoryToBroadType(institutionCategory) : parsed.data.type;
+
     const institution = await this.prisma.institution.create({
       data: {
         institutionId: await this.nextInstitutionDisplayId(),
         officialName: parsed.data.officialName,
-        type: parsed.data.type,
+        type: broadType,
+        institutionCategory,
+        academicTemplateCode: academicTemplate.code,
         state: parsed.data.state,
         tier: parsed.data.tier
       }
@@ -122,7 +133,12 @@ export class AdminService {
       targetType: "Institution",
       targetId: institution.uuid,
       institutionId: institution.uuid,
-      outcome: "SUCCESS"
+      outcome: "SUCCESS",
+      metadata: {
+        broadType,
+        institutionCategory,
+        academicTemplateCode: academicTemplate.code
+      }
     });
 
     this.cache?.invalidateTag("institutions");
@@ -362,12 +378,18 @@ export class AdminService {
     const registrarInviteTokenHash = this.hashInviteToken(registrarInviteToken);
     const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+    const institutionCategory = normalizeInstitutionCategory(application.institutionCategory || application.type);
+    const academicTemplate = academicTemplateForInstitutionCategory(institutionCategory);
+    const broadType = institutionCategoryToBroadType(institutionCategory);
+
     const { institution, registrarInvite } = await this.prisma.$transaction(async (tx) => {
       const createdInstitution = await tx.institution.create({
         data: {
           institutionId: await this.nextInstitutionDisplayId(tx),
           officialName: application.officialName,
-          type: this.mapApplicationType(application.type),
+          type: broadType,
+          institutionCategory,
+          academicTemplateCode: academicTemplate.code,
           state: application.state,
           tier: "FOUNDING",
           status: "ACTIVE",
@@ -456,6 +478,9 @@ export class AdminService {
       metadata: {
         institutionId: institution.institutionId,
         applicationType: application.type,
+        broadType,
+        institutionCategory,
+        academicTemplateCode: academicTemplate.code,
         registrarInviteId: registrarInvite.uuid
       }
     });
@@ -2988,14 +3013,18 @@ export class AdminService {
   }
 
   private mapApplicationType(type: string): "PRIMARY" | "SECONDARY" | "TERTIARY" | "EXAM_BODY" {
+    return institutionCategoryToBroadType(normalizeInstitutionCategory(type));
+  }
+
+  private defaultCategoryForBroadType(type: "PRIMARY" | "SECONDARY" | "TERTIARY" | "EXAM_BODY") {
+    if (type === "SECONDARY") {
+      return "SECONDARY";
+    }
+    if (type === "TERTIARY") {
+      return "OTHER_ACCREDITED";
+    }
     if (type === "EXAM_BODY") {
       return "EXAM_BODY";
-    }
-    if (["POLYTECHNIC", "COLLEGE_OF_EDUCATION", "UNIVERSITY"].includes(type)) {
-      return "TERTIARY";
-    }
-    if (["SECONDARY_JSS", "SECONDARY_SSS", "COMBINED_SCHOOL"].includes(type)) {
-      return "SECONDARY";
     }
     return "PRIMARY";
   }

@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AdminService } from "../apps/api/dist/apps/api/src/modules/admin/admin.service.js";
 import { PortalService } from "../apps/api/dist/apps/api/src/modules/portal/portal.service.js";
+import {
+  createInstitutionApplicationSchema,
+  institutionCategoryToBroadType,
+  supportedInstitutionCategories
+} from "../packages/shared/dist/index.js";
 
 test("global API key listing supports product-owned MVP keys without secret material", async () => {
   const service = new AdminService(
@@ -53,6 +58,8 @@ test("portal institution application creates a pending founder-review item", asy
         uuid: "application-1",
         officialName: data.officialName,
         type: data.type,
+        institutionCategory: data.institutionCategory,
+        academicTemplateCode: data.academicTemplateCode,
         status: "PENDING",
         createdAt: new Date("2026-04-29T10:00:00.000Z")
       })
@@ -75,7 +82,7 @@ test("portal institution application creates a pending founder-review item", asy
     },
     {
       officialName: "AcadID Model School",
-      type: "SECONDARY_JSS",
+      institutionCategory: "NURSERY_PRIMARY_SECONDARY",
       state: "Lagos",
       address: "12 Academic Road, Yaba, Lagos",
       contactPersonName: "Registrar One",
@@ -89,7 +96,122 @@ test("portal institution application creates a pending founder-review item", asy
   assert.equal(application.accepted, true);
   assert.equal(application.status, "PENDING");
   assert.equal(application.applicationId, "application-1");
-  assert.equal(application.institutionType, "SECONDARY_JSS");
+  assert.equal(application.institutionType, "NURSERY_PRIMARY_SECONDARY");
+  assert.equal(application.institutionCategory, "NURSERY_PRIMARY_SECONDARY");
+  assert.equal(application.broadType, "SECONDARY");
+  assert.equal(application.academicTemplate.code, "FULL_BASIC_SECONDARY_TERM_CLASS_SUBJECT");
+});
+
+test("institution application schema accepts every supported category and maps broad type", () => {
+  for (const institutionCategory of supportedInstitutionCategories) {
+    const parsed = createInstitutionApplicationSchema.parse({
+      officialName: `${institutionCategory} Demo Institution`,
+      institutionCategory,
+      state: "Lagos",
+      address: "12 Academic Road, Yaba, Lagos",
+      contactPersonName: "Registrar One",
+      contactEmail: `${institutionCategory.toLowerCase()}@example.edu.ng`,
+      studentVolume: 1000,
+      mouAccepted: true
+    });
+
+    assert.equal(parsed.institutionCategory, institutionCategory);
+    assert.equal(parsed.broadType, institutionCategoryToBroadType(institutionCategory));
+    assert.equal(typeof parsed.academicTemplate.code, "string");
+  }
+});
+
+test("founder approval preserves exact category while mapping broad institution type", async () => {
+  let createdInstitutionData;
+  let auditEvent;
+  const application = {
+    uuid: "application-poly-1",
+    officialName: "AcadID Polytechnic",
+    type: "POLYTECHNIC",
+    institutionCategory: "POLYTECHNIC",
+    state: "Lagos",
+    contactPersonName: "Registrar One",
+    contactEmail: "registrar-poly@example.edu.ng",
+    mouAcceptedAt: new Date("2026-04-29T10:00:00.000Z"),
+    status: "PENDING"
+  };
+  const tx = {
+    institution: {
+      count: async () => 0,
+      create: async ({ data }) => {
+        createdInstitutionData = data;
+        return {
+          uuid: "institution-1",
+          institutionId: data.institutionId,
+          officialName: data.officialName,
+          type: data.type,
+          institutionCategory: data.institutionCategory,
+          academicTemplateCode: data.academicTemplateCode,
+          state: data.state,
+          tier: data.tier,
+          status: data.status,
+          mouSignedAt: data.mouSignedAt
+        };
+      }
+    },
+    institutionApplication: {
+      update: async () => ({})
+    },
+    user: {
+      upsert: async () => ({
+        uuid: "registrar-user-1",
+        email: application.contactEmail,
+        fullName: application.contactPersonName
+      })
+    },
+    institutionUser: {
+      upsert: async () => ({
+        uuid: "invite-1",
+        status: "INVITED",
+        inviteExpiresAt: new Date("2026-05-06T10:00:00.000Z"),
+        user: {
+          uuid: "registrar-user-1",
+          email: application.contactEmail,
+          fullName: application.contactPersonName
+        }
+      })
+    }
+  };
+  const service = new AdminService(
+    {
+      institutionApplication: {
+        findUnique: async () => application
+      },
+      $transaction: async (handler) => handler(tx)
+    },
+    {
+      write: async (event) => {
+        auditEvent = event;
+      }
+    },
+    {
+      hash: (value) => `hash:${value}`
+    }
+  );
+
+  const result = await service.approveInstitutionApplication(
+    {
+      sub: "founder-admin-1",
+      email: "founder@acadid.local",
+      fullName: "Founder Admin",
+      role: "FOUNDER_ADMIN",
+      iat: 1,
+      exp: 2
+    },
+    application.uuid
+  );
+
+  assert.equal(result.accepted, true);
+  assert.equal(createdInstitutionData.type, "TERTIARY");
+  assert.equal(createdInstitutionData.institutionCategory, "POLYTECHNIC");
+  assert.equal(createdInstitutionData.academicTemplateCode, "POLYTECHNIC_SEMESTER_ND_HND_COURSE");
+  assert.equal(auditEvent.metadata.broadType, "TERTIARY");
+  assert.equal(auditEvent.metadata.institutionCategory, "POLYTECHNIC");
 });
 
 test("portal exposes current MOU version for application acceptance", () => {

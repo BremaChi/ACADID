@@ -3,7 +3,7 @@
 Status: ACTIVE DEVELOPMENT
 Owner area: Public institution onboarding and approved institution workspace
 Dependency owner: Core Platform Team
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 ## Mission
 
@@ -32,6 +32,8 @@ Public onboarding:
 - `GET /api/portal/mou-version`
 - `POST /api/portal/upload-urls`
 - `POST /api/portal/institution-applications`
+
+Institution application submissions must include `institutionCategory`. Supported categories are documented in `docs/contracts/API_CONTRACTS.md` and `docs/design/INSTITUTION_PORTAL_TYPE_AWARE_BRIEF.md`.
 
 Approved institution workspace:
 
@@ -142,6 +144,20 @@ The portal must use backend AcademicSession and AcademicStructure roots. Do not 
 Result upload screens should require the user to choose valid backend academic structures. Non-Registrar users may be blocked outside assigned scopes.
 
 Large uploads and validation-heavy flows should use async job-producing routes, return a `jobId`, and poll `/api/jobs/:id` lightly. Retryable write requests should send `x-idempotency-key`.
+
+## Institution Type Awareness
+
+There is one Institution Portal, not separate apps for each school type. The portal must branch onboarding and setup guidance by `institutionCategory`:
+
+- Nursery and primary categories use terms, levels/classes, arms, and subjects.
+- Secondary categories use JSS/SSS levels, terms, arms, and subjects.
+- University categories use semesters, faculties, departments, programmes, levels, courses, and credit units.
+- Polytechnic uses semesters, schools/faculties, departments, programmes, ND/HND levels, courses, and credit units.
+- College of Education uses semesters, schools, departments, NCE levels, courses, and credit units.
+- Exam Body uses exam series, candidates, subjects/papers, and result release flows.
+- Other Accredited starts from a custom setup path.
+
+`Institution.type` is only the broad backend grouping. Do not use it to decide detailed UI flows. Use `institutionCategory` and the returned academic template guidance, then persist the final institution structure through Data Center APIs.
 
 ## Record Request Expectations
 

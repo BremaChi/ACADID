@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { InstitutionUserStatus, UserRole, type Prisma } from "@prisma/client";
-import { createInstitutionApplicationSchema, createPortalUploadUrlSchema } from "@acadid/shared";
+import { academicTemplateForInstitutionCategory, createInstitutionApplicationSchema, createPortalUploadUrlSchema } from "@acadid/shared";
 import { AuthService } from "../auth/auth.service.js";
 import type { AuthTokenPayload } from "../auth/types.js";
 import { AuditService } from "../platform/services/audit.service.js";
@@ -326,6 +326,8 @@ export class PortalService {
       data: {
         officialName: parsed.data.officialName.trim(),
         type: parsed.data.type,
+        institutionCategory: parsed.data.institutionCategory,
+        academicTemplateCode: parsed.data.academicTemplateCode,
         state: parsed.data.state.trim(),
         address: parsed.data.address.trim(),
         contactPersonName: parsed.data.contactPersonName.trim(),
@@ -338,10 +340,13 @@ export class PortalService {
         uuid: true,
         officialName: true,
         type: true,
+        institutionCategory: true,
+        academicTemplateCode: true,
         status: true,
         createdAt: true
       }
     });
+    const academicTemplate = academicTemplateForInstitutionCategory(application.institutionCategory);
 
     return {
       accepted: true,
@@ -349,6 +354,13 @@ export class PortalService {
       status: application.status,
       institutionName: application.officialName,
       institutionType: application.type,
+      institutionCategory: application.institutionCategory,
+      broadType: parsed.data.broadType,
+      academicTemplate: {
+        code: application.academicTemplateCode,
+        label: academicTemplate.label,
+        structureHint: academicTemplate.structureHint
+      },
       submittedAt: application.createdAt
     };
   }

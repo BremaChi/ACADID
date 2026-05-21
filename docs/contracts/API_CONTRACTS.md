@@ -2,7 +2,7 @@
 
 Status: Active  
 Owner: Core Platform Team  
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 ## Purpose
 
@@ -62,6 +62,34 @@ Current Institution Portal build credential:
 - Required scope: `institution:apply`.
 - Token exchange: `POST /api/auth/token`, called only from the Institution Portal backend.
 - Production key: not authorized until release approval.
+
+#### Institution application category contract
+
+`POST /api/portal/institution-applications` must submit `institutionCategory`. The old broad or legacy `type` field is accepted only for backward compatibility.
+
+Supported `institutionCategory` codes:
+
+- `NURSERY`
+- `PRIMARY`
+- `SECONDARY`
+- `NURSERY_PRIMARY`
+- `PRIMARY_SECONDARY`
+- `NURSERY_PRIMARY_SECONDARY`
+- `FEDERAL_UNIVERSITY`
+- `STATE_UNIVERSITY`
+- `PRIVATE_UNIVERSITY`
+- `POLYTECHNIC`
+- `COLLEGE_OF_EDUCATION`
+- `EXAM_BODY`
+- `OTHER_ACCREDITED`
+
+Founder/Admin application responses expose:
+
+- `institutionCategory`: exact category selected by the applying institution.
+- `type` or `broadType`: compatibility grouping of `PRIMARY`, `SECONDARY`, `TERTIARY`, or `EXAM_BODY`.
+- `academicTemplate.code`, `academicTemplate.label`, and `academicTemplate.structureHint`: onboarding guidance only.
+
+The Institution Portal must branch setup guidance from `institutionCategory`, but final academic structures must come from Data Center `AcademicSession`, `AcademicStructure`, and `GradingRuleSet` APIs.
 
 ### Academic Setup And Ingestion
 

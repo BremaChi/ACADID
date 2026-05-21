@@ -6,42 +6,240 @@ export const ainSchema = z.string().regex(AIN_PATTERN);
 export const createInstitutionSchema = z.object({
   officialName: z.string().min(2),
   type: z.enum(["PRIMARY", "SECONDARY", "TERTIARY", "EXAM_BODY"]),
+  institutionCategory: z
+    .enum([
+      "NURSERY",
+      "PRIMARY",
+      "SECONDARY",
+      "NURSERY_PRIMARY",
+      "PRIMARY_SECONDARY",
+      "NURSERY_PRIMARY_SECONDARY",
+      "FEDERAL_UNIVERSITY",
+      "STATE_UNIVERSITY",
+      "PRIVATE_UNIVERSITY",
+      "POLYTECHNIC",
+      "COLLEGE_OF_EDUCATION",
+      "EXAM_BODY",
+      "OTHER_ACCREDITED"
+    ])
+    .optional(),
   state: z.string().min(2),
   tier: z.enum(["FOUNDING", "ACTIVE", "VERIFIED"]).default("FOUNDING")
 });
 
-export const supportedInstitutionApplicationTypes = [
+export const supportedInstitutionCategories = [
   "NURSERY",
   "PRIMARY",
+  "SECONDARY",
+  "NURSERY_PRIMARY",
+  "PRIMARY_SECONDARY",
+  "NURSERY_PRIMARY_SECONDARY",
+  "FEDERAL_UNIVERSITY",
+  "STATE_UNIVERSITY",
+  "PRIVATE_UNIVERSITY",
+  "POLYTECHNIC",
+  "COLLEGE_OF_EDUCATION",
+  "EXAM_BODY",
+  "OTHER_ACCREDITED"
+] as const;
+
+export const legacyInstitutionApplicationTypes = [
   "SECONDARY_JSS",
   "SECONDARY_SSS",
   "COMBINED_SCHOOL",
-  "POLYTECHNIC",
-  "COLLEGE_OF_EDUCATION",
-  "UNIVERSITY",
-  "EXAM_BODY"
+  "UNIVERSITY"
 ] as const;
 
-export const createInstitutionApplicationSchema = z.object({
-  officialName: z.string().min(2).max(180),
-  type: z.enum(supportedInstitutionApplicationTypes),
-  state: z.string().min(2).max(80),
-  address: z.string().min(5).max(300),
-  contactPersonName: z.string().min(2).max(120),
-  contactEmail: z.string().email().max(254),
-  studentVolume: z.number().int().positive().max(10_000_000),
-  documentUploads: z
-    .array(
-      z.object({
-        label: z.string().min(2).max(80),
-        storageUrl: z.string().min(3).max(500),
-        checksum: z.string().max(160).optional()
-      })
-    )
-    .max(20)
-    .default([]),
-  mouAccepted: z.literal(true)
-});
+export const supportedInstitutionApplicationTypes = supportedInstitutionCategories;
+
+export type InstitutionCategory = (typeof supportedInstitutionCategories)[number];
+export type BroadInstitutionType = "PRIMARY" | "SECONDARY" | "TERTIARY" | "EXAM_BODY";
+
+export type AcademicTemplateContract = {
+  code: string;
+  label: string;
+  periodType: "TERM" | "SEMESTER" | "EXAM_SERIES" | "CUSTOM";
+  structureHint: string;
+  gradingEngine: "PRIMARY_SECONDARY" | "TERTIARY_GPA" | "EXAM_BODY" | "CUSTOM";
+};
+
+export const institutionAcademicTemplates = {
+  NURSERY: {
+    code: "BASIC_TERM_CLASS_SUBJECT",
+    label: "Nursery term, level/class, arm and subject setup",
+    periodType: "TERM",
+    structureHint: "Terms, nursery levels/classes, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  PRIMARY: {
+    code: "BASIC_TERM_CLASS_SUBJECT",
+    label: "Primary term, class, arm and subject setup",
+    periodType: "TERM",
+    structureHint: "Terms, primary classes, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  SECONDARY: {
+    code: "SECONDARY_TERM_CLASS_SUBJECT",
+    label: "Secondary JSS/SSS term, arm and subject setup",
+    periodType: "TERM",
+    structureHint: "JSS/SSS levels, terms, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  NURSERY_PRIMARY: {
+    code: "BASIC_TERM_CLASS_SUBJECT",
+    label: "Nursery and primary combined setup",
+    periodType: "TERM",
+    structureHint: "Nursery plus primary levels, terms, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  PRIMARY_SECONDARY: {
+    code: "BASIC_SECONDARY_COMBINED_TERM_CLASS_SUBJECT",
+    label: "Primary and secondary combined setup",
+    periodType: "TERM",
+    structureHint: "Primary classes, JSS/SSS levels, terms, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  NURSERY_PRIMARY_SECONDARY: {
+    code: "FULL_BASIC_SECONDARY_TERM_CLASS_SUBJECT",
+    label: "Nursery, primary and secondary combined setup",
+    periodType: "TERM",
+    structureHint: "Nursery, primary, JSS/SSS levels, terms, arms and subjects.",
+    gradingEngine: "PRIMARY_SECONDARY"
+  },
+  FEDERAL_UNIVERSITY: {
+    code: "UNIVERSITY_SEMESTER_COURSE_CREDIT",
+    label: "Federal university semester, faculty, department and course setup",
+    periodType: "SEMESTER",
+    structureHint: "Semesters, faculties, departments, programmes, levels, courses and credit units.",
+    gradingEngine: "TERTIARY_GPA"
+  },
+  STATE_UNIVERSITY: {
+    code: "UNIVERSITY_SEMESTER_COURSE_CREDIT",
+    label: "State university semester, faculty, department and course setup",
+    periodType: "SEMESTER",
+    structureHint: "Semesters, faculties, departments, programmes, levels, courses and credit units.",
+    gradingEngine: "TERTIARY_GPA"
+  },
+  PRIVATE_UNIVERSITY: {
+    code: "UNIVERSITY_SEMESTER_COURSE_CREDIT",
+    label: "Private university semester, faculty, department and course setup",
+    periodType: "SEMESTER",
+    structureHint: "Semesters, faculties, departments, programmes, levels, courses and credit units.",
+    gradingEngine: "TERTIARY_GPA"
+  },
+  POLYTECHNIC: {
+    code: "POLYTECHNIC_SEMESTER_ND_HND_COURSE",
+    label: "Polytechnic semester, ND/HND and course setup",
+    periodType: "SEMESTER",
+    structureHint: "Semesters, schools/faculties, departments, programmes, ND/HND levels, courses and credit units.",
+    gradingEngine: "TERTIARY_GPA"
+  },
+  COLLEGE_OF_EDUCATION: {
+    code: "COLLEGE_SEMESTER_NCE_COURSE",
+    label: "College of Education semester, NCE and course setup",
+    periodType: "SEMESTER",
+    structureHint: "Semesters, schools, departments, NCE levels, courses and credit units.",
+    gradingEngine: "TERTIARY_GPA"
+  },
+  EXAM_BODY: {
+    code: "EXAM_BODY_SERIES_PAPER",
+    label: "Exam body series, candidate and paper setup",
+    periodType: "EXAM_SERIES",
+    structureHint: "Exam series, candidates, subjects or papers, and result release windows.",
+    gradingEngine: "EXAM_BODY"
+  },
+  OTHER_ACCREDITED: {
+    code: "CUSTOM_ACADEMIC_STRUCTURE",
+    label: "Custom accredited institution setup",
+    periodType: "CUSTOM",
+    structureHint: "Custom sessions and academic structures configured through Data Center APIs.",
+    gradingEngine: "CUSTOM"
+  }
+} as const satisfies Record<InstitutionCategory, AcademicTemplateContract>;
+
+const legacyInstitutionCategoryMap: Record<string, InstitutionCategory> = {
+  SECONDARY_JSS: "SECONDARY",
+  SECONDARY_SSS: "SECONDARY",
+  COMBINED_SCHOOL: "NURSERY_PRIMARY_SECONDARY",
+  UNIVERSITY: "OTHER_ACCREDITED"
+};
+
+export function normalizeInstitutionCategory(value: string | null | undefined): InstitutionCategory {
+  if (!value) {
+    return "OTHER_ACCREDITED";
+  }
+  if ((supportedInstitutionCategories as readonly string[]).includes(value)) {
+    return value as InstitutionCategory;
+  }
+  return legacyInstitutionCategoryMap[value] ?? "OTHER_ACCREDITED";
+}
+
+export function institutionCategoryToBroadType(category: string | null | undefined): BroadInstitutionType {
+  const normalized = normalizeInstitutionCategory(category);
+  if (normalized === "EXAM_BODY") {
+    return "EXAM_BODY";
+  }
+  if (["FEDERAL_UNIVERSITY", "STATE_UNIVERSITY", "PRIVATE_UNIVERSITY", "POLYTECHNIC", "COLLEGE_OF_EDUCATION"].includes(normalized)) {
+    return "TERTIARY";
+  }
+  if (["SECONDARY", "PRIMARY_SECONDARY", "NURSERY_PRIMARY_SECONDARY"].includes(normalized)) {
+    return "SECONDARY";
+  }
+  return "PRIMARY";
+}
+
+export function academicTemplateForInstitutionCategory(category: string | null | undefined): AcademicTemplateContract {
+  return institutionAcademicTemplates[normalizeInstitutionCategory(category)];
+}
+
+export const createInstitutionApplicationSchema = z
+  .object({
+    officialName: z.string().min(2).max(180),
+    institutionCategory: z.enum(supportedInstitutionCategories).optional(),
+    type: z
+      .enum([...supportedInstitutionCategories, ...legacyInstitutionApplicationTypes] as [
+        InstitutionCategory,
+        ...Array<InstitutionCategory | (typeof legacyInstitutionApplicationTypes)[number]>
+      ])
+      .optional(),
+    state: z.string().min(2).max(80),
+    address: z.string().min(5).max(300),
+    contactPersonName: z.string().min(2).max(120),
+    contactEmail: z.string().email().max(254),
+    studentVolume: z.number().int().positive().max(10_000_000),
+    documentUploads: z
+      .array(
+        z.object({
+          label: z.string().min(2).max(80),
+          storageUrl: z.string().min(3).max(500),
+          checksum: z.string().max(160).optional()
+        })
+      )
+      .max(20)
+      .default([]),
+    mouAccepted: z.literal(true)
+  })
+  .superRefine((value, ctx) => {
+    if (!value.institutionCategory && !value.type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["institutionCategory"],
+        message: "institutionCategory is required."
+      });
+    }
+  })
+  .transform((value) => {
+    const institutionCategory = normalizeInstitutionCategory(value.institutionCategory ?? value.type);
+    const academicTemplate = academicTemplateForInstitutionCategory(institutionCategory);
+    return {
+      ...value,
+      institutionCategory,
+      type: value.type ?? institutionCategory,
+      broadType: institutionCategoryToBroadType(institutionCategory),
+      academicTemplateCode: academicTemplate.code,
+      academicTemplate
+    };
+  });
 
 export const portalUploadPurposes = ["REGISTRATION_CERTIFICATE", "ACCREDITATION_LETTER", "SIGNED_MOU", "OTHER_SUPPORTING_DOCUMENT"] as const;
 
