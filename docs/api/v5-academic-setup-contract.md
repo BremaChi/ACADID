@@ -29,7 +29,7 @@ Allowed human roles:
 - Founder Admin
 - Registrar
 - Exam Officer for setup support
-- Read endpoints also allow Data Entry Officer, Departmental Officer, and Read Only users with read permission.
+- Read endpoints also allow Data Entry Officer, Scoped Academic Officer, and Read Only users with read permission.
 
 Machine API keys are blocked from create/update academic setup actions.
 

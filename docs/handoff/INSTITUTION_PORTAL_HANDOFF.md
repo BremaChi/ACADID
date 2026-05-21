@@ -108,9 +108,9 @@ POST /api/auth/token
 
 Use the returned access token server-side when calling onboarding endpoints. Do not call `/api/auth/token` from client-side UI code.
 
-Approved institution dashboard uses human institution sessions:
+Approved institution workspace dashboards use human institution sessions:
 
-- Registrar, Exam Officer, Data Entry Officer, Departmental Officer, Read Only.
+- Registrar, Exam Officer, Data Entry Officer, Scoped Academic Officer, Read Only.
 - Token includes institution workspace claims, permissions, and assigned scopes.
 - Machine keys must not perform human-only institution actions.
 
@@ -127,15 +127,45 @@ Assigned academic scopes must be displayed and respected for non-Registrar staff
 
 ## Role Permissions
 
-Baseline roles:
+Baseline roles and role-focused dashboard expectations:
 
-- Registrar: staff management, academic setup, ingestion, governance, publication, amendments.
-- Exam Officer: academic review and record request verification.
-- Data Entry Officer: student/result draft uploads.
-- Departmental Officer: scoped review/upload for assigned academic structures.
-- Read Only: reports and records only.
+- Registrar: full institution control workspace for staff management, academic setup, ingestion oversight, governance, publication, amendments, record requests, and developer access where permitted.
+- Exam Officer: review workspace for batch validation, academic review, corrections, record request verification, and publication handoff actions allowed by permission.
+- Data Entry Officer: upload workspace for student register uploads, result draft entry, bulk upload jobs, validation errors, and resubmission.
+- Scoped Academic Officer: limited workspace for assigned academic scopes only. This replaces the product-facing "Departmental Officer" mindset and must adapt to the institution category.
+- Read Only: reporting workspace for permitted records, reports, verification history, and audit-safe viewing only.
 
 The backend remains authoritative. UI hiding is not permission enforcement.
+
+## Role-Focused Dashboard UX
+
+There is one approved Institution Portal shell, but staff should not all see the same dashboard.
+
+The portal must use the authenticated user's `role`, `permissions`, `assignedScopes`, institution `status`, and `institutionCategory` to choose the landing dashboard, navigation, empty states, primary actions, and detail panels.
+
+Do not put all institution operations on every worker's home screen. Each staff workspace should surface only the work that role can reasonably do:
+
+- Registrar sees institution setup health, pending approvals, staff, publishing, amendments, record requests, and developer controls.
+- Exam Officer sees review queues, validation status, academic exceptions, record request verification, and publication handoff.
+- Data Entry Officer sees upload actions, draft batches, import errors, job progress, and resubmission tasks.
+- Scoped Academic Officer sees only assigned classes, subjects, departments, programmes, courses, exam series, or other academic scopes.
+- Read Only sees reports and records without mutation actions.
+
+Role-focused dashboards are a UI/UX responsibility. The API remains permission-based and does not prescribe card layout, colors, or navigation order.
+
+## Scoped Academic Officer Labels
+
+Use "Scoped Academic Officer" in contracts. The product UI may display a friendlier label based on `institutionCategory` and `assignedScopes`:
+
+- Nursery/Primary: Class Teacher, Class Officer, or Academic Officer.
+- Secondary/combined schools: Subject Officer, Class/Form Officer, HOD, or Scoped Academic Officer.
+- Universities: Departmental Officer, Programme Officer, Course Officer, or Faculty Officer.
+- Polytechnics: Department Officer, Programme Officer, ND/HND Level Officer, or Course Officer.
+- Colleges of Education: Department Officer, NCE Programme Officer, or Course Officer.
+- Exam Bodies: Exam Series Officer, Paper Officer, or Result Officer.
+- Other Accredited: Scoped Academic Officer until the institution's structure is configured.
+
+These are display labels only. Permission enforcement must use backend `role`, `permissions`, and `assignedScopes`.
 
 ## Academic Structure Expectations
 

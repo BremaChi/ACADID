@@ -2,7 +2,7 @@
 
 Status: Active  
 Owner: Core Platform Team  
-Last updated: 2026-05-19
+Last updated: 2026-05-21
 
 ## Auth Actors
 
@@ -45,6 +45,15 @@ Institution staff sessions are human sessions. Token claims include:
 - `assignedScopes`
 
 Institution staff actions must derive the institution from token claims. Product UIs must not allow a user-selected institution ID to override the workspace.
+
+Institution worker dashboards are role-focused, but authorization remains claim-based:
+
+- `role` identifies the staff role.
+- `permissions` decides what actions are allowed.
+- `assignedScopes` limits non-Registrar staff to specific academic structures.
+- `institutionCategory` from the institution profile may guide UI labels and setup paths, but must not replace permission checks.
+
+Use "Scoped Academic Officer" as the product contract term for limited academic staff. Existing backend role names may remain compatibility details; UI labels can adapt by institution category.
 
 ## Product And Institution API Clients
 

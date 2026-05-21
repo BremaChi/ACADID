@@ -37,6 +37,9 @@ Build institution onboarding and approved-institution workspace surfaces for Aca
 - Build one Institution Portal with category-aware setup paths for nursery, primary, secondary, combined schools, universities, polytechnics, colleges, exam bodies, and other accredited institutions.
 - Use `institutionCategory` for detailed setup guidance. Do not use broad `Institution.type` as the detailed product flow switch.
 - Do not hardcode final academic structures. Use templates as starting guidance only; final structures must come from Data Center academic setup APIs.
+- Build role-focused dashboards for Registrar, Exam Officer, Data Entry Officer, Scoped Academic Officer, and Read Only users.
+- Do not show one overloaded institution dashboard to every worker. Use `role`, `permissions`, `assignedScopes`, and `institutionCategory` to choose the landing workspace, navigation emphasis, labels, primary actions, empty states, and detail panels.
+- Treat "Scoped Academic Officer" as the flexible role for class, subject, department, programme, course, exam series, or other assigned academic scopes. Display labels may change by institution category.
 
 ## Sandbox Auth Setup
 
